@@ -1,172 +1,78 @@
 import {
-  collection,
-  addDoc,
-  getDocs,
-  getDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  query,
-  orderBy,
-  serverTimestamp,
-  Timestamp,
+  collection, addDoc, getDocs, getDoc, updateDoc, deleteDoc,
+  doc, query, orderBy, where, serverTimestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
-// --- Types ---
+// Import types for generic params
+import type {
+  User, Team, Customer, Project, SalesActivity, PresaleRequest,
+  ServiceTicket, Product, Quotation,
+} from "./types";
 
-export interface Customer {
-  id?: string;
-  company_name: string;
-  contact_name: string;
-  phone: string;
-  created_at?: Timestamp;
+// Re-export types
+export type {
+  User, Team, Customer, Project, SalesActivity, PresaleRequest,
+  ServiceTicket, Product, Quotation, QuotationItem,
+} from "./types";
+
+// ============================================================
+// GENERIC HELPERS
+// ============================================================
+
+const TENANT = "kmitsurat";
+
+async function addDoc_(col: string, data: Record<string, unknown>) {
+  return addDoc(collection(db, col), { ...data, tenant_id: TENANT, created_at: serverTimestamp() });
 }
 
-export interface Activity {
-  id?: string;
-  text: string;
-  tenant_id: string;
-  status: "new" | "in_progress" | "done";
-  createdAt?: Timestamp;
+async function listDocs<T extends { id?: string }>(col: string, sortField = "created_at"): Promise<T[]> {
+  const q = query(collection(db, col), where("tenant_id", "==", TENANT), orderBy(sortField, "desc"));
+  try {
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+  } catch {
+    // fallback without orderBy if index missing
+    const q2 = query(collection(db, col), where("tenant_id", "==", TENANT));
+    const snap = await getDocs(q2);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+  }
 }
 
-export interface PresaleRequest {
-  id?: string;
-  customer_name: string;
-  requirement: string;
-  assigned_to: string;
-  status: "pending" | "in_progress" | "completed";
-  created_at?: Timestamp;
-}
-
-export interface Quotation {
-  id?: string;
-  customer_name: string;
-  items: { description: string; qty: number; unit_price: number }[];
-  total_price: number;
-  status: "draft" | "sent" | "accepted" | "rejected";
-  created_at?: Timestamp;
-}
-
-export interface ServiceTicket {
-  id?: string;
-  customer_name: string;
-  issue: string;
-  status: "open" | "in_progress" | "resolved" | "closed";
-  created_at?: Timestamp;
-}
-
-// --- Generic helpers ---
-
-async function addDocument(col: string, data: Record<string, unknown>, timestampField = "created_at") {
-  return addDoc(collection(db, col), {
-    ...data,
-    [timestampField]: serverTimestamp(),
-  });
-}
-
-async function listDocuments<T extends { id?: string }>(col: string): Promise<T[]> {
-  const snap = await getDocs(collection(db, col));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
-}
-
-async function listDocumentsSorted<T extends { id?: string }>(
-  col: string,
-  orderField: string
-): Promise<T[]> {
-  const q = query(collection(db, col), orderBy(orderField, "desc"));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
-}
-
-async function getDocument<T extends { id?: string }>(
-  col: string,
-  id: string
-): Promise<T | null> {
+async function getDoc_<T extends { id?: string }>(col: string, id: string): Promise<T | null> {
   const snap = await getDoc(doc(db, col, id));
   if (!snap.exists()) return null;
   return { id: snap.id, ...snap.data() } as T;
 }
 
-async function updateDocument(
-  col: string,
-  id: string,
-  data: Record<string, unknown>
-) {
+async function updateDoc_(col: string, id: string, data: Record<string, unknown>) {
   return updateDoc(doc(db, col, id), data);
 }
 
-async function removeDocument(col: string, id: string) {
+async function deleteDoc_(col: string, id: string) {
   return deleteDoc(doc(db, col, id));
 }
 
-async function countDocuments(col: string): Promise<number> {
-  const snap = await getDocs(collection(db, col));
-  return snap.size;
+// ============================================================
+// COLLECTION SERVICES
+// ============================================================
+
+function svc<T extends { id?: string }>(col: string, sortField = "created_at") {
+  return {
+    add: (data: Record<string, unknown>) => addDoc_(col, data),
+    list: () => listDocs<T>(col, sortField),
+    get: (id: string) => getDoc_<T>(col, id),
+    update: (id: string, data: Record<string, unknown>) => updateDoc_(col, id, data),
+    remove: (id: string) => deleteDoc_(col, id),
+  };
 }
 
-// --- Customers ---
-
-export const customers = {
-  add: (data: Omit<Customer, "id" | "created_at">) =>
-    addDocument("customers", data as Record<string, unknown>),
-  list: () => listDocuments<Customer>("customers"),
-  get: (id: string) => getDocument<Customer>("customers", id),
-  update: (id: string, data: Partial<Customer>) =>
-    updateDocument("customers", id, data as Record<string, unknown>),
-  remove: (id: string) => removeDocument("customers", id),
-  count: () => countDocuments("customers"),
-};
-
-// --- Activities ---
-
-export const activities = {
-  add: (data: Omit<Activity, "id" | "createdAt">) =>
-    addDocument("activities", data as Record<string, unknown>, "createdAt"),
-  list: () => listDocumentsSorted<Activity>("activities", "createdAt"),
-  get: (id: string) => getDocument<Activity>("activities", id),
-  update: (id: string, data: Partial<Activity>) =>
-    updateDocument("activities", id, data as Record<string, unknown>),
-  remove: (id: string) => removeDocument("activities", id),
-  count: () => countDocuments("activities"),
-};
-
-// --- Presale Requests ---
-
-export const presaleRequests = {
-  add: (data: Omit<PresaleRequest, "id" | "created_at">) =>
-    addDocument("presale_requests", data as Record<string, unknown>),
-  list: () => listDocuments<PresaleRequest>("presale_requests"),
-  get: (id: string) => getDocument<PresaleRequest>("presale_requests", id),
-  update: (id: string, data: Partial<PresaleRequest>) =>
-    updateDocument("presale_requests", id, data as Record<string, unknown>),
-  remove: (id: string) => removeDocument("presale_requests", id),
-  count: () => countDocuments("presale_requests"),
-};
-
-// --- Quotations ---
-
-export const quotations = {
-  add: (data: Omit<Quotation, "id" | "created_at">) =>
-    addDocument("quotations", data as Record<string, unknown>),
-  list: () => listDocuments<Quotation>("quotations"),
-  get: (id: string) => getDocument<Quotation>("quotations", id),
-  update: (id: string, data: Partial<Quotation>) =>
-    updateDocument("quotations", id, data as Record<string, unknown>),
-  remove: (id: string) => removeDocument("quotations", id),
-  count: () => countDocuments("quotations"),
-};
-
-// --- Service Tickets ---
-
-export const serviceTickets = {
-  add: (data: Omit<ServiceTicket, "id" | "created_at">) =>
-    addDocument("service_tickets", data as Record<string, unknown>),
-  list: () => listDocuments<ServiceTicket>("service_tickets"),
-  get: (id: string) => getDocument<ServiceTicket>("service_tickets", id),
-  update: (id: string, data: Partial<ServiceTicket>) =>
-    updateDocument("service_tickets", id, data as Record<string, unknown>),
-  remove: (id: string) => removeDocument("service_tickets", id),
-  count: () => countDocuments("service_tickets"),
-};
+export const users = svc<User>("users");
+export const teams = svc<Team>("teams");
+export const customers = svc<Customer>("customers");
+export const projects = svc<Project>("projects");
+export const salesActivities = svc<SalesActivity>("sales_activities");
+export const presaleRequests = svc<PresaleRequest>("presale_requests");
+export const serviceTickets = svc<ServiceTicket>("service_tickets");
+export const quotations = svc<Quotation>("quotations");
+export const products = svc<Product>("products");
