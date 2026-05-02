@@ -18,7 +18,7 @@ export default function ReportsPage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-xl font-bold mb-5">Reports / Export</h1>
+      <h1 className="text-xl font-bold mb-5" title="รายงาน / ส่งออกข้อมูล">Reports / Export</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {reports.map((r) => (
           <div key={r.name} className="rounded-xl bg-card border border-border p-5">

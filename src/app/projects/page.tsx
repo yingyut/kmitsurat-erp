@@ -42,8 +42,8 @@ export default function ProjectsPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold">Projects / Opportunities</h1>
-        <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Project"}</button>
+        <h1 className="text-xl font-bold" title="โปรเจกต์ / โอกาสขาย">Projects / Opportunities</h1>
+        <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "ยกเลิก" : "+ โปรเจกต์ใหม่"}</button>
       </div>
       {showForm && (
         <div className="rounded-xl bg-card border border-border p-5 mb-5">

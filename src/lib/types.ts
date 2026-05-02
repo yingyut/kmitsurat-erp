@@ -111,6 +111,20 @@ export interface QuotationItem {
   margin_percent: number;
 }
 
+export interface SalesQuota {
+  id?: string;
+  tenant_id: string;
+  user_name: string;
+  role: "sale" | "avenger";
+  month: string; // "2026-05"
+  quota_target: number;
+  actual_sales: number;
+  remaining: number;
+  percent: number;
+  won_deals: number;
+  total_activities: number;
+}
+
 export interface Quotation {
   id?: string;
   tenant_id: string;

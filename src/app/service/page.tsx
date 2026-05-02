@@ -39,7 +39,7 @@ export default function ServicePage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-5"><h1 className="text-xl font-bold">Service Tickets</h1><button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Ticket"}</button></div>
+      <div className="flex items-center justify-between mb-5"><h1 className="text-xl font-bold" title="ใบแจ้งงานบริการ">Service Tickets</h1><button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Ticket"}</button></div>
       {showForm && (
         <div className="rounded-xl bg-card border border-border p-5 mb-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">

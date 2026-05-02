@@ -40,8 +40,8 @@ export default function CustomersPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold">Customers</h1>
-        <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors">{showForm ? "Cancel" : "+ Add Customer"}</button>
+        <h1 className="text-xl font-bold" title="รายชื่อลูกค้า">Customers</h1>
+        <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors">{showForm ? "ยกเลิก" : "+ เพิ่มลูกค้า"}</button>
       </div>
       {showForm && (
         <div className="rounded-xl bg-card border border-border p-5 mb-5">
@@ -60,7 +60,7 @@ export default function CustomersPage() {
       {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? <p className="text-muted text-sm">No customers found.</p> : (
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-border text-left text-xs text-muted uppercase"><th className="px-4 py-2.5">Company</th><th className="px-4 py-2.5">Contact</th><th className="px-4 py-2.5">Phone</th><th className="px-4 py-2.5">Email</th><th className="px-4 py-2.5 w-16"></th></tr></thead>
+            <thead><tr className="border-b border-border text-left text-xs text-muted uppercase"><th className="px-4 py-2.5" title="ชื่อบริษัท">Company</th><th className="px-4 py-2.5" title="ผู้ติดต่อ">Contact</th><th className="px-4 py-2.5" title="เบอร์โทร">Phone</th><th className="px-4 py-2.5" title="อีเมล">Email</th><th className="px-4 py-2.5 w-16"></th></tr></thead>
             <tbody>{filtered.map((c) => (
               <tr key={c.id} className="border-b border-border last:border-0 hover:bg-card-hover"><td className="px-4 py-2.5 font-medium">{c.company_name}</td><td className="px-4 py-2.5 text-muted">{c.contact_name}</td><td className="px-4 py-2.5 text-muted">{c.phone}</td><td className="px-4 py-2.5 text-muted">{c.email}</td><td className="px-4 py-2.5"><button onClick={() => handleDelete(c.id!)} className="text-xs text-danger hover:underline">Del</button></td></tr>
             ))}</tbody>

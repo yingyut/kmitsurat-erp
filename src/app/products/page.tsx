@@ -32,7 +32,7 @@ export default function ProductsPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-5"><h1 className="text-xl font-bold">Products / Price List</h1><button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ Add Product"}</button></div>
+      <div className="flex items-center justify-between mb-5"><h1 className="text-xl font-bold" title="สินค้า / รายการราคา">Products / Price List</h1><button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ Add Product"}</button></div>
       {showForm && (
         <div className="rounded-xl bg-card border border-border p-5 mb-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
@@ -53,7 +53,7 @@ export default function ProductsPage() {
       {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? <p className="text-muted text-sm">No products found.</p> : (
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-border text-left text-xs text-muted uppercase"><th className="px-4 py-2.5">Code</th><th className="px-4 py-2.5">Name</th><th className="px-4 py-2.5">Brand</th><th className="px-4 py-2.5">Category</th><th className="px-4 py-2.5 text-right">Cost</th><th className="px-4 py-2.5 text-right">Sell</th><th className="px-4 py-2.5 text-right">Margin</th><th className="px-4 py-2.5 w-16"></th></tr></thead>
+            <thead><tr className="border-b border-border text-left text-xs text-muted uppercase"><th className="px-4 py-2.5" title="รหัสสินค้า">Code</th><th className="px-4 py-2.5" title="ชื่อสินค้า">Name</th><th className="px-4 py-2.5" title="ยี่ห้อ">Brand</th><th className="px-4 py-2.5" title="หมวดหมู่">Category</th><th className="px-4 py-2.5 text-right" title="ราคาทุน">Cost</th><th className="px-4 py-2.5 text-right" title="ราคาขาย">Sell</th><th className="px-4 py-2.5 text-right" title="อัตรากำไร">Margin</th><th className="px-4 py-2.5 w-16"></th></tr></thead>
             <tbody>{filtered.map((p) => {
               const margin = p.selling_price > 0 ? ((p.selling_price - p.cost_price) / p.selling_price * 100).toFixed(1) : "0";
               return (

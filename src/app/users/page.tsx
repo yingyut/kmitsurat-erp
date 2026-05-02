@@ -40,7 +40,7 @@ export default function UsersPage() {
 
   return (
     <div className="p-6">
-      <h1 className="text-xl font-bold mb-5">Users / Teams</h1>
+      <h1 className="text-xl font-bold mb-5" title="จัดการผู้ใช้และทีม">Users / Teams</h1>
       <div className="flex gap-2 mb-4">
         <button onClick={() => setTab("users")} className={`px-4 py-1.5 rounded-lg text-sm ${tab === "users" ? "bg-accent text-white" : "bg-card border border-border text-muted"}`}>Users</button>
         <button onClick={() => setTab("teams")} className={`px-4 py-1.5 rounded-lg text-sm ${tab === "teams" ? "bg-accent text-white" : "bg-card border border-border text-muted"}`}>Teams</button>

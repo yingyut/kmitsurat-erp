@@ -70,10 +70,10 @@ export default function QuotationsPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-5"><h1 className="text-xl font-bold">Quotations</h1>
+      <div className="flex items-center justify-between mb-5"><h1 className="text-xl font-bold" title="ใบเสนอราคา">Quotations</h1>
         <div className="flex gap-2">
-          <button className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">Export CSV</button>
-          <button className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">Export PDF</button>
+          <button title="ส่งออกไฟล์ CSV" className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">Export CSV</button>
+          <button title="ส่งออกไฟล์ PDF" className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">Export PDF</button>
           <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Quotation"}</button>
         </div>
       </div>
