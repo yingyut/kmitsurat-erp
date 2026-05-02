@@ -1,72 +1,227 @@
 "use client";
-import { useEffect, useState } from "react";
-import type { Customer } from "@/lib/types";
+import { useEffect, useState, lazy, Suspense } from "react";
+import type { Customer, Project, Quotation, ServiceTicket } from "@/lib/types";
 
-const empty = { company_name: "", contact_name: "", phone: "", email: "", address: "", notes: "" };
+const ThailandMap = lazy(() => import("@/components/ThailandMap"));
+
+const orgTypes = ["government", "private", "education", "hospital", "hotel", "other"] as const;
+const orgLabels: Record<string, string> = { government: "หน่วยงานราชการ", private: "เอกชน", education: "สถานศึกษา", hospital: "โรงพยาบาล", hotel: "โรงแรม", other: "อื่นๆ" };
+const orgColor: Record<string, string> = { government: "bg-blue-900/50 text-blue-400", private: "bg-emerald-900/50 text-emerald-400", education: "bg-purple-900/50 text-purple-400", hospital: "bg-rose-900/50 text-rose-400", hotel: "bg-amber-900/50 text-amber-400", other: "bg-gray-700 text-gray-400" };
+
+const provinces = ["กรุงเทพ","กระบี่","กาญจนบุรี","กาฬสินธุ์","กำแพงเพชร","ขอนแก่น","จันทบุรี","ฉะเชิงเทรา","ชลบุรี","ชัยนาท","ชัยภูมิ","ชุมพร","เชียงราย","เชียงใหม่","ตรัง","ตราด","ตาก","นครนายก","นครปฐม","นครพนม","นครราชสีมา","นครศรีธรรมราช","นครสวรรค์","นนทบุรี","นราธิวาส","น่าน","บึงกาฬ","บุรีรัมย์","ปทุมธานี","ประจวบคีรีขันธ์","ปราจีนบุรี","ปัตตานี","พระนครศรีอยุธยา","พะเยา","พังงา","พัทลุง","พิจิตร","พิษณุโลก","เพชรบุรี","เพชรบูรณ์","แพร่","ภูเก็ต","มหาสารคาม","มุกดาหาร","แม่ฮ่องสอน","ยโสธร","ยะลา","ร้อยเอ็ด","ระนอง","ระยอง","ราชบุรี","ลพบุรี","ลำปาง","ลำพูน","เลย","ศรีสะเกษ","สกลนคร","สงขลา","สตูล","สมุทรปราการ","สมุทรสงคราม","สมุทรสาคร","สระแก้ว","สระบุรี","สิงห์บุรี","สุโขทัย","สุพรรณบุรี","สุราษฎร์ธานี","สุรินทร์","หนองคาย","หนองบัวลำภู","อ่างทอง","อำนาจเจริญ","อุดรธานี","อุตรดิตถ์","อุทัยธานี","อุบลราชธานี"];
+
+
+const emptyForm = { company_name: "", contact_name: "", phone: "", email: "", address: "", province: "สุราษฎร์ธานี", org_type: "private" as Customer["org_type"], notes: "" };
 
 export default function CustomersPage() {
   const [list, setList] = useState<Customer[]>([]);
-  const [filtered, setFiltered] = useState<Customer[]>([]);
-  const [search, setSearch] = useState("");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
+  const [serviceTickets, setServiceTickets] = useState<ServiceTicket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(empty);
-  const [saving, setSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [search, setSearch] = useState("");
+  const [provinceFilter, setProvinceFilter] = useState("all");
+  const [orgFilter, setOrgFilter] = useState("all");
+  const [saving, setSaving] = useState(false);
+
+  // Form
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm);
+
+  // Hover popup
+  const [hoverCust, setHoverCust] = useState<Customer | null>(null);
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
 
   async function load() {
-    const { customers } = await import("@/lib/firestore");
-    try { const d = await customers.list(); setList(d); setFiltered(d); } catch (e) { console.error(e); } finally { setLoading(false); }
+    const fs = await import("@/lib/firestore");
+    try {
+      const [c, p, q, s] = await Promise.all([fs.customers.list(), fs.projects.list(), fs.quotations.list(), fs.serviceTickets.list()]);
+      setList(c); setProjects(p); setQuotations(q); setServiceTickets(s);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   }
+
   useEffect(() => { setMounted(true); load(); }, []);
-  useEffect(() => {
-    const s = search.toLowerCase();
-    setFiltered(s ? list.filter((c) => c.company_name.toLowerCase().includes(s) || c.contact_name.toLowerCase().includes(s) || c.phone.includes(s)) : list);
-  }, [search, list]);
+
+  // Filters
+  const filtered = list.filter(c => {
+    const matchSearch = search ? (c.company_name.toLowerCase().includes(search.toLowerCase()) || c.contact_name.toLowerCase().includes(search.toLowerCase()) || (c.province || "").includes(search)) : true;
+    const matchProv = provinceFilter === "all" ? true : c.province === provinceFilter;
+    const matchOrg = orgFilter === "all" ? true : c.org_type === orgFilter;
+    return matchSearch && matchProv && matchOrg;
+  });
+
+  // Provinces that have customers
+  const usedProvinces = [...new Set(list.map(c => c.province).filter(Boolean))].sort();
+
+  // Province count for filter dropdown
+  const provinceCount: Record<string, number> = {};
+  list.forEach(c => { if (c.province) provinceCount[c.province] = (provinceCount[c.province] || 0) + 1; });
+
+  // CRUD
+  function openAdd() { setEditId(null); setForm(emptyForm); setShowForm(true); }
+  function openEdit(c: Customer) {
+    setEditId(c.id!);
+    setForm({ company_name: c.company_name, contact_name: c.contact_name, phone: c.phone, email: c.email, address: c.address, province: c.province || "", org_type: c.org_type || "other", notes: c.notes });
+    setShowForm(true);
+  }
 
   async function handleSave() {
-    if (!form.company_name.trim()) return; setSaving(true);
-    const { customers } = await import("@/lib/firestore");
-    try { await customers.add(form as unknown as Record<string, unknown>); setForm(empty); setShowForm(false); await load(); } catch (e) { console.error(e); } finally { setSaving(false); }
+    if (!form.company_name.trim()) return;
+    setSaving(true);
+    const fs = await import("@/lib/firestore");
+    try {
+      if (editId) { await fs.customers.update(editId, form as unknown as Record<string, unknown>); }
+      else { await fs.customers.add(form as unknown as Record<string, unknown>); }
+      setForm(emptyForm); setShowForm(false); setEditId(null); await load();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
   }
-  async function handleDelete(id: string) {
-    if (!confirm("Delete?")) return;
-    const { customers } = await import("@/lib/firestore");
-    await customers.remove(id); await load();
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`ลบลูกค้า "${name}" ?`)) return;
+    const fs = await import("@/lib/firestore");
+    await fs.customers.remove(id); await load();
+  }
+
+  // Hover popup data
+  function getCustomerSummary(c: Customer) {
+    const custProjects = projects.filter(p => p.customer_id === c.id || p.customer_name === c.company_name);
+    const custQuots = quotations.filter(q => q.customer_id === c.id || q.customer_name === c.company_name);
+    const custService = serviceTickets.filter(s => s.customer_id === c.id || s.customer_name === c.company_name);
+    const totalValue = custProjects.reduce((s, p) => s + (p.value || 0), 0);
+    const quotValue = custQuots.reduce((s, q) => s + (q.total_selling || 0), 0);
+    const pmJobs = custService.filter(s => s.type === "pm_service").length;
+    const openJobs = custService.filter(s => !["resolved", "closed"].includes(s.status)).length;
+    return { projects: custProjects.length, totalValue, quotations: custQuots.length, quotValue, serviceTotal: custService.length, pmJobs, openJobs };
+  }
+
+  function handleMouseEnter(e: React.MouseEvent, c: Customer) {
+    setHoverCust(c);
+    setHoverPos({ x: e.clientX, y: e.clientY });
   }
 
   if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" title="รายชื่อลูกค้า">Customers</h1>
-        <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors">{showForm ? "ยกเลิก" : "+ เพิ่มลูกค้า"}</button>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-xl font-bold" title="รายชื่อลูกค้า">Customers</h1>
+          <p className="text-xs text-muted">จัดการข้อมูลลูกค้าทั้งหมด</p>
+        </div>
+        <button onClick={openAdd} title="เพิ่มลูกค้าใหม่" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ เพิ่มลูกค้า</button>
       </div>
+
+      {/* Filters */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <input placeholder="ค้นหาลูกค้า..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+        <select value={provinceFilter} onChange={e => setProvinceFilter(e.target.value)} title="กรองตามจังหวัด" className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+          <option value="all">ทุกจังหวัด</option>
+          {usedProvinces.map(p => <option key={p} value={p}>{p} ({provinceCount[p]})</option>)}
+        </select>
+        <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)} title="กรองตามประเภทหน่วยงาน" className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+          <option value="all">ทุกประเภท</option>
+          {orgTypes.map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
+        </select>
+      </div>
+
+      {/* Add/Edit Form */}
       {showForm && (
-        <div className="rounded-xl bg-card border border-border p-5 mb-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <input placeholder="Company Name *" value={form.company_name} onChange={(e) => setForm({ ...form, company_name: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <input placeholder="Contact Name" value={form.contact_name} onChange={(e) => setForm({ ...form, contact_name: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <input placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <input placeholder="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full" />
-            <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
+        <div className="rounded-xl bg-card border border-border p-5 mb-4">
+          <h2 className="text-base font-semibold mb-3">{editId ? "แก้ไขลูกค้า" : "เพิ่มลูกค้าใหม่"}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+            <input placeholder="ชื่อบริษัท / หน่วยงาน *" value={form.company_name} onChange={e => setForm({ ...form, company_name: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="ชื่อผู้ติดต่อ" value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="เบอร์โทร" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="อีเมล" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <select value={form.province} onChange={e => setForm({ ...form, province: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+              <option value="">-- จังหวัด --</option>
+              {provinces.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select value={form.org_type} onChange={e => setForm({ ...form, org_type: e.target.value as Customer["org_type"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+              {orgTypes.map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
+            </select>
+            <input placeholder="ที่อยู่" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full" />
+            <textarea placeholder="หมายเหตุ" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
           </div>
-          <button onClick={handleSave} disabled={saving || !form.company_name.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={saving || !form.company_name.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : editId ? "บันทึกการแก้ไข" : "บันทึก"}</button>
+            <button onClick={() => { setShowForm(false); setEditId(null); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+          </div>
         </div>
       )}
-      <input placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="mb-4 w-full rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-      {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? <p className="text-muted text-sm">No customers found.</p> : (
-        <div className="rounded-xl bg-card border border-border overflow-hidden">
+
+      {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
+
+      {/* Customer Table */}
+      <div className="rounded-xl bg-card border border-border overflow-hidden mb-5">
+        <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
+          <p className="text-sm font-semibold">รายชื่อลูกค้า ({filtered.length})</p>
+        </div>
+        {filtered.length === 0 ? <p className="text-muted text-sm p-4">ไม่พบลูกค้า</p> : (
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-border text-left text-xs text-muted uppercase"><th className="px-4 py-2.5" title="ชื่อบริษัท">Company</th><th className="px-4 py-2.5" title="ผู้ติดต่อ">Contact</th><th className="px-4 py-2.5" title="เบอร์โทร">Phone</th><th className="px-4 py-2.5" title="อีเมล">Email</th><th className="px-4 py-2.5 w-16"></th></tr></thead>
-            <tbody>{filtered.map((c) => (
-              <tr key={c.id} className="border-b border-border last:border-0 hover:bg-card-hover"><td className="px-4 py-2.5 font-medium">{c.company_name}</td><td className="px-4 py-2.5 text-muted">{c.contact_name}</td><td className="px-4 py-2.5 text-muted">{c.phone}</td><td className="px-4 py-2.5 text-muted">{c.email}</td><td className="px-4 py-2.5"><button onClick={() => handleDelete(c.id!)} className="text-xs text-danger hover:underline">Del</button></td></tr>
+            <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
+              <th className="px-4 py-2.5" title="ชื่อบริษัท">Company</th>
+              <th className="px-4 py-2.5" title="ผู้ติดต่อ">Contact</th>
+              <th className="px-4 py-2.5" title="เบอร์โทร">Phone</th>
+              <th className="px-4 py-2.5" title="จังหวัด">Province</th>
+              <th className="px-4 py-2.5" title="ประเภท">Type</th>
+              <th className="px-4 py-2.5 w-28" title="จัดการ">Actions</th>
+            </tr></thead>
+            <tbody>{filtered.map(c => (
+              <tr key={c.id} className="border-b border-border last:border-0 hover:bg-card-hover relative"
+                onMouseEnter={e => handleMouseEnter(e, c)} onMouseLeave={() => setHoverCust(null)}>
+                <td className="px-4 py-2.5 font-medium">{c.company_name}</td>
+                <td className="px-4 py-2.5 text-muted">{c.contact_name}</td>
+                <td className="px-4 py-2.5 text-muted">{c.phone}</td>
+                <td className="px-4 py-2.5 text-muted">{c.province || "-"}</td>
+                <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${orgColor[c.org_type] || "bg-gray-700"}`}>{orgLabels[c.org_type] || c.org_type}</span></td>
+                <td className="px-4 py-2.5">
+                  <div className="flex gap-2">
+                    <button onClick={() => openEdit(c)} title="แก้ไข" className="text-xs text-accent hover:underline">แก้ไข</button>
+                    <button onClick={() => handleDelete(c.id!, c.company_name)} title="ลบ" className="text-xs text-danger hover:underline">ลบ</button>
+                  </div>
+                </td>
+              </tr>
             ))}</tbody>
           </table>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* Hover Popup */}
+      {hoverCust && (() => {
+        const s = getCustomerSummary(hoverCust);
+        return (
+          <div className="fixed z-[100] rounded-xl bg-card border border-border shadow-2xl p-4 w-72 pointer-events-none"
+            style={{ left: Math.min(hoverPos.x + 15, window.innerWidth - 300), top: Math.min(hoverPos.y - 10, window.innerHeight - 250) }}>
+            <p className="font-semibold text-sm mb-2">{hoverCust.company_name}</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div><p className="text-muted">โปรเจค</p><p className="font-semibold">{s.projects} งาน</p></div>
+              <div><p className="text-muted">มูลค่ารวม</p><p className="font-semibold text-green-400">{s.totalValue.toLocaleString()} ฿</p></div>
+              <div><p className="text-muted">ใบเสนอราคา</p><p className="font-semibold">{s.quotations} ใบ ({s.quotValue.toLocaleString()} ฿)</p></div>
+              <div><p className="text-muted">งานบริการ</p><p className="font-semibold">{s.serviceTotal} งาน</p></div>
+              <div><p className="text-muted">PM/MA</p><p className="font-semibold text-amber-400">{s.pmJobs} งาน</p></div>
+              <div><p className="text-muted">งานค้าง</p><p className={`font-semibold ${s.openJobs > 0 ? "text-red-400" : "text-green-400"}`}>{s.openJobs} งาน</p></div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Thailand Map */}
+      <Suspense fallback={<div className="h-[500px] rounded-xl bg-card border border-border flex items-center justify-center"><p className="text-muted text-sm">Loading map...</p></div>}>
+        <ThailandMap
+          customers={list}
+          selectedProvince={provinceFilter}
+          onSelectProvince={setProvinceFilter}
+          getCustomerSummary={getCustomerSummary}
+        />
+      </Suspense>
+
+      </>)}
     </div>
   );
 }
+

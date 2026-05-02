@@ -6,13 +6,13 @@ import { db } from "./firebase";
 
 // Import types for generic params
 import type {
-  User, Team, Customer, Project, SalesActivity, PresaleRequest,
+  User, Team, Customer, Project, ProjectType, JobRequest, SalesActivity, PresaleRequest,
   ServiceTicket, Product, Quotation, SalesQuota,
 } from "./types";
 
 // Re-export types
 export type {
-  User, Team, Customer, Project, SalesActivity, PresaleRequest,
+  User, Team, Customer, Project, ProjectType, JobRequest, SalesActivity, PresaleRequest,
   ServiceTicket, Product, Quotation, QuotationItem, SalesQuota,
 } from "./types";
 
@@ -76,4 +76,6 @@ export const presaleRequests = svc<PresaleRequest>("presale_requests");
 export const serviceTickets = svc<ServiceTicket>("service_tickets");
 export const quotations = svc<Quotation>("quotations");
 export const products = svc<Product>("products");
+export const projectTypes = svc<ProjectType>("project_types");
+export const jobRequests = svc<JobRequest>("job_requests");
 export const salesQuotas = svc<SalesQuota>("sales_quotas");

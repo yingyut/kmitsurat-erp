@@ -1,78 +1,368 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { Project, Customer } from "@/lib/types";
+import type { Project, Customer, User, ProjectType } from "@/lib/types";
+import Link from "next/link";
 
-const statuses = ["lead","opportunity","proposal","negotiation","won","lost"] as const;
-const empty = { name: "", customer_id: "", customer_name: "", type: "", value: 0, status: "lead" as Project["status"], assigned_to: "", notes: "" };
+const statuses = ["lead", "opportunity", "proposal", "negotiation", "won", "lost"] as const;
+const statusLabels: Record<string, string> = { lead: "Lead", opportunity: "Opportunity", proposal: "Proposal", negotiation: "Negotiation", won: "Won", lost: "Lost" };
+const statusColor: Record<string, string> = { lead: "bg-gray-700 text-gray-300", opportunity: "bg-blue-900/50 text-blue-400", proposal: "bg-purple-900/50 text-purple-400", negotiation: "bg-yellow-900/50 text-yellow-400", won: "bg-green-900/50 text-green-400", lost: "bg-red-900/50 text-red-400" };
+
+const emptyForm = {
+  name: "", customer_id: "", customer_name: "", type: "", value: 0,
+  status: "lead" as Project["status"], assigned_to: "", notes: "",
+  win_loss_reason: "", lost_competitor: "",
+  re_engage: false, re_engage_date: "", re_engage_note: "",
+  reminder_date: "", reminder_type: "none" as Project["reminder_type"], reminder_sent: false,
+  reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "",
+};
 
 export default function ProjectsPage() {
   const [list, setList] = useState<Project[]>([]);
   const [custs, setCusts] = useState<Customer[]>([]);
-  const [filtered, setFiltered] = useState<Project[]>([]);
-  const [search, setSearch] = useState("");
+  const [users, setUsers] = useState<User[]>([]);
+  const [pTypes, setPTypes] = useState<ProjectType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(empty);
-  const [saving, setSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [saving, setSaving] = useState(false);
+
+  // Form
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm);
+
+  // Detail
+  const [detail, setDetail] = useState<Project | null>(null);
+
+  // Alerts
+  const today = new Date().toISOString().slice(0, 10);
+  const reEngageAlerts = list.filter(p => p.re_engage && p.re_engage_date && p.re_engage_date <= today && p.status === "lost");
+  const reminderAlerts = list.filter(p => p.reminder_date && p.reminder_date <= today && !p.reminder_sent);
 
   async function load() {
     const fs = await import("@/lib/firestore");
-    try { const [p, c] = await Promise.all([fs.projects.list(), fs.customers.list()]); setList(p); setFiltered(p); setCusts(c); } catch (e) { console.error(e); } finally { setLoading(false); }
+    try {
+      const [p, c, u, pt] = await Promise.all([fs.projects.list(), fs.customers.list(), fs.users.list(), fs.projectTypes.list()]);
+      setList(p); setCusts(c); setUsers(u.filter(x => x.active)); setPTypes(pt);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   }
+
   useEffect(() => { setMounted(true); load(); }, []);
-  useEffect(() => { const s = search.toLowerCase(); setFiltered(s ? list.filter((p) => p.name.toLowerCase().includes(s) || p.customer_name.toLowerCase().includes(s)) : list); }, [search, list]);
+
+  const filtered = list.filter(p => {
+    const matchSearch = search ? (p.name.toLowerCase().includes(search.toLowerCase()) || p.customer_name.toLowerCase().includes(search.toLowerCase())) : true;
+    const matchStatus = statusFilter === "all" ? true : p.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
 
   function selectCustomer(id: string) {
-    const c = custs.find((x) => x.id === id);
+    const c = custs.find(x => x.id === id);
     setForm({ ...form, customer_id: id, customer_name: c?.company_name || "" });
   }
 
-  async function handleSave() {
-    if (!form.name.trim()) return; setSaving(true);
-    const { projects } = await import("@/lib/firestore");
-    try { await projects.add(form as unknown as Record<string, unknown>); setForm(empty); setShowForm(false); await load(); } catch (e) { console.error(e); } finally { setSaving(false); }
+  function openAdd() { setEditId(null); setForm(emptyForm); setShowForm(true); setDetail(null); }
+  function openEdit(p: Project) {
+    setEditId(p.id!);
+    setForm({
+      name: p.name, customer_id: p.customer_id, customer_name: p.customer_name,
+      type: p.type, value: p.value, status: p.status, assigned_to: p.assigned_to, notes: p.notes,
+      win_loss_reason: p.win_loss_reason || "", lost_competitor: p.lost_competitor || "",
+      re_engage: p.re_engage || false, re_engage_date: p.re_engage_date || "", re_engage_note: p.re_engage_note || "",
+      reminder_date: p.reminder_date || "", reminder_type: p.reminder_type || "none", reminder_sent: p.reminder_sent || false,
+      reminder_to_name: p.reminder_to_name || "", reminder_to_email: p.reminder_to_email || "", reminder_cc_email: p.reminder_cc_email || "", reminder_note: p.reminder_note || "",
+    });
+    setShowForm(true); setDetail(null);
   }
-  async function handleDelete(id: string) { if (!confirm("Delete?")) return; const { projects } = await import("@/lib/firestore"); await projects.remove(id); await load(); }
 
-  const statusColor: Record<string, string> = { lead: "bg-gray-700", opportunity: "bg-blue-900/50 text-blue-400", proposal: "bg-purple-900/50 text-purple-400", negotiation: "bg-yellow-900/50 text-yellow-400", won: "bg-green-900/50 text-green-400", lost: "bg-red-900/50 text-red-400" };
+  async function handleSave() {
+    if (!form.name.trim()) return;
+    setSaving(true);
+    const fs = await import("@/lib/firestore");
+    try {
+      if (editId) { await fs.projects.update(editId, form as unknown as Record<string, unknown>); }
+      else { await fs.projects.add(form as unknown as Record<string, unknown>); }
+      setForm(emptyForm); setShowForm(false); setEditId(null); await load();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`ลบโปรเจค "${name}" ?`)) return;
+    const fs = await import("@/lib/firestore");
+    await fs.projects.remove(id);
+    if (detail?.id === id) setDetail(null);
+    await load();
+  }
+
+  async function markReminderSent(id: string) {
+    const fs = await import("@/lib/firestore");
+    await fs.projects.update(id, { reminder_sent: true });
+    await load();
+  }
 
   if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold" title="โปรเจกต์ / โอกาสขาย">Projects / Opportunities</h1>
-        <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "ยกเลิก" : "+ โปรเจกต์ใหม่"}</button>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-xl font-bold" title="โปรเจกต์ / โอกาสขาย">Projects / Opportunities</h1>
+          <p className="text-xs text-muted">จัดการโปรเจค ติดตามสถานะ วางแผน Re-engage</p>
+        </div>
+        <button onClick={openAdd} title="เพิ่มโปรเจคใหม่" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ โปรเจคใหม่</button>
       </div>
-      {showForm && (
-        <div className="rounded-xl bg-card border border-border p-5 mb-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <input placeholder="Project Name *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <select value={form.customer_id} onChange={(e) => selectCustomer(e.target.value)} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-              <option value="">-- Select Customer --</option>
-              {custs.map((c) => <option key={c.id} value={c.id}>{c.company_name}</option>)}
-            </select>
-            <input placeholder="Type (WiFi, CCTV, Network...)" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <input type="number" placeholder="Value (THB)" value={form.value || ""} onChange={(e) => setForm({ ...form, value: Number(e.target.value) })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Project["status"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-              {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <input placeholder="Assigned To" value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
-          </div>
-          <button onClick={handleSave} disabled={saving || !form.name.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
+
+      {/* Alerts */}
+      {(reEngageAlerts.length > 0 || reminderAlerts.length > 0) && (
+        <div className="space-y-2 mb-4">
+          {reEngageAlerts.map(p => (
+            <div key={`re-${p.id}`} className="rounded-lg bg-amber-900/20 border border-amber-800 px-4 py-3 text-sm text-amber-400 flex items-center justify-between">
+              <span>🔔 ถึงเวลา Re-engage: <b>{p.name}</b> ({p.customer_name}) — {p.re_engage_note}</span>
+              <button onClick={() => openEdit(p)} className="text-xs bg-amber-800/50 rounded px-2 py-1 hover:bg-amber-800">เปิดแก้ไข</button>
+            </div>
+          ))}
+          {reminderAlerts.map(p => (
+            <div key={`rm-${p.id}`} className="rounded-lg bg-blue-900/20 border border-blue-800 px-4 py-3 text-sm text-blue-400 flex items-center justify-between">
+              <div>
+                <span>📧 แจ้งเตือน: <b>{p.name}</b> — กำหนด {p.reminder_date}</span>
+                <span className="text-xs text-muted ml-2">
+                  {p.reminder_to_name ? `→ ${p.reminder_to_name}` : ""}
+                  {p.reminder_to_email ? ` (${p.reminder_to_email})` : ""}
+                  {p.reminder_type === "both" ? " [อีเมล+ระบบ]" : p.reminder_type === "email" ? " [อีเมล]" : " [ระบบ]"}
+                </span>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => markReminderSent(p.id!)} className="text-xs bg-blue-800/50 rounded px-2 py-1 hover:bg-blue-800">✓ ส่งแล้ว</button>
+                <button onClick={() => openEdit(p)} className="text-xs bg-blue-800/50 rounded px-2 py-1 hover:bg-blue-800">แก้ไข</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
-      <input placeholder="Search projects..." value={search} onChange={(e) => setSearch(e.target.value)} className="mb-4 w-full rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-      {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? <p className="text-muted text-sm">No projects found.</p> : (
-        <div className="space-y-2">{filtered.map((p) => (
-          <div key={p.id} className="rounded-xl bg-card border border-border p-4 flex items-start justify-between">
-            <div><p className="font-medium text-sm">{p.name}</p><p className="text-xs text-muted mt-0.5">{p.customer_name} &middot; {p.type} &middot; {p.value.toLocaleString()} THB</p>{p.assigned_to && <p className="text-xs text-muted">Assigned: {p.assigned_to}</p>}</div>
-            <div className="flex items-center gap-2"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColor[p.status] || "bg-gray-700"}`}>{p.status}</span><button onClick={() => handleDelete(p.id!)} className="text-xs text-danger hover:underline">Del</button></div>
+
+      {/* Filters */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <input placeholder="ค้นหาโปรเจค..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} title="กรองตามสถานะ" className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+          <option value="all">ทุกสถานะ</option>
+          {statuses.map(s => <option key={s} value={s}>{statusLabels[s]}</option>)}
+        </select>
+      </div>
+
+      {/* Form */}
+      {showForm && (
+        <div className="rounded-xl bg-card border border-border p-5 mb-4">
+          <h2 className="text-base font-semibold mb-3">{editId ? "แก้ไขโปรเจค" : "เพิ่มโปรเจคใหม่"}</h2>
+
+          {/* Basic info */}
+          <p className="text-xs text-muted uppercase mb-2">ข้อมูลทั่วไป</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+            <div><label className="text-[10px] text-muted">ชื่อโปรเจค *</label><input placeholder="เช่น WiFi โรงเรียน ABC" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+            <div><label className="text-[10px] text-muted">ลูกค้า</label><select value={form.customer_id} onChange={e => selectCustomer(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกลูกค้า --</option>{custs.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
+            <div>
+              <label className="text-[10px] text-muted">ประเภทงาน</label>
+              <div className="flex gap-1.5 mt-1">
+                <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="flex-1 rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                  <option value="">-- เลือกประเภทงาน --</option>
+                  {pTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                </select>
+                <Link href="/settings/project-types" title="เพิ่มประเภทงานใหม่" className="shrink-0 rounded-lg border border-border px-2.5 py-2 text-sm text-accent hover:bg-card-hover">+</Link>
+              </div>
+              {pTypes.length === 0 && <p className="text-[10px] text-amber-400 mt-1">ยังไม่มีประเภทงาน <Link href="/settings/project-types" className="underline">คลิกเพื่อเพิ่ม</Link></p>}
+            </div>
+            <div><label className="text-[10px] text-muted">มูลค่า (THB)</label><input type="number" placeholder="เช่น 500000" value={form.value || ""} onChange={e => setForm({ ...form, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+            <div><label className="text-[10px] text-muted">สถานะ</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as Project["status"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">{statuses.map(s => <option key={s} value={s}>{statusLabels[s]}</option>)}</select></div>
+            <div><label className="text-[10px] text-muted">ผู้รับผิดชอบ</label><select value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกผู้รับผิดชอบ --</option>{users.map(u => <option key={u.id} value={u.name}>{u.name} ({u.role})</option>)}</select></div>
+            <div className="col-span-full"><label className="text-[10px] text-muted">หมายเหตุ</label><textarea placeholder="รายละเอียดเพิ่มเติม" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent min-h-12 resize-y mt-1" /></div>
           </div>
-        ))}</div>
+
+          {/* Win/Loss reason */}
+          {(form.status === "won" || form.status === "lost") && (<>
+            <p className="text-xs text-muted uppercase mb-2">{form.status === "won" ? "เหตุผลที่ชนะงาน" : "เหตุผลที่แพ้งาน"}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              <textarea placeholder={form.status === "won" ? "เหตุผลที่ชนะ เช่น ราคาดี, Solution ตรงความต้องการ" : "เหตุผลที่แพ้ เช่น ราคาสูงกว่าคู่แข่ง, ไม่ตรง Spec"} value={form.win_loss_reason} onChange={e => setForm({ ...form, win_loss_reason: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent min-h-16 resize-y" />
+              {form.status === "lost" && (
+                <input placeholder="คู่แข่งที่ชนะ เช่น บริษัท XYZ" value={form.lost_competitor} onChange={e => setForm({ ...form, lost_competitor: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+              )}
+            </div>
+          </>)}
+
+          {/* Re-engage plan (show for lost) */}
+          {form.status === "lost" && (<>
+            <p className="text-xs text-muted uppercase mb-2">แผนติดตามกลับ (Re-engage)</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" checked={form.re_engage} onChange={e => setForm({ ...form, re_engage: e.target.checked })} id="re-engage" />
+                <label htmlFor="re-engage" className="text-sm">ต้องการติดตามกลับ</label>
+              </div>
+              {form.re_engage && (<>
+                <input type="date" value={form.re_engage_date} onChange={e => setForm({ ...form, re_engage_date: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" title="วันที่จะเสนอใหม่" />
+                <textarea placeholder="แผน Re-engage เช่น แพ้งาน MA ปีนี้ ปีหน้าจะเสนอใหม่ เตรียมราคาพิเศษ" value={form.re_engage_note} onChange={e => setForm({ ...form, re_engage_note: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-12 resize-y" />
+              </>)}
+            </div>
+          </>)}
+
+          {/* Reminder */}
+          <p className="text-xs text-muted uppercase mb-2">แจ้งเตือนล่วงหน้า</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+            <div><label className="text-[10px] text-muted">วันที่แจ้งเตือน</label><input type="date" value={form.reminder_date} onChange={e => setForm({ ...form, reminder_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+            <div><label className="text-[10px] text-muted">ช่องทางแจ้งเตือน</label><select value={form.reminder_type} onChange={e => setForm({ ...form, reminder_type: e.target.value as Project["reminder_type"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="none">ไม่แจ้งเตือน</option><option value="email">อีเมลเท่านั้น</option><option value="system">ระบบ (Dashboard) เท่านั้น</option><option value="both">ทั้งอีเมลและระบบ</option></select></div>
+            <div><label className="text-[10px] text-muted">ผู้รับผิดชอบหลัก</label><select value={form.reminder_to_name} onChange={e => { const u = users.find(x => x.name === e.target.value); setForm({ ...form, reminder_to_name: e.target.value, reminder_to_email: u?.email || form.reminder_to_email }); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกผู้รับแจ้งเตือน --</option>{users.map(u => <option key={u.id} value={u.name}>{u.name} ({u.role})</option>)}</select></div>
+          </div>
+
+          {(form.reminder_type === "email" || form.reminder_type === "both") && (<>
+            {/* Email recipients */}
+            <div className="rounded-lg bg-background border border-border p-3 mb-3">
+              <label className="text-[10px] text-muted font-semibold">เลือกผู้รับอีเมลแจ้งเตือน (เลือกได้หลายคน)</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1.5 mt-2 max-h-[140px] overflow-y-auto">
+                {users.map(u => {
+                  const emails = form.reminder_to_email.split(",").map(e => e.trim()).filter(Boolean);
+                  const checked = emails.includes(u.email || "");
+                  return (
+                    <label key={u.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-card-hover rounded px-2 py-1">
+                      <input type="checkbox" checked={checked} onChange={e => {
+                        const set = new Set(emails);
+                        if (e.target.checked) set.add(u.email || ""); else set.delete(u.email || "");
+                        setForm({ ...form, reminder_to_email: [...set].join(", ") });
+                      }} />
+                      <span>{u.name}</span>
+                      <span className="text-muted">({u.email})</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="mt-2">
+                <label className="text-[10px] text-muted">อีเมลเพิ่มเติม (พิมพ์เพิ่มได้ คั่นด้วย , )</label>
+                <input placeholder="เช่น manager@company.com, boss@company.com" value={form.reminder_to_email} onChange={e => setForm({ ...form, reminder_to_email: e.target.value })} className="w-full rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="text-[10px] text-muted">CC อีเมล (ผู้บริหาร / หัวหน้าทีม)</label>
+                <input placeholder="เช่น yingyut@kmitsurat.com" value={form.reminder_cc_email} onChange={e => setForm({ ...form, reminder_cc_email: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+              </div>
+            </div>
+          </>)}
+
+          <div><label className="text-[10px] text-muted">หมายเหตุแจ้งเตือน</label><textarea placeholder="เช่น ติดตาม MA ปีหน้า เตรียมราคาพิเศษ, เสนองาน WiFi Phase 2" value={form.reminder_note} onChange={e => setForm({ ...form, reminder_note: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent min-h-12 resize-y mt-1 mb-4" /></div>
+
+          {form.reminder_date && form.reminder_type !== "none" && (
+            <div className="rounded-lg bg-blue-900/10 border border-blue-800/30 px-3 py-2 text-xs text-blue-400 mb-4">
+              ✓ ตั้งแจ้งเตือน <b>{form.reminder_date}</b>
+              {form.reminder_to_name && <> ผู้รับผิดชอบ: <b>{form.reminder_to_name}</b></>}
+              {form.reminder_to_email && <><br/>📧 ส่งถึง: {form.reminder_to_email}</>}
+              {form.reminder_cc_email && <><br/>CC: {form.reminder_cc_email}</>}
+              <br/>ช่องทาง: {form.reminder_type === "email" ? "อีเมล" : form.reminder_type === "system" ? "ระบบ" : "อีเมล+ระบบ"}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={saving || !form.name.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : editId ? "บันทึกการแก้ไข" : "บันทึก"}</button>
+            <button onClick={() => { setShowForm(false); setEditId(null); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+          </div>
+        </div>
       )}
+
+      {/* Detail panel */}
+      {detail && (
+        <div className="rounded-xl bg-card border border-border p-5 mb-4">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <h2 className="text-lg font-bold">{detail.name}</h2>
+              <p className="text-sm text-muted">{detail.customer_name} · {detail.type} · {(detail.value || 0).toLocaleString()} THB</p>
+            </div>
+            <div className="flex gap-2">
+              <span className={`rounded-full px-3 py-1 text-xs font-medium ${statusColor[detail.status]}`}>{statusLabels[detail.status]}</span>
+              <button onClick={() => openEdit(detail)} className="rounded-lg border border-border px-3 py-1.5 text-xs text-accent hover:bg-card-hover">แก้ไข</button>
+              <button onClick={() => setDetail(null)} className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-card-hover">ปิด</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            {detail.assigned_to && <div><p className="text-xs text-muted">ผู้รับผิดชอบ</p><p>{detail.assigned_to}</p></div>}
+            {detail.notes && <div><p className="text-xs text-muted">หมายเหตุ</p><p>{detail.notes}</p></div>}
+
+            {/* Win/Loss */}
+            {detail.win_loss_reason && (
+              <div className="col-span-full">
+                <p className="text-xs text-muted">{detail.status === "won" ? "เหตุผลที่ชนะ" : "เหตุผลที่แพ้"}</p>
+                <p className={detail.status === "won" ? "text-green-400" : "text-red-400"}>{detail.win_loss_reason}</p>
+                {detail.lost_competitor && <p className="text-xs text-muted mt-1">คู่แข่ง: {detail.lost_competitor}</p>}
+              </div>
+            )}
+
+            {/* Re-engage */}
+            {detail.re_engage && (
+              <div className="col-span-full rounded-lg bg-amber-900/10 border border-amber-800/30 p-3">
+                <p className="text-xs text-amber-400 font-semibold mb-1">📌 แผน Re-engage</p>
+                <p className="text-sm">{detail.re_engage_note}</p>
+                <p className="text-xs text-muted mt-1">กำหนดเสนอใหม่: <b className="text-amber-400">{detail.re_engage_date}</b></p>
+              </div>
+            )}
+
+            {/* Reminder */}
+            {detail.reminder_date && detail.reminder_type !== "none" && (
+              <div className="col-span-full rounded-lg bg-blue-900/10 border border-blue-800/30 p-3">
+                <p className="text-xs text-blue-400 font-semibold mb-1">🔔 การแจ้งเตือน</p>
+                <p className="text-sm">วันที่ {detail.reminder_date} ผ่าน{detail.reminder_type === "email" ? "อีเมล" : detail.reminder_type === "system" ? "ระบบ" : "อีเมล+ระบบ"} {detail.reminder_sent ? <span className="text-green-400">(ส่งแล้ว ✓)</span> : <span className="text-yellow-400">(ยังไม่ส่ง)</span>}</p>
+                {detail.reminder_to_name && <p className="text-xs text-muted mt-1">ถึง: {detail.reminder_to_name} {detail.reminder_to_email && `(${detail.reminder_to_email})`}</p>}
+                {detail.reminder_cc_email && <p className="text-xs text-muted">CC: {detail.reminder_cc_email}</p>}
+                {detail.reminder_note && <p className="text-xs text-muted mt-1">หมายเหตุ: {detail.reminder_note}</p>}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
+
+      {/* Pipeline summary */}
+      <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+        {statuses.map(s => {
+          const count = list.filter(p => p.status === s).length;
+          const value = list.filter(p => p.status === s).reduce((sum, p) => sum + (p.value || 0), 0);
+          return (
+            <button key={s} onClick={() => setStatusFilter(statusFilter === s ? "all" : s)}
+              className={`rounded-lg border p-3 text-center transition-colors ${statusFilter === s ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
+              <p className="text-lg font-bold">{count}</p>
+              <p className="text-[10px] text-muted">{statusLabels[s]}</p>
+              <p className="text-[10px] text-muted">{(value / 1000).toFixed(0)}K</p>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Project list */}
+      {filtered.length === 0 ? <p className="text-muted text-sm">ไม่พบโปรเจค</p> : (
+        <div className="space-y-2">
+          {filtered.map(p => (
+            <div key={p.id} className="rounded-xl bg-card border border-border p-4 hover:bg-card-hover cursor-pointer transition-colors" onClick={() => setDetail(p)}>
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-medium text-sm truncate">{p.name}</p>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[p.status]}`}>{statusLabels[p.status]}</span>
+                    {p.re_engage && <span className="shrink-0 rounded-full bg-amber-900/50 px-2 py-0.5 text-[10px] text-amber-400" title={`Re-engage: ${p.re_engage_date}`}>📌 Re-engage</span>}
+                    {p.reminder_date && p.reminder_type !== "none" && !p.reminder_sent && <span className="shrink-0 rounded-full bg-blue-900/50 px-2 py-0.5 text-[10px] text-blue-400" title={`Reminder: ${p.reminder_date}`}>🔔</span>}
+                  </div>
+                  <p className="text-xs text-muted">{p.customer_name} · {p.type} · {(p.value || 0).toLocaleString()} THB{p.assigned_to && ` · ${p.assigned_to}`}</p>
+                  {p.win_loss_reason && <p className="text-xs mt-1 text-muted italic">{p.status === "won" ? "✓" : "✗"} {p.win_loss_reason.slice(0, 60)}{p.win_loss_reason.length > 60 ? "..." : ""}</p>}
+                  {p.re_engage && p.re_engage_date && <p className="text-[10px] text-amber-400 mt-0.5">เสนอใหม่: {p.re_engage_date} — {p.re_engage_note?.slice(0, 40)}</p>}
+                </div>
+                <div className="flex gap-2 shrink-0 ml-3" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => openEdit(p)} title="แก้ไข" className="text-xs text-accent hover:underline">แก้ไข</button>
+                  <button onClick={() => handleDelete(p.id!, p.name)} title="ลบ" className="text-xs text-danger hover:underline">ลบ</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      </>)}
     </div>
   );
 }

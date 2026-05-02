@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { SalesActivity, SalesQuota, Project, Customer } from "@/lib/types";
+import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest } from "@/lib/types";
 
 const actTypes = ["phone_call","visit","quotation_created","quotation_sent","follow_up","meeting","customer_update"] as const;
 const typeLabels: Record<string, string> = { phone_call: "Phone Call", visit: "Visit", quotation_created: "QT Created", quotation_sent: "QT Sent", follow_up: "Follow-up", meeting: "Meeting", customer_update: "Update" };
@@ -10,11 +10,13 @@ const today = new Date().toISOString().slice(0, 10);
 const currentMonth = new Date().toISOString().slice(0, 7);
 
 export default function SalesPage() {
-  const [tab, setTab] = useState<"dashboard" | "pipeline" | "activities" | "plan">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "pipeline" | "activities" | "requests" | "plan">("dashboard");
   const [activities, setActivities] = useState<SalesActivity[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotas, setQuotas] = useState<SalesQuota[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [jobReqs, setJobReqs] = useState<JobRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
 
@@ -25,15 +27,17 @@ export default function SalesPage() {
   // Forms
   const [showActForm, setShowActForm] = useState(false);
   const [showPlanForm, setShowPlanForm] = useState(false);
+  const [showReqForm, setShowReqForm] = useState(false);
   const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", project_id: "", project_name: "", assigned_to: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "" });
   const [planForm, setPlanForm] = useState({ user_name: "", role: "sale" as "sale"|"avenger", month: currentMonth, quota_target: 0, actual_sales: 0, won_deals: 0, total_activities: 0 });
+  const [reqForm, setReqForm] = useState({ request_from: "", request_to_team: "presale" as JobRequest["request_to_team"], request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium" as JobRequest["priority"], status: "pending" as JobRequest["status"], assigned_to: "", reject_reason: "", accept_note: "" });
   const [saving, setSaving] = useState(false);
 
   async function load() {
     try {
       const fs = await import("@/lib/firestore");
-      const [a, p, c, q] = await Promise.all([fs.salesActivities.list(), fs.projects.list(), fs.customers.list(), fs.salesQuotas.list()]);
-      setActivities(a); setProjects(p); setCustomers(c); setQuotas(q);
+      const [a, p, c, q, u, jr] = await Promise.all([fs.salesActivities.list(), fs.projects.list(), fs.customers.list(), fs.salesQuotas.list(), fs.users.list(), fs.jobRequests.list()]);
+      setActivities(a); setProjects(p); setCustomers(c); setQuotas(q); setUsers(u.filter(x => x.active)); setJobReqs(jr);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -121,18 +125,23 @@ export default function SalesPage() {
         <h1 className="text-xl font-bold" title="งานขาย - บริหารจัดการงานขายทั้งหมด">Sales</h1>
         <div className="flex gap-2">
           {tab === "activities" && <button onClick={() => setShowActForm(!showActForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showActForm ? "Cancel" : "+ New Activity"}</button>}
+          {tab === "requests" && <button onClick={() => setShowReqForm(!showReqForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showReqForm ? "Cancel" : "+ Job Request"}</button>}
           {tab === "plan" && <button onClick={() => setShowPlanForm(!showPlanForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showPlanForm ? "Cancel" : "+ Set Quota"}</button>}
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-border">
-        {(["dashboard","pipeline","activities","plan"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} title={t === "dashboard" ? "แดชบอร์ดภาพรวม" : t === "pipeline" ? "ท่อขาย / ดีลทั้งหมด" : t === "activities" ? "บันทึกกิจกรรมขาย" : "แผนงาน / โควต้าเป้าขาย"} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
-            {t === "dashboard" ? "Dashboard" : t === "pipeline" ? "Pipeline" : t === "activities" ? "Activities" : "Plan / Quota"}
-            <span className="sr-only">{t === "dashboard" ? "แดชบอร์ด" : t === "pipeline" ? "ท่อขาย" : t === "activities" ? "กิจกรรม" : "แผน / โควต้า"}</span>
+        {(["dashboard","pipeline","activities","requests","plan"] as const).map((t) => {
+          const labels: Record<string, string> = { dashboard: "Dashboard", pipeline: "Pipeline", activities: "Activities", requests: "Requests", plan: "Plan / Quota" };
+          const thaiTitles: Record<string, string> = { dashboard: "แดชบอร์ดภาพรวม", pipeline: "ท่อขาย / ดีลทั้งหมด", activities: "บันทึกกิจกรรมขาย", requests: "ขอความช่วยเหลือจากทีมอื่น", plan: "แผนงาน / โควต้าเป้าขาย" };
+          const reqCount = t === "requests" ? jobReqs.filter(r => r.status === "pending").length : 0;
+          return (
+          <button key={t} onClick={() => setTab(t)} title={thaiTitles[t]} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
+            {labels[t]}
+            {t === "requests" && reqCount > 0 && <span className="rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold">{reqCount}</span>}
           </button>
-        ))}
+        );})}
       </div>
 
       {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
@@ -263,6 +272,67 @@ export default function SalesPage() {
               </div>
             ))}</div>
           )}
+        </>)}
+
+        {/* ===== REQUESTS TAB ===== */}
+        {tab === "requests" && (<>
+          {showReqForm && (
+            <div className="rounded-xl bg-card border border-border p-5 mb-4">
+              <h2 className="text-base font-semibold mb-3">สร้าง Job Request</h2>
+              <p className="text-[10px] text-muted mb-3">ขอความช่วยเหลือจากทีม Presale หรือ Service</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+                <div><label className="text-[10px] text-muted">หัวข้องาน *</label><input placeholder="เช่น ขอ BOQ กล้อง CCTV 32 จุด" value={reqForm.title} onChange={e => setReqForm({ ...reqForm, title: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+                <div><label className="text-[10px] text-muted">ส่งถึงทีม *</label><select value={reqForm.request_to_team} onChange={e => setReqForm({ ...reqForm, request_to_team: e.target.value as JobRequest["request_to_team"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="presale">Presale (พรีเซลล์)</option><option value="service">Service (บริการ)</option></select></div>
+                <div><label className="text-[10px] text-muted">ส่งถึงใคร (ถ้าระบุ)</label><select value={reqForm.request_to_person} onChange={e => setReqForm({ ...reqForm, request_to_person: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- ให้ทีมจัดการ --</option>{users.filter(u => u.role === reqForm.request_to_team).map(u => <option key={u.id} value={u.name}>{u.name} ({u.position})</option>)}</select></div>
+                <div><label className="text-[10px] text-muted">ลูกค้า</label><select value={reqForm.customer_id} onChange={e => { const c = customers.find(x => x.id === e.target.value); setReqForm({ ...reqForm, customer_id: e.target.value, customer_name: c?.company_name || "" }); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกลูกค้า --</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
+                <div><label className="text-[10px] text-muted">โปรเจค</label><select value={reqForm.project_id} onChange={e => { const p = projects.find(x => x.id === e.target.value); setReqForm({ ...reqForm, project_id: e.target.value, project_name: p?.name || "" }); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกโปรเจค --</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                <div><label className="text-[10px] text-muted">มูลค่างาน (THB)</label><input type="number" placeholder="เช่น 500000" value={reqForm.value || ""} onChange={e => setReqForm({ ...reqForm, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+                <div><label className="text-[10px] text-muted">วันที่ต้องการ</label><input type="date" value={reqForm.due_date} onChange={e => setReqForm({ ...reqForm, due_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+                <div><label className="text-[10px] text-muted">ความเร่งด่วน</label><select value={reqForm.priority} onChange={e => setReqForm({ ...reqForm, priority: e.target.value as JobRequest["priority"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="low">Low (ปกติ)</option><option value="medium">Medium (ค่อนข้างด่วน)</option><option value="high">High (ด่วน)</option><option value="urgent">Urgent (ด่วนมาก)</option></select></div>
+                <div><label className="text-[10px] text-muted">ผู้ขอ</label><select value={reqForm.request_from} onChange={e => setReqForm({ ...reqForm, request_from: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- ชื่อผู้ขอ --</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
+                <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียดงาน *</label><textarea placeholder="อธิบายรายละเอียดที่ต้องการ เช่น ออกแบบระบบ WiFi 3 อาคาร, จัดทำ BOQ พร้อมแผนผัง" value={reqForm.description} onChange={e => setReqForm({ ...reqForm, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent min-h-20 resize-y mt-1" /></div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={async () => { if (!reqForm.title.trim() || !reqForm.description.trim()) return; setSaving(true); try { const { jobRequests } = await import("@/lib/firestore"); await jobRequests.add(reqForm as unknown as Record<string, unknown>); setReqForm({ request_from: "", request_to_team: "presale", request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium", status: "pending", assigned_to: "", reject_reason: "", accept_note: "" }); setShowReqForm(false); await load(); } catch (e) { console.error(e); } finally { setSaving(false); } }} disabled={saving || !reqForm.title.trim() || !reqForm.description.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังส่ง..." : "ส่ง Request"}</button>
+                <button onClick={() => setShowReqForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+              </div>
+            </div>
+          )}
+
+          {/* Request list */}
+          <div className="space-y-2">
+            {jobReqs.length === 0 ? <p className="text-muted text-sm">ยังไม่มี Job Request — กด &quot;+ Job Request&quot; เพื่อขอความช่วยเหลือจากทีมอื่น</p> : jobReqs.map(r => {
+              const prioColor: Record<string, string> = { low: "bg-gray-700 text-gray-300", medium: "bg-blue-900/50 text-blue-400", high: "bg-amber-900/50 text-amber-400", urgent: "bg-red-900/50 text-red-400" };
+              const statusColor: Record<string, string> = { pending: "bg-yellow-900/50 text-yellow-400", accepted: "bg-blue-900/50 text-blue-400", in_progress: "bg-blue-900/50 text-blue-400", completed: "bg-green-900/50 text-green-400", rejected: "bg-red-900/50 text-red-400" };
+              return (
+                <div key={r.id} className="rounded-xl bg-card border border-border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <p className="font-medium text-sm">{r.title}</p>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.request_to_team === "presale" ? "bg-purple-900/50 text-purple-400" : "bg-rose-900/50 text-rose-400"}`}>→ {r.request_to_team}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${prioColor[r.priority]}`}>{r.priority}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[r.status]}`}>{r.status}</span>
+                      </div>
+                      <p className="text-xs text-muted">{r.description}</p>
+                      <p className="text-xs text-muted mt-1">
+                        {r.customer_name && `ลูกค้า: ${r.customer_name} · `}
+                        {r.project_name && `โปรเจค: ${r.project_name} · `}
+                        {r.value > 0 && `มูลค่า: ${r.value.toLocaleString()} THB · `}
+                        {r.due_date && `กำหนด: ${r.due_date} · `}
+                        ผู้ขอ: {r.request_from || "-"}
+                        {r.request_to_person && ` · ถึง: ${r.request_to_person}`}
+                      </p>
+                      {r.assigned_to && <p className="text-xs text-green-400 mt-1">มอบหมายให้: {r.assigned_to}</p>}
+                      {r.reject_reason && <p className="text-xs text-red-400 mt-1">เหตุผลปฏิเสธ: {r.reject_reason}</p>}
+                      {r.accept_note && <p className="text-xs text-blue-400 mt-1">หมายเหตุรับงาน: {r.accept_note}</p>}
+                    </div>
+                    <button onClick={async () => { if (!confirm("ลบ Request นี้?")) return; const { jobRequests } = await import("@/lib/firestore"); await jobRequests.remove(r.id!); await load(); }} className="text-xs text-danger hover:underline shrink-0">ลบ</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </>)}
 
         {/* ===== PLAN / QUOTA TAB ===== */}

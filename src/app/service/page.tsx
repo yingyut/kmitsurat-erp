@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { ServiceTicket, Customer, Project } from "@/lib/types";
+import type { ServiceTicket, Customer, Project, JobRequest, User } from "@/lib/types";
 
 const svcTypes = ["installation","site_survey","technical_survey","after_sales","repair","pm_service"] as const;
 const typeLabels: Record<string, string> = { installation: "Installation", site_survey: "Site Survey", technical_survey: "Technical Survey", after_sales: "After-Sales", repair: "Repair", pm_service: "PM Service" };
@@ -10,6 +10,8 @@ export default function ServicePage() {
   const [list, setList] = useState<ServiceTicket[]>([]);
   const [custs, setCusts] = useState<Customer[]>([]);
   const [projs, setProjs] = useState<Project[]>([]);
+  const [incomingReqs, setIncomingReqs] = useState<JobRequest[]>([]);
+  const [svcUsers, setSvcUsers] = useState<User[]>([]);
   const [filtered, setFiltered] = useState<ServiceTicket[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -20,7 +22,12 @@ export default function ServicePage() {
 
   async function load() {
     const fs = await import("@/lib/firestore");
-    try { const [t, c, p] = await Promise.all([fs.serviceTickets.list(), fs.customers.list(), fs.projects.list()]); setList(t); setFiltered(t); setCusts(c); setProjs(p); } catch (e) { console.error(e); } finally { setLoading(false); }
+    try {
+      const [t, c, p, jr, u] = await Promise.all([fs.serviceTickets.list(), fs.customers.list(), fs.projects.list(), fs.jobRequests.list(), fs.users.list()]);
+      setList(t); setFiltered(t); setCusts(c); setProjs(p);
+      setIncomingReqs(jr.filter(j => j.request_to_team === "service"));
+      setSvcUsers(u.filter(x => x.active && x.role === "service"));
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   }
   useEffect(() => { setMounted(true); load(); }, []);
   useEffect(() => { const s = search.toLowerCase(); setFiltered(s ? list.filter((t) => t.issue.toLowerCase().includes(s) || t.customer_name.toLowerCase().includes(s)) : list); }, [search, list]);
@@ -39,6 +46,44 @@ export default function ServicePage() {
 
   return (
     <div className="p-6">
+      {/* Incoming Job Requests */}
+      {incomingReqs.filter(r => r.status === "pending").length > 0 && (
+        <div className="rounded-xl bg-rose-900/10 border border-rose-800/50 p-4 mb-4">
+          <h3 className="text-sm font-semibold text-rose-400 mb-2">📥 Job Requests จากทีม Sales ({incomingReqs.filter(r => r.status === "pending").length} รายการรออนุมัติ)</h3>
+          <div className="space-y-2">
+            {incomingReqs.filter(r => r.status === "pending").map(r => (
+              <div key={r.id} className="rounded-lg bg-card border border-border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{r.title}</p>
+                    <p className="text-xs text-muted mt-0.5">{r.description}</p>
+                    <p className="text-xs text-muted mt-1">จาก: {r.request_from} · ลูกค้า: {r.customer_name} · มูลค่า: {(r.value || 0).toLocaleString()} THB · กำหนด: {r.due_date || "-"}</p>
+                    <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${r.priority === "urgent" ? "bg-red-900/50 text-red-400" : r.priority === "high" ? "bg-amber-900/50 text-amber-400" : "bg-blue-900/50 text-blue-400"}`}>{r.priority}</span>
+                  </div>
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    <select id={`svc-assign-${r.id}`} defaultValue="" className="rounded bg-background border border-border px-2 py-1 text-xs"><option value="">-- มอบหมายช่าง --</option>{svcUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
+                    <div className="flex gap-1">
+                      <button onClick={async () => {
+                        const assignTo = (document.getElementById(`svc-assign-${r.id}`) as HTMLSelectElement)?.value;
+                        const note = prompt("หมายเหตุรับงาน (ไม่บังคับ)") || "";
+                        const { jobRequests } = await import("@/lib/firestore");
+                        await jobRequests.update(r.id!, { status: "accepted", assigned_to: assignTo, accept_note: note }); await load();
+                      }} className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ รับงาน</button>
+                      <button onClick={async () => {
+                        const reason = prompt("เหตุผลที่ปฏิเสธ:");
+                        if (!reason) return;
+                        const { jobRequests } = await import("@/lib/firestore");
+                        await jobRequests.update(r.id!, { status: "rejected", reject_reason: reason }); await load();
+                      }} className="text-[10px] bg-red-800/50 text-red-400 rounded px-2 py-1 hover:bg-red-800">✗ ปฏิเสธ</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-5"><h1 className="text-xl font-bold" title="ใบแจ้งงานบริการ">Service Tickets</h1><button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Ticket"}</button></div>
       {showForm && (
         <div className="rounded-xl bg-card border border-border p-5 mb-5">

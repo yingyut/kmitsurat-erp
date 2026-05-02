@@ -8,6 +8,11 @@ export interface User {
   role: "admin" | "sale" | "presale" | "service" | "avenger";
   team_id?: string;
   active: boolean;
+  position?: string;
+  department?: string;
+  phone?: string;
+  avatar?: string;
+  bio?: string;
 }
 
 export interface Team {
@@ -15,6 +20,13 @@ export interface Team {
   tenant_id: string;
   name: string;
   type: "sales" | "presale" | "service" | "avenger" | "admin";
+}
+
+export interface ProjectType {
+  id?: string;
+  tenant_id: string;
+  name: string;
+  description: string;
 }
 
 export interface Customer {
@@ -25,6 +37,8 @@ export interface Customer {
   phone: string;
   email: string;
   address: string;
+  province: string;
+  org_type: "government" | "private" | "education" | "hospital" | "hotel" | "other";
   notes: string;
 }
 
@@ -39,6 +53,42 @@ export interface Project {
   status: "lead" | "opportunity" | "proposal" | "negotiation" | "won" | "lost";
   assigned_to: string;
   notes: string;
+  // Win/Loss tracking
+  win_loss_reason: string;
+  lost_competitor: string;
+  // Re-engage planning
+  re_engage: boolean;
+  re_engage_date: string;
+  re_engage_note: string;
+  // Reminder
+  reminder_date: string;
+  reminder_type: "email" | "system" | "both" | "none";
+  reminder_sent: boolean;
+  reminder_to_name: string;
+  reminder_to_email: string;
+  reminder_cc_email: string;
+  reminder_note: string;
+}
+
+export interface JobRequest {
+  id?: string;
+  tenant_id: string;
+  request_from: string;
+  request_to_team: "presale" | "service";
+  request_to_person: string;
+  customer_id: string;
+  customer_name: string;
+  project_id: string;
+  project_name: string;
+  title: string;
+  description: string;
+  value: number;
+  due_date: string;
+  priority: "low" | "medium" | "high" | "urgent";
+  status: "pending" | "accepted" | "in_progress" | "completed" | "rejected";
+  assigned_to: string;
+  reject_reason: string;
+  accept_note: string;
 }
 
 export interface SalesActivity {
