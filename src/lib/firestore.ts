@@ -10,7 +10,6 @@ import {
   orderBy,
   serverTimestamp,
   Timestamp,
-  getCountFromServer,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -27,6 +26,8 @@ export interface Customer {
 export interface Activity {
   id?: string;
   text: string;
+  tenant_id: string;
+  status: "new" | "in_progress" | "done";
   createdAt?: Timestamp;
 }
 
@@ -65,11 +66,16 @@ async function addDocument(col: string, data: Record<string, unknown>, timestamp
   });
 }
 
-async function listDocuments<T extends { id?: string }>(
+async function listDocuments<T extends { id?: string }>(col: string): Promise<T[]> {
+  const snap = await getDocs(collection(db, col));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+}
+
+async function listDocumentsSorted<T extends { id?: string }>(
   col: string,
-  order: string = "created_at"
+  orderField: string
 ): Promise<T[]> {
-  const q = query(collection(db, col), orderBy(order, "desc"));
+  const q = query(collection(db, col), orderBy(orderField, "desc"));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
 }
@@ -96,8 +102,8 @@ async function removeDocument(col: string, id: string) {
 }
 
 async function countDocuments(col: string): Promise<number> {
-  const snap = await getCountFromServer(collection(db, col));
-  return snap.data().count;
+  const snap = await getDocs(collection(db, col));
+  return snap.size;
 }
 
 // --- Customers ---
@@ -118,7 +124,7 @@ export const customers = {
 export const activities = {
   add: (data: Omit<Activity, "id" | "createdAt">) =>
     addDocument("activities", data as Record<string, unknown>, "createdAt"),
-  list: () => listDocuments<Activity>("activities", "createdAt"),
+  list: () => listDocumentsSorted<Activity>("activities", "createdAt"),
   get: (id: string) => getDocument<Activity>("activities", id),
   update: (id: string, data: Partial<Activity>) =>
     updateDocument("activities", id, data as Record<string, unknown>),

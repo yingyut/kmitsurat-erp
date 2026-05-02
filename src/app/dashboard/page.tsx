@@ -1,116 +1,89 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  customers,
-  activities,
-  presaleRequests,
-  quotations,
-  serviceTickets,
-  type Activity,
-} from "@/lib/firestore";
 import Link from "next/link";
 
-interface Counts {
-  customers: number;
-  activities: number;
-  presale: number;
-  quotations: number;
-  tickets: number;
+interface Activity {
+  id?: string;
+  text: string;
+  status: string;
+  createdAt?: { toDate: () => Date };
 }
 
-const cards = [
-  { key: "customers" as const, label: "Customers", href: "/customers", color: "bg-blue-600" },
-  { key: "activities" as const, label: "Activities", href: "/activity", color: "bg-emerald-600" },
-  { key: "presale" as const, label: "Presale Requests", href: "/presale", color: "bg-purple-600" },
-  { key: "quotations" as const, label: "Quotations", href: "/quotations", color: "bg-amber-600" },
-  { key: "tickets" as const, label: "Service Tickets", href: "/service", color: "bg-rose-600" },
-];
-
 export default function DashboardPage() {
-  const [counts, setCounts] = useState<Counts>({
-    customers: 0,
-    activities: 0,
-    presale: 0,
-    quotations: 0,
-    tickets: 0,
-  });
   const [recent, setRecent] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    async function load() {
+    setMounted(true);
+    let unsubscribe: (() => void) | undefined;
+
+    (async () => {
       try {
-        const [c, a, p, q, t, recentAct] = await Promise.all([
-          customers.count(),
-          activities.count(),
-          presaleRequests.count(),
-          quotations.count(),
-          serviceTickets.count(),
-          activities.list(),
-        ]);
-        setCounts({ customers: c, activities: a, presale: p, quotations: q, tickets: t });
-        setRecent(recentAct.slice(0, 5));
+        const { db } = await import("@/lib/firebase");
+        const { collection, query, orderBy, onSnapshot } = await import("firebase/firestore");
+        const q = query(collection(db, "activities"), orderBy("createdAt", "desc"));
+
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          const list = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Activity[];
+          setRecent(list.slice(0, 10));
+          setLoading(false);
+        }, (err) => {
+          console.error("Realtime error:", err);
+          setError(err.message || "Failed to load");
+          setLoading(false);
+        });
       } catch (err) {
-        console.error("Dashboard load error:", err);
-      } finally {
+        setError(err instanceof Error ? err.message : "Failed to load");
         setLoading(false);
       }
-    }
-    load();
+    })();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
+
+  if (!mounted) return <div className="p-8"><p className="text-muted">Loading...</p></div>;
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
-
-      {loading ? (
-        <p className="text-muted">Loading...</p>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-            {cards.map((card) => (
-              <Link
-                key={card.key}
-                href={card.href}
-                className="rounded-xl bg-card border border-border p-5 hover:bg-card-hover transition-colors"
-              >
-                <p className="text-sm text-muted mb-1">{card.label}</p>
-                <p className="text-3xl font-bold">{counts[card.key]}</p>
-                <div className={`mt-3 h-1 w-12 rounded ${card.color}`} />
-              </Link>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1.5 text-xs text-green-400">
+            <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+            Realtime
+          </span>
+          <Link href="/activity" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors">+ New Activity</Link>
+        </div>
+      </div>
+      {error && <div className="mb-4 rounded-lg bg-red-900/30 border border-red-800 px-4 py-3 text-sm text-red-400">{error}</div>}
+      <div className="rounded-xl bg-card border border-border p-6">
+        <h2 className="text-lg font-semibold mb-4">Recent Activities</h2>
+        {loading ? (
+          <p className="text-muted text-sm">Loading...</p>
+        ) : recent.length === 0 ? (
+          <p className="text-muted text-sm">No activities yet. <Link href="/activity" className="text-accent hover:underline">Create one</Link></p>
+        ) : (
+          <div className="space-y-3">
+            {recent.map((act) => (
+              <div key={act.id} className="rounded-lg bg-background p-4 border border-border">
+                <p className="text-sm whitespace-pre-wrap">{act.text}</p>
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="rounded-full bg-blue-900/50 px-2.5 py-0.5 text-xs font-medium text-blue-400">{act.status}</span>
+                  {act.createdAt && <span className="text-xs text-muted">{act.createdAt.toDate().toLocaleString()}</span>}
+                </div>
+              </div>
             ))}
           </div>
-
-          <div className="rounded-xl bg-card border border-border p-6">
-            <h2 className="text-lg font-semibold mb-4">Recent Activities</h2>
-            {recent.length === 0 ? (
-              <p className="text-muted text-sm">
-                No activities yet.{" "}
-                <Link href="/activity" className="text-accent hover:underline">
-                  Create one
-                </Link>
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {recent.map((act) => (
-                  <div
-                    key={act.id}
-                    className="rounded-lg bg-background p-4 border border-border"
-                  >
-                    <p className="text-sm whitespace-pre-wrap">{act.text}</p>
-                    {act.createdAt && (
-                      <p className="text-xs text-muted mt-2">
-                        {act.createdAt.toDate().toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 }
