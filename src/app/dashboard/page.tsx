@@ -53,6 +53,16 @@ export default function DashboardPage() {
   const slaOnTime = totalSvc > 0 ? Math.round(service.filter(t => ["resolved", "closed"].includes(t.status)).length / totalSvc * 100) : 100;
   const forecast = actual + pipeline * 0.3; // weighted forecast
 
+  // === PROFIT (เป้าหมายหลักของบริษัท) ===
+  const profitTarget = quotas.reduce((s, q) => s + (q.profit_target || 0), 0);
+  const actualProfit = quotas.reduce((s, q) => s + (q.actual_profit || 0), 0);
+  const profitPct = profitTarget > 0 ? (actualProfit / profitTarget * 100) : 0;
+  const profitRemaining = profitTarget - actualProfit;
+  const gpPct = actual > 0 ? (actualProfit / actual * 100) : 0;
+  // Estimated profit from approved quotations (auto-source for "potential")
+  const approvedQuotProfit = quots.filter(q => q.status === "approved").reduce((s, q) => s + (q.gross_profit || 0), 0);
+  const pipelineQuotProfit = quots.filter(q => q.status === "draft" || q.status === "sent").reduce((s, q) => s + (q.gross_profit || 0), 0);
+
   // Sales
   const funnelData = [
     { value: projects.filter(p => p.status === "lead").length, name: "Lead", fill: C.blue },
@@ -169,7 +179,8 @@ export default function DashboardPage() {
       {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
 
       {/* ═══════════════ LAYER 1: DECISION ═══════════════ */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
+      {/* Row 1: Revenue / Operations */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-3">
         <KPI label="Total Revenue" thai="รายได้รวม" value={`${(revenue / 1000000).toFixed(1)}M`} sub="THB" color="green" />
         <div className="rounded-xl bg-card border border-border p-4" title="ยอดขายเทียบเป้า">
           <p className="text-[10px] text-muted uppercase">Target vs Actual</p>
@@ -182,6 +193,32 @@ export default function DashboardPage() {
         <KPI label="Overdue Jobs" thai="งานล่าช้า" value={String(overdueJobs)} sub={overdueJobs > 0 ? "ต้องแก้ด่วน!" : "ปกติ"} color={overdueJobs > 0 ? "red" : "green"} />
         <KPI label="SLA On-time" thai="อัตราปิดงานตาม SLA" value={`${slaOnTime}%`} sub={`${svcOnTime}/${totalSvc} jobs`} color={slaOnTime >= 80 ? "green" : slaOnTime >= 50 ? "amber" : "red"} />
         <KPI label="Forecast EOM" thai="คาดการณ์สิ้นเดือน" value={`${(forecast / 1000000).toFixed(1)}M`} sub="THB" color="cyan" />
+      </div>
+
+      {/* Row 2: Profitability — เป้าหมายหลักของบริษัท */}
+      <div className="rounded-xl bg-purple-900/10 border border-purple-800/40 p-3 mb-5">
+        <div className="flex items-center gap-2 mb-2">
+          <p className="text-xs font-semibold text-purple-300">💎 Profitability</p>
+          <p className="text-[10px] text-purple-300/60">— เป้าหมายหลักของบริษัท (Gross Profit)</p>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+          <KPI label="Profit Target" thai="เป้ากำไร" value={profitTarget > 0 ? `${(profitTarget / 1000000).toFixed(2)}M` : "—"} sub="THB" color="purple" />
+          <KPI label="Actual Profit" thai="กำไรจริง" value={actualProfit > 0 ? `${(actualProfit / 1000000).toFixed(2)}M` : "—"} sub="THB" color="purple" />
+          <div className="rounded-xl bg-card border border-purple-800/40 p-4" title="กำไรเทียบเป้า">
+            <p className="text-[10px] text-muted uppercase">Profit Achievement</p>
+            <p className="text-[10px] text-muted">กำไรเทียบเป้า</p>
+            <p className={`text-2xl font-bold mt-1 ${profitPct >= 80 ? "text-green-400" : profitPct >= 50 ? "text-yellow-400" : profitPct > 0 ? "text-red-400" : "text-muted"}`}>{profitPct > 0 ? `${profitPct.toFixed(0)}%` : "—"}</p>
+            {profitTarget > 0 && (
+              <div className="mt-2 h-2 rounded-full bg-background overflow-hidden">
+                <div className={`h-full rounded-full ${profitPct >= 80 ? "bg-green-500" : profitPct >= 50 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(profitPct, 100)}%` }} />
+              </div>
+            )}
+            <p className="text-[10px] text-muted mt-1">เหลือ {profitRemaining > 0 ? `${(profitRemaining / 1000).toFixed(0)}K` : "0"} THB</p>
+          </div>
+          <KPI label="Actual GP%" thai="margin จริง" value={gpPct > 0 ? `${gpPct.toFixed(1)}%` : "—"} sub={`${(actualProfit / 1000).toFixed(0)}K / ${(actual / 1000).toFixed(0)}K`} color={gpPct >= 20 ? "green" : gpPct >= 10 ? "amber" : gpPct > 0 ? "red" : "purple"} />
+          <KPI label="Approved QT Profit" thai="กำไรจาก QT อนุมัติ" value={`${(approvedQuotProfit / 1000).toFixed(0)}K`} sub="THB · pending bill" color="green" />
+          <KPI label="Quotation Pipeline" thai="กำไรรอผล QT" value={`${(pipelineQuotProfit / 1000).toFixed(0)}K`} sub="THB · draft + sent" color="blue" />
+        </div>
       </div>
 
       {/* ═══════════════ LAYER 2: OPERATION ═══════════════ */}
@@ -390,10 +427,11 @@ export default function DashboardPage() {
 
 // === KPI Card Component ===
 function KPI({ label, thai, value, sub, color }: { label: string; thai: string; value: string; sub: string; color: string }) {
-  const colorMap: Record<string, string> = { green: "text-green-400", blue: "text-blue-400", red: "text-red-400", amber: "text-yellow-400", cyan: "text-cyan-400" };
-  const barMap: Record<string, string> = { green: "bg-green-600", blue: "bg-blue-600", red: "bg-red-600", amber: "bg-yellow-600", cyan: "bg-cyan-600" };
+  const colorMap: Record<string, string> = { green: "text-green-400", blue: "text-blue-400", red: "text-red-400", amber: "text-yellow-400", cyan: "text-cyan-400", purple: "text-purple-400" };
+  const barMap: Record<string, string> = { green: "bg-green-600", blue: "bg-blue-600", red: "bg-red-600", amber: "bg-yellow-600", cyan: "bg-cyan-600", purple: "bg-purple-600" };
+  const borderMap: Record<string, string> = { purple: "border-purple-800/40" };
   return (
-    <div className="rounded-xl bg-card border border-border p-4" title={thai}>
+    <div className={`rounded-xl bg-card border ${borderMap[color] || "border-border"} p-4`} title={thai}>
       <p className="text-[10px] text-muted uppercase">{label}</p>
       <p className="text-[10px] text-muted">{thai}</p>
       <p className={`text-2xl font-bold mt-1 ${colorMap[color] || "text-white"}`}>{value}</p>

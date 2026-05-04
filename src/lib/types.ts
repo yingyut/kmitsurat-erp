@@ -158,6 +158,29 @@ export interface ServiceTicket {
   technician: string;
   service_date: string;
   status: "open" | "in_progress" | "resolved" | "closed";
+  // Revenue / profit (จะกรอกเมื่อปิดงาน)
+  service_value?: number;     // รายได้ที่เรียกเก็บ (THB)
+  service_cost?: number;       // ต้นทุน (อะไหล่ + ค่าแรง + ค่าเดินทาง)
+  gross_profit?: number;       // คำนวณอัตโนมัติ
+  hours_spent?: number;        // ชั่วโมงทำงาน
+  // Reporter (admin info)
+  reported_by?: string;        // admin who opened the ticket
+  report_date?: string;        // วันที่ลูกค้าแจ้ง (could differ from opened_at)
+  report_channel?: "phone" | "line" | "email" | "walk_in" | "system";
+  // Routing
+  assignment_mode?: "individual" | "all" | "by_skill" | "by_area";
+  target_skill?: string;       // for by_skill
+  target_area?: string;        // for by_area
+  // Timeline (auto-recorded on status changes — ISO timestamps)
+  opened_at?: string;
+  accepted_at?: string;
+  accepted_by?: string;        // who accepted (when broadcast/skill/area)
+  started_at?: string;
+  resolved_at?: string;
+  closed_at?: string;
+  // SLA targets (in hours)
+  sla_response_hours?: number; // response time target (default 4)
+  sla_resolve_hours?: number;  // resolution time target (default 48)
 }
 
 export interface Vendor {
@@ -246,10 +269,17 @@ export interface SalesQuota {
   user_name: string;
   role: "sale" | "avenger";
   month: string; // "2026-05"
+  // Revenue
   quota_target: number;
   actual_sales: number;
   remaining: number;
   percent: number;
+  // Profit (gross profit, THB)
+  profit_target: number;
+  actual_profit: number;
+  profit_percent: number; // achievement % of profit_target
+  target_gp_percent?: number; // ตั้งเป้า %GP เฉลี่ย (optional)
+  // Counts
   won_deals: number;
   total_activities: number;
 }

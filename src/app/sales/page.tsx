@@ -44,6 +44,11 @@ export default function SalesPage() {
   const monthQuota = quotas.find((q) => q.month === currentMonth);
   const target = monthQuota?.quota_target || 0;
   const actualSales = monthQuota?.actual_sales || 0;
+  // Profit (เป้าหมายหลักของบริษัท)
+  const profitTarget = monthQuota?.profit_target || 0;
+  const actualProfit = monthQuota?.actual_profit || 0;
+  const profitPct = profitTarget > 0 ? (actualProfit / profitTarget * 100) : 0;
+  const gpPct = actualSales > 0 ? (actualProfit / actualSales * 100) : 0;
   const pipelineValue = projects.filter((p) => !["won","lost"].includes(p.status)).reduce((s, p) => s + (p.value || 0), 0);
   const wonDeals = projects.filter((p) => p.status === "won").length;
 
@@ -135,6 +140,36 @@ export default function SalesPage() {
               <p className="text-xs text-muted mb-1" title="จำนวนดีลที่ปิดได้">Won Deals</p>
               <p className="text-2xl font-bold text-green-400">{wonDeals}</p>
               <p className="text-xs text-muted">deals closed</p>
+            </div>
+          </div>
+
+          {/* Profit row — เป้าหมายหลักของบริษัท */}
+          <div className="rounded-xl bg-purple-900/10 border border-purple-800/40 p-3 mb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <p className="text-xs font-semibold text-purple-300">💎 Profit (กำไรขั้นต้น)</p>
+              <p className="text-[10px] text-purple-300/60">— เป้าหมายหลักของบริษัท · ข้อมูลจาก Sales Plan / Quota</p>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="rounded-xl bg-card border border-purple-800/40 p-4">
+                <p className="text-xs text-muted mb-1">Profit Target</p>
+                <p className="text-2xl font-bold">{profitTarget.toLocaleString()}</p>
+                <p className="text-xs text-muted">THB</p>
+              </div>
+              <div className="rounded-xl bg-card border border-purple-800/40 p-4">
+                <p className="text-xs text-muted mb-1">Actual Profit</p>
+                <p className="text-2xl font-bold text-purple-400">{actualProfit.toLocaleString()}</p>
+                {profitTarget > 0 && <div className="mt-2 h-1.5 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${profitPct >= 100 ? "bg-green-500" : profitPct >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(profitPct, 100)}%` }} /></div>}
+              </div>
+              <div className="rounded-xl bg-card border border-purple-800/40 p-4">
+                <p className="text-xs text-muted mb-1">Profit Achievement</p>
+                <p className={`text-2xl font-bold ${profitPct >= 100 ? "text-green-400" : profitPct >= 70 ? "text-yellow-400" : profitPct > 0 ? "text-red-400" : "text-muted"}`}>{profitPct > 0 ? `${profitPct.toFixed(1)}%` : "—"}</p>
+                <p className="text-xs text-muted">เทียบเป้ากำไร</p>
+              </div>
+              <div className="rounded-xl bg-card border border-purple-800/40 p-4" title="กำไรขั้นต้นจริง / ยอดขายจริง">
+                <p className="text-xs text-muted mb-1">Actual GP%</p>
+                <p className={`text-2xl font-bold ${gpPct >= 20 ? "text-green-400" : gpPct >= 10 ? "text-yellow-400" : gpPct > 0 ? "text-red-400" : "text-muted"}`}>{gpPct > 0 ? `${gpPct.toFixed(1)}%` : "—"}</p>
+                <p className="text-xs text-muted">margin จริง</p>
+              </div>
             </div>
           </div>
 
