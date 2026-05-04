@@ -9,6 +9,13 @@ const settingsLinks = [
     desc: "จัดการประเภทงาน เช่น WiFi, CCTV, Server Room, Solar Cell",
     icon: "🏷️",
   },
+  {
+    href: "/settings/product-categories",
+    title: "Product Categories",
+    thai: "หมวดหมู่สินค้า / บริการ",
+    desc: "จัดการหมวดหมู่สินค้า เช่น กล้อง CCTV, Server, Network, ไฟฟ้า, งานติดตั้ง",
+    icon: "📦",
+  },
 ];
 
 export default function SettingsPage() {

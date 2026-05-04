@@ -1,16 +1,19 @@
 "use client";
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import type { Product } from "@/lib/types";
+import Link from "next/link";
+import type { Product, ProductCategory } from "@/lib/types";
 
-const empty = { code: "", name: "", brand: "", category: "", unit: "pcs", cost_price: 0, selling_price: 0, active: true, type: "product" as Product["type"] };
+const empty = { code: "", name: "", brand: "", category: "", unit: "pcs", cost_price: 0, selling_price: 0, price_member: 0, price_special: 0, default_discount: 0, active: true, type: "product" as Product["type"] };
 
 function ProductsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [list, setList] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "product" | "service">("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -19,8 +22,11 @@ function ProductsContent() {
   const [mounted, setMounted] = useState(false);
 
   async function load() {
-    const { products } = await import("@/lib/firestore");
-    try { const d = await products.list(); setList(d); } catch (e) { console.error(e); } finally { setLoading(false); }
+    const fs = await import("@/lib/firestore");
+    try {
+      const [d, c] = await Promise.all([fs.products.list(), fs.productCategories.list()]);
+      setList(d); setCategories(c);
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   }
   useEffect(() => { setMounted(true); load(); }, []);
 
@@ -43,13 +49,27 @@ function ProductsContent() {
     const matchSearch = !s || p.name.toLowerCase().includes(s) || (p.code || "").toLowerCase().includes(s) || (p.brand || "").toLowerCase().includes(s);
     const t = p.type || "product";
     const matchType = typeFilter === "all" || t === typeFilter;
-    return matchSearch && matchType;
+    const matchCategory = categoryFilter === "all" || (p.category || "(ไม่มีหมวด)") === categoryFilter;
+    return matchSearch && matchType && matchCategory;
   });
+
+  // Lookup map for icon by category name
+  const categoryIcon: Record<string, string> = Object.fromEntries(categories.map(c => [c.name, c.icon || "📁"]));
+
+  // Categories actually used (for filter dropdown — include from products that aren't in catalog)
+  const usedCategories = [...new Set(list.map(p => p.category).filter(Boolean))].sort();
+  const allFilterCategories = [...new Set([...categories.map(c => c.name), ...usedCategories])].sort();
+  const hasUncategorized = list.some(p => !p.category);
 
   function openAdd() { setEditId(null); setForm(empty); setShowForm(true); }
   function openEdit(p: Product) {
     setEditId(p.id!);
-    setForm({ code: p.code || "", name: p.name, brand: p.brand || "", category: p.category || "", unit: p.unit || "pcs", cost_price: p.cost_price || 0, selling_price: p.selling_price || 0, active: p.active !== false, type: p.type || "product" });
+    setForm({
+      code: p.code || "", name: p.name, brand: p.brand || "", category: p.category || "",
+      unit: p.unit || "pcs", cost_price: p.cost_price || 0, selling_price: p.selling_price || 0,
+      price_member: p.price_member || 0, price_special: p.price_special || 0, default_discount: p.default_discount || 0,
+      active: p.active !== false, type: p.type || "product",
+    });
     setShowForm(true);
   }
 
@@ -64,6 +84,14 @@ function ProductsContent() {
     } catch (e) { console.error(e); } finally { setSaving(false); }
   }
   async function handleDelete(id: string) { if (!confirm("Delete?")) return; const { products } = await import("@/lib/firestore"); await products.remove(id); await load(); }
+
+  async function quickSetCategory(id: string, category: string) {
+    const { products } = await import("@/lib/firestore");
+    // Optimistic update
+    setList(list.map(p => p.id === id ? { ...p, category } : p));
+    try { await products.update(id, { category }); }
+    catch (e) { console.error(e); await load(); /* revert on error */ }
+  }
 
   if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
 
@@ -102,7 +130,14 @@ function ProductsContent() {
             </div>
             <div>
               <label className="text-[10px] text-muted">หมวดหมู่</label>
-              <input placeholder="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+              <div className="flex gap-1.5 mt-1">
+                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="flex-1 rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                  <option value="">-- เลือกหมวด --</option>
+                  {categories.map(c => <option key={c.id} value={c.name}>{c.icon || "📁"} {c.name}</option>)}
+                </select>
+                <Link href="/settings/product-categories" target="_blank" title="เพิ่ม/แก้ไขหมวดหมู่" className="shrink-0 rounded-lg border border-border px-2.5 py-2 text-sm text-accent hover:bg-card-hover">+</Link>
+              </div>
+              {categories.length === 0 && <p className="text-[10px] text-amber-400 mt-1">ยังไม่มีหมวด <Link href="/settings/product-categories" className="underline">คลิกเพื่อเพิ่ม</Link></p>}
             </div>
             <div>
               <label className="text-[10px] text-muted">หน่วย</label>
@@ -112,11 +147,43 @@ function ProductsContent() {
               <label className="text-[10px] text-muted">ราคาทุน {form.type === "service" && <span className="text-muted/60">(ตั้งเป็น 0 ได้)</span>}</label>
               <input type="number" placeholder="0" value={form.cost_price || ""} onChange={(e) => setForm({ ...form, cost_price: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
             </div>
+            <div className="flex items-center gap-2 mt-5"><input type="checkbox" id="active-cb" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /><label htmlFor="active-cb" className="text-sm">Active (พร้อมขาย)</label></div>
+            <div />
+          </div>
+
+          {/* Price tiers */}
+          <p className="text-xs text-muted uppercase mb-2 mt-2">ราคาขายแยกระดับ <span className="normal-case text-muted/60">(เลือกใช้ได้ตอนสร้างใบเสนอราคา)</span></p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
             <div>
-              <label className="text-[10px] text-muted">ราคาขายตั้งต้น {form.type === "service" && <span className="text-muted/60">(ปรับใน QT ได้)</span>}</label>
+              <label className="text-[10px] text-muted">👤 ราคาบุคคลทั่วไป (Default) *</label>
               <input type="number" placeholder="0" value={form.selling_price || ""} onChange={(e) => setForm({ ...form, selling_price: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
             </div>
-            <div className="flex items-center gap-2 mt-5"><input type="checkbox" id="active-cb" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /><label htmlFor="active-cb" className="text-sm">Active (พร้อมขาย)</label></div>
+            <div>
+              <label className="text-[10px] text-muted">⭐ ราคาสมาชิก</label>
+              <input type="number" placeholder="ปล่อยว่าง = ใช้ราคาทั่วไป" value={form.price_member || ""} onChange={(e) => setForm({ ...form, price_member: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+              {form.price_member > 0 && form.selling_price > 0 && (
+                <p className="text-[10px] text-muted mt-0.5">
+                  {form.price_member < form.selling_price
+                    ? `ลด ${(((form.selling_price - form.price_member) / form.selling_price) * 100).toFixed(1)}%`
+                    : form.price_member > form.selling_price ? `สูงกว่าทั่วไป ${(((form.price_member - form.selling_price) / form.selling_price) * 100).toFixed(1)}%` : "เท่าราคาทั่วไป"}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-[10px] text-muted">💎 ราคาพิเศษ / VIP</label>
+              <input type="number" placeholder="ปล่อยว่าง = ใช้ราคาทั่วไป" value={form.price_special || ""} onChange={(e) => setForm({ ...form, price_special: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+              {form.price_special > 0 && form.selling_price > 0 && (
+                <p className="text-[10px] text-muted mt-0.5">
+                  {form.price_special < form.selling_price
+                    ? `ลด ${(((form.selling_price - form.price_special) / form.selling_price) * 100).toFixed(1)}%`
+                    : form.price_special > form.selling_price ? `สูงกว่าทั่วไป ${(((form.price_special - form.selling_price) / form.selling_price) * 100).toFixed(1)}%` : "เท่าราคาทั่วไป"}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-[10px] text-muted">🎁 ส่วนลดตั้งต้น (ต่อหน่วย, THB)</label>
+              <input type="number" placeholder="0 = ไม่มี" value={form.default_discount || ""} onChange={(e) => setForm({ ...form, default_discount: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+            </div>
           </div>
           <div className="flex gap-2">
             <button onClick={handleSave} disabled={saving || !form.name.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : editId ? "บันทึก" : "เพิ่ม"}</button>
@@ -128,11 +195,20 @@ function ProductsContent() {
       {/* Filters */}
       <div className="flex gap-2 mb-4 flex-wrap">
         <input placeholder="ค้นหาชื่อ / รหัส / ยี่ห้อ..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as "all" | "product" | "service")} className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as "all" | "product" | "service")} title="กรองตามประเภท" className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
           <option value="all">ทุกประเภท</option>
           <option value="product">📦 สินค้า</option>
           <option value="service">🛠️ บริการ</option>
         </select>
+        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} title="กรองตามหมวด" className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+          <option value="all">ทุกหมวด</option>
+          {allFilterCategories.map(c => {
+            const count = list.filter(p => p.category === c).length;
+            return <option key={c} value={c}>{categoryIcon[c] || "📁"} {c} ({count})</option>;
+          })}
+          {hasUncategorized && <option value="(ไม่มีหมวด)">— ไม่มีหมวด ({list.filter(p => !p.category).length})</option>}
+        </select>
+        <Link href="/settings/product-categories" title="จัดการหมวดหมู่" className="rounded-lg border border-border px-3 py-2 text-xs text-accent hover:bg-card-hover">⚙️</Link>
         <p className="text-xs text-muted self-center">{filtered.length} รายการ</p>
       </div>
 
@@ -147,8 +223,8 @@ function ProductsContent() {
               <th className="px-4 py-2.5" title="หมวดหมู่">Category</th>
               <th className="px-4 py-2.5" title="หน่วย">Unit</th>
               <th className="px-4 py-2.5 text-right" title="ราคาทุน">Cost</th>
-              <th className="px-4 py-2.5 text-right" title="ราคาขาย">Sell</th>
-              <th className="px-4 py-2.5 text-right" title="อัตรากำไร">Margin</th>
+              <th className="px-4 py-2.5 text-right" title="ราคาขายและระดับราคา">Sell / Tiers</th>
+              <th className="px-4 py-2.5 text-right" title="อัตรากำไร (Margin จากราคาทั่วไป)">Margin</th>
               <th className="px-4 py-2.5 w-20"></th>
             </tr></thead>
             <tbody>{filtered.map((p) => {
@@ -160,10 +236,36 @@ function ProductsContent() {
                   <td className="px-4 py-2.5 font-mono text-xs text-muted">{p.code || <span className="italic">—</span>}</td>
                   <td className="px-4 py-2.5 font-medium">{p.name}</td>
                   <td className="px-4 py-2.5 text-muted">{p.brand || "-"}</td>
-                  <td className="px-4 py-2.5 text-muted">{p.category || "-"}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-1">
+                      <span title="หมวดปัจจุบัน">{p.category ? (categoryIcon[p.category] || "📁") : "❓"}</span>
+                      <select
+                        value={p.category || ""}
+                        onChange={(e) => quickSetCategory(p.id!, e.target.value)}
+                        title="เปลี่ยนหมวด (บันทึกอัตโนมัติ)"
+                        className={`rounded border border-transparent bg-transparent px-1 py-0.5 text-xs focus:outline-none focus:border-accent hover:border-border cursor-pointer ${!p.category ? "text-amber-400 italic" : "text-muted"}`}
+                      >
+                        <option value="">— ไม่มีหมวด —</option>
+                        {categories.map(c => <option key={c.id} value={c.name}>{c.icon || "📁"} {c.name}</option>)}
+                        {/* Show legacy category if not in catalog */}
+                        {p.category && !categories.find(c => c.name === p.category) && (
+                          <option value={p.category}>⚠ {p.category} (ไม่อยู่ในระบบ)</option>
+                        )}
+                      </select>
+                    </div>
+                  </td>
                   <td className="px-4 py-2.5 text-muted">{p.unit || "-"}</td>
                   <td className="px-4 py-2.5 text-right text-muted">{(p.cost_price || 0).toLocaleString()}</td>
-                  <td className="px-4 py-2.5 text-right">{(p.selling_price || 0).toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <p>{(p.selling_price || 0).toLocaleString()}</p>
+                    {(p.price_member || p.price_special || p.default_discount) ? (
+                      <p className="text-[10px] text-muted mt-0.5 space-x-1">
+                        {p.price_member ? <span title="ราคาสมาชิก">⭐{p.price_member.toLocaleString()}</span> : null}
+                        {p.price_special ? <span title="ราคาพิเศษ">💎{p.price_special.toLocaleString()}</span> : null}
+                        {p.default_discount ? <span title="ส่วนลดตั้งต้น" className="text-amber-400">🎁-{p.default_discount.toLocaleString()}</span> : null}
+                      </p>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-2.5 text-right text-green-400">{margin}%</td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-2">

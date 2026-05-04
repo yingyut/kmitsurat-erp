@@ -29,6 +29,14 @@ export interface ProjectType {
   description: string;
 }
 
+export interface ProductCategory {
+  id?: string;
+  tenant_id: string;
+  name: string;
+  description: string;
+  icon?: string; // emoji shortcut
+}
+
 export interface Customer {
   id?: string;
   tenant_id: string;
@@ -161,7 +169,11 @@ export interface Product {
   category: string;
   unit: string;
   cost_price: number;
-  selling_price: number;
+  selling_price: number; // ราคาบุคคลทั่วไป (default tier)
+  // Price tiers (optional — fall back to selling_price if unset)
+  price_member?: number; // ราคาสมาชิก
+  price_special?: number; // ราคาพิเศษ / VIP
+  default_discount?: number; // ส่วนลดตั้งต้น (THB ต่อหน่วย)
   active: boolean;
   type?: "product" | "service"; // default "product"
 }
@@ -178,6 +190,7 @@ export interface QuotationItem {
   total_cost: number;
   total_selling: number;
   margin_percent: number;
+  price_tier?: "general" | "member" | "special" | "custom"; // which tier price was used
 }
 
 export interface SalesQuota {

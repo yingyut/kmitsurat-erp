@@ -3,11 +3,19 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Quotation, QuotationItem, Customer, Project, Product } from "@/lib/types";
 
-const emptyItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0 };
+const emptyItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0, price_tier: "general" };
 
 const statusLabel: Record<string, string> = { draft: "Draft", sent: "ส่งแล้ว", approved: "อนุมัติ", rejected: "ปฏิเสธ", expired: "หมดอายุ" };
 
 const vatModeLabel: Record<string, string> = { none: "ไม่มี VAT", exclusive: "ราคา + VAT", inclusive: "รวม VAT แล้ว" };
+
+const tierIcon: Record<string, string> = { general: "👤", member: "⭐", special: "💎", custom: "✏️" };
+const tierLabel: Record<string, string> = { general: "ทั่วไป", member: "สมาชิก", special: "พิเศษ", custom: "Custom" };
+function priceForTier(p: Product, tier: "general" | "member" | "special"): number {
+  if (tier === "member") return p.price_member || p.selling_price || 0;
+  if (tier === "special") return p.price_special || p.selling_price || 0;
+  return p.selling_price || 0;
+}
 
 export default function QuotationsPage() {
   const [list, setList] = useState<Quotation[]>([]);
@@ -65,7 +73,9 @@ export default function QuotationsPage() {
     avgGP: list.length > 0 ? list.reduce((s, q) => s + (q.gp_percent || 0), 0) / list.length : 0,
   };
 
-  function selectProduct(idx: number, p: Product) {
+  function selectProduct(idx: number, p: Product, tier: "general" | "member" | "special" = "general") {
+    const sell = priceForTier(p, tier);
+    const disc = p.default_discount || 0;
     setItems(items.map((it, i) => i === idx ? {
       ...it,
       product_id: p.id || "",
@@ -73,12 +83,28 @@ export default function QuotationsPage() {
       product_name: p.name,
       unit: p.unit || it.unit,
       cost_price: p.cost_price || 0,
-      selling_price: p.selling_price || 0,
+      selling_price: sell,
+      discount: disc,
       total_cost: (p.cost_price || 0) * it.qty,
-      total_selling: ((p.selling_price || 0) - it.discount) * it.qty,
-      margin_percent: p.selling_price > 0 ? ((p.selling_price - (p.cost_price || 0)) / p.selling_price * 100) : 0,
+      total_selling: (sell - disc) * it.qty,
+      margin_percent: sell > 0 ? ((sell - (p.cost_price || 0)) / sell * 100) : 0,
+      price_tier: tier,
     } : it));
     setPickerOpen(null);
+  }
+
+  function changeTier(idx: number, tier: "general" | "member" | "special") {
+    const it = items[idx];
+    const p = prods.find(x => x.id === it.product_id);
+    if (!p) return;
+    const sell = priceForTier(p, tier);
+    setItems(items.map((x, i) => i === idx ? {
+      ...x,
+      selling_price: sell,
+      total_selling: (sell - x.discount) * x.qty,
+      margin_percent: sell > 0 ? ((sell - x.cost_price) / sell * 100) : 0,
+      price_tier: tier,
+    } : x));
   }
 
   function updateItemText(idx: number, field: "product_name" | "product_code" | "unit", val: string) {
@@ -92,6 +118,16 @@ export default function QuotationsPage() {
       updated.total_cost = updated.cost_price * updated.qty;
       updated.total_selling = (updated.selling_price - updated.discount) * updated.qty;
       updated.margin_percent = updated.selling_price > 0 ? ((updated.selling_price - updated.cost_price) / updated.selling_price * 100) : 0;
+      // Manual edit of selling_price → mark as custom (unless it matches a known tier)
+      if (field === "selling_price" && it.product_id) {
+        const p = prods.find(x => x.id === it.product_id);
+        if (p) {
+          if (val === priceForTier(p, "general")) updated.price_tier = "general";
+          else if (p.price_member && val === p.price_member) updated.price_tier = "member";
+          else if (p.price_special && val === p.price_special) updated.price_tier = "special";
+          else updated.price_tier = "custom";
+        }
+      }
       return updated;
     }));
   }
@@ -254,23 +290,50 @@ export default function QuotationsPage() {
                       className="w-full rounded bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent"
                     />
                     {pickerOpen === idx && (
-                      <div data-picker={idx} onMouseDown={e => e.preventDefault()} className="absolute z-50 left-0 top-full mt-0.5 w-[28rem] max-h-72 overflow-y-auto bg-card border border-border rounded-lg shadow-2xl">
+                      <div data-picker={idx} onMouseDown={e => e.preventDefault()} className="absolute z-50 left-0 top-full mt-0.5 w-[36rem] max-h-80 overflow-y-auto bg-card border border-border rounded-lg shadow-2xl">
                         {filterProducts(item.product_name).length === 0 ? (
                           <p className="px-3 py-2 text-xs text-muted">ไม่พบในระบบ — พิมพ์เป็น Custom item ได้เลย หรือสร้างใหม่ด้านล่าง</p>
                         ) : filterProducts(item.product_name).map(p => (
-                          <button
-                            key={p.id}
-                            onClick={() => selectProduct(idx, p)}
-                            className="w-full text-left px-3 py-2 hover:bg-card-hover text-xs border-b border-border last:border-0 flex items-center gap-2"
-                          >
-                            <span className="shrink-0">{p.type === "service" ? "🛠️" : "📦"}</span>
-                            <span className="font-mono text-muted w-20 shrink-0 truncate">{p.code || "—"}</span>
-                            <span className="flex-1 truncate">{p.name}</span>
-                            <span className="text-muted shrink-0">{p.unit}</span>
-                            <span className="text-green-400 shrink-0 w-20 text-right">{(p.selling_price || 0).toLocaleString()}</span>
-                          </button>
+                          <div key={p.id} className="border-b border-border last:border-0 hover:bg-card-hover">
+                            <div className="px-3 pt-2 pb-1 flex items-center gap-2 text-xs">
+                              <span className="shrink-0">{p.type === "service" ? "🛠️" : "📦"}</span>
+                              <span className="font-mono text-muted w-20 shrink-0 truncate">{p.code || "—"}</span>
+                              <span className="flex-1 truncate font-medium">{p.name}</span>
+                              <span className="text-muted shrink-0">{p.unit}</span>
+                            </div>
+                            <div className="px-3 pb-2 flex items-center gap-1.5 flex-wrap">
+                              <button
+                                onClick={() => selectProduct(idx, p, "general")}
+                                className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-accent hover:text-white hover:border-accent"
+                                title="ราคาบุคคลทั่วไป"
+                              >
+                                👤 {(p.selling_price || 0).toLocaleString()}
+                              </button>
+                              {p.price_member ? (
+                                <button
+                                  onClick={() => selectProduct(idx, p, "member")}
+                                  className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-accent hover:text-white hover:border-accent"
+                                  title="ราคาสมาชิก"
+                                >
+                                  ⭐ {p.price_member.toLocaleString()}
+                                </button>
+                              ) : null}
+                              {p.price_special ? (
+                                <button
+                                  onClick={() => selectProduct(idx, p, "special")}
+                                  className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-accent hover:text-white hover:border-accent"
+                                  title="ราคาพิเศษ / VIP"
+                                >
+                                  💎 {p.price_special.toLocaleString()}
+                                </button>
+                              ) : null}
+                              {p.default_discount ? (
+                                <span className="text-[10px] text-amber-400 ml-1" title="ส่วนลดตั้งต้นจะถูกใส่อัตโนมัติ">🎁 -{p.default_discount.toLocaleString()}</span>
+                              ) : null}
+                            </div>
+                          </div>
                         ))}
-                        <div className="border-t border-border bg-background/50">
+                        <div className="border-t border-border bg-background/50 sticky bottom-0">
                           <Link
                             href={`/products?new=${encodeURIComponent(item.product_name || "")}&type=product`}
                             target="_blank"
@@ -288,6 +351,33 @@ export default function QuotationsPage() {
                         </div>
                       </div>
                     )}
+                    {/* Tier selector (when item is linked to a product) */}
+                    {item.product_id && pickerOpen !== idx && (() => {
+                      const p = prods.find(x => x.id === item.product_id);
+                      if (!p) return <p className="text-[9px] text-amber-400 mt-0.5">⚠ สินค้าถูกลบแล้ว — ใช้เป็น Custom</p>;
+                      const tiers: Array<{ key: "general" | "member" | "special"; price: number | undefined }> = [
+                        { key: "general", price: p.selling_price },
+                        { key: "member", price: p.price_member },
+                        { key: "special", price: p.price_special },
+                      ];
+                      return (
+                        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                          {tiers.filter(t => t.price).map(t => (
+                            <button
+                              key={t.key}
+                              onClick={() => changeTier(idx, t.key)}
+                              className={`text-[10px] rounded px-1.5 py-0.5 border ${item.price_tier === t.key ? "border-accent bg-accent/10 text-accent" : "border-border text-muted hover:bg-card-hover"}`}
+                              title={`${tierLabel[t.key]}: ${t.price?.toLocaleString()}`}
+                            >
+                              {tierIcon[t.key]} {t.price?.toLocaleString()}
+                            </button>
+                          ))}
+                          {item.price_tier === "custom" && (
+                            <span className="text-[10px] rounded px-1.5 py-0.5 border border-amber-700/50 bg-amber-900/20 text-amber-400" title="แก้ราคาเอง">{tierIcon.custom} Custom</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {!item.product_id && item.product_name && pickerOpen !== idx && (
                       <p className="text-[9px] text-amber-400 mt-0.5">✏️ Custom item (ไม่ผูกกับสินค้าในระบบ)</p>
                     )}
