@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import type { Customer, Quotation, Project, ServiceTicket, SalesActivity, JobRequest } from "@/lib/types";
+import type { Customer, Quotation, Project, ServiceTicket, SalesActivity, JobRequest, ServiceContract } from "@/lib/types";
 
 const orgLabels: Record<string, string> = { government: "หน่วยงานราชการ", private: "เอกชน", education: "สถานศึกษา", hospital: "โรงพยาบาล", hotel: "โรงแรม", other: "อื่นๆ" };
 const orgColor: Record<string, string> = { government: "bg-blue-900/50 text-blue-400", private: "bg-emerald-900/50 text-emerald-400", education: "bg-purple-900/50 text-purple-400", hospital: "bg-rose-900/50 text-rose-400", hotel: "bg-amber-900/50 text-amber-400", other: "bg-gray-700 text-gray-400" };
@@ -19,7 +19,26 @@ const svcStatusColor: Record<string, string> = { open: "bg-red-900/50 text-red-4
 
 const actTypeLabels: Record<string, string> = { phone_call: "📞 โทร", visit: "🚶 เยี่ยม", quotation_created: "📄 สร้าง QT", quotation_sent: "✉️ ส่ง QT", follow_up: "🔔 ตามงาน", meeting: "📅 ประชุม", customer_update: "✏️ อัปเดต" };
 
-type Tab = "overview" | "quotations" | "projects" | "service" | "activities";
+const contractTypeMeta: Record<string, { label: string; icon: string; color: string }> = {
+  product_warranty:      { label: "รับประกันสินค้า",     icon: "🛡️", color: "bg-blue-900/50 text-blue-400" },
+  installation_warranty: { label: "รับประกันงานติดตั้ง", icon: "🔧", color: "bg-purple-900/50 text-purple-400" },
+  service_contract:      { label: "สัญญา MA",            icon: "📋", color: "bg-green-900/50 text-green-400" },
+};
+const contractStatusColor: Record<string, string> = {
+  active: "bg-green-900/50 text-green-400",
+  pending: "bg-yellow-900/50 text-yellow-400",
+  expired: "bg-red-900/50 text-red-400",
+  cancelled: "bg-gray-700 text-gray-400",
+};
+function daysUntil(date?: string): number | null {
+  if (!date) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const target = new Date(date);
+  if (isNaN(target.getTime())) return null;
+  return Math.floor((target.getTime() - today.getTime()) / 86400000);
+}
+
+type Tab = "overview" | "quotations" | "projects" | "service" | "contracts" | "activities";
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -31,6 +50,7 @@ export default function CustomerDetailPage() {
   const [serviceTickets, setServiceTickets] = useState<ServiceTicket[]>([]);
   const [activities, setActivities] = useState<SalesActivity[]>([]);
   const [jobRequests, setJobRequests] = useState<JobRequest[]>([]);
+  const [contracts, setContracts] = useState<ServiceContract[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
@@ -45,22 +65,41 @@ export default function CustomerDetailPage() {
       const customerName = c.company_name || "";
       const isMine = (x: { customer_id?: string; customer_name?: string }) =>
         x.customer_id === id || (customerName && x.customer_name === customerName);
-      const [q, p, s, a, jr] = await Promise.all([
+      const [q, p, s, a, jr, ct] = await Promise.all([
         fs.quotations.list(),
         fs.projects.list(),
         fs.serviceTickets.list(),
         fs.salesActivities.list(),
         fs.jobRequests.list(),
+        fs.serviceContracts.list(),
       ]);
       setQuotations(q.filter(isMine));
       setProjects(p.filter(isMine));
       setServiceTickets(s.filter(isMine));
       setActivities(a.filter(isMine));
       setJobRequests(jr.filter(isMine));
+      setContracts(ct.filter(isMine));
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
   useEffect(() => { setMounted(true); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
+
+  // === CONTRACT METRICS ===
+  const contractStats = useMemo(() => {
+    const enriched = contracts.map(c => {
+      const days = daysUntil(c.end_date);
+      const isExpired = days !== null && days < 0 && c.status === "active";
+      return { c, days, effectiveStatus: (isExpired ? "expired" : c.status) };
+    });
+    const active = enriched.filter(x => x.effectiveStatus === "active");
+    const expiringSoon = active.filter(x => x.days !== null && x.days <= 30);
+    const expired = enriched.filter(x => x.effectiveStatus === "expired");
+    const totalValue = active.reduce((s, x) => s + (x.c.contract_value || 0), 0);
+    const hasMA = active.some(x => x.c.type === "service_contract");
+    const hasInstallWarranty = active.some(x => x.c.type === "installation_warranty");
+    const hasProductWarranty = active.some(x => x.c.type === "product_warranty");
+    return { enriched, active, expiringSoon, expired, totalValue, hasMA, hasInstallWarranty, hasProductWarranty };
+  }, [contracts]);
 
   // === SUMMARY METRICS ===
   const stats = useMemo(() => {
@@ -128,6 +167,17 @@ export default function CustomerDetailPage() {
               {customer.address && <p className="lg:col-span-3">🏠 {customer.address}</p>}
             </div>
             {customer.notes && <p className="text-xs text-muted mt-2 italic">📝 {customer.notes}</p>}
+
+            {/* Coverage badges */}
+            {(contractStats.hasProductWarranty || contractStats.hasInstallWarranty || contractStats.hasMA || contractStats.expiringSoon.length > 0) && (
+              <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                <span className="text-[10px] text-muted">Coverage:</span>
+                {contractStats.hasProductWarranty && <span className="rounded-full bg-blue-900/50 px-2 py-0.5 text-[10px] text-blue-400" title="มีรับประกันสินค้า">🛡️ Product</span>}
+                {contractStats.hasInstallWarranty && <span className="rounded-full bg-purple-900/50 px-2 py-0.5 text-[10px] text-purple-400" title="มีรับประกันงานติดตั้ง">🔧 Install</span>}
+                {contractStats.hasMA && <span className="rounded-full bg-green-900/50 px-2 py-0.5 text-[10px] text-green-400" title="มีสัญญา MA">📋 MA</span>}
+                {contractStats.expiringSoon.length > 0 && <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-[10px] text-red-400" title="สัญญาใกล้หมดอายุ ≤30 วัน">⚠ Renewal {contractStats.expiringSoon.length}</span>}
+              </div>
+            )}
           </div>
           <Link href={`/customers?edit=${customer.id}`} className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs text-accent hover:bg-card-hover">แก้ไขข้อมูล</Link>
         </div>
@@ -163,11 +213,13 @@ export default function CustomerDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b border-border overflow-x-auto">
-        {(["overview", "quotations", "projects", "service", "activities"] as const).map(t => {
-          const labels: Record<Tab, string> = { overview: "ภาพรวม", quotations: `ใบเสนอราคา (${quotations.length})`, projects: `ดีล / โปรเจค (${projects.length})`, service: `บริการ (${serviceTickets.length})`, activities: `กิจกรรม (${activities.length})` };
+        {(["overview", "quotations", "projects", "service", "contracts", "activities"] as const).map(t => {
+          const labels: Record<Tab, string> = { overview: "ภาพรวม", quotations: `ใบเสนอราคา (${quotations.length})`, projects: `ดีล / โปรเจค (${projects.length})`, service: `บริการ (${serviceTickets.length})`, contracts: `🛡️ สัญญา/รับประกัน (${contracts.length})`, activities: `กิจกรรม (${activities.length})` };
+          const isContractsWithAlert = t === "contracts" && contractStats.expiringSoon.length > 0;
           return (
-            <button key={t} onClick={() => setTab(t)} className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
+            <button key={t} onClick={() => setTab(t)} className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
               {labels[t]}
+              {isContractsWithAlert && <span className="rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold">{contractStats.expiringSoon.length}</span>}
             </button>
           );
         })}
@@ -409,6 +461,103 @@ export default function CustomerDetailPage() {
                     </tr>
                   </tfoot>
                 </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* CONTRACTS */}
+      {tab === "contracts" && (
+        <div className="space-y-3">
+          {contracts.length === 0 ? (
+            <div className="rounded-xl bg-card border border-border p-8 text-center">
+              <p className="text-muted text-sm mb-2">ยังไม่มีสัญญา / รับประกันสำหรับลูกค้านี้</p>
+              <Link href="/contracts" className="text-xs text-accent hover:underline">+ ไปเพิ่มสัญญาใหม่ที่หน้า Contracts</Link>
+            </div>
+          ) : (
+            <>
+              {/* Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div className="rounded-lg bg-card border border-border p-3">
+                  <p className="text-[10px] text-muted">Active</p>
+                  <p className="text-base font-bold text-green-400">{contractStats.active.length}</p>
+                </div>
+                <div className="rounded-lg bg-card border border-red-800/50 bg-red-900/10 p-3">
+                  <p className="text-[10px] text-muted">ใกล้หมด ≤30 วัน</p>
+                  <p className="text-base font-bold text-red-400">{contractStats.expiringSoon.length}</p>
+                </div>
+                <div className="rounded-lg bg-card border border-border p-3">
+                  <p className="text-[10px] text-muted">หมดอายุแล้ว</p>
+                  <p className="text-base font-bold text-gray-400">{contractStats.expired.length}</p>
+                </div>
+                <div className="rounded-lg bg-card border border-border p-3">
+                  <p className="text-[10px] text-muted">มูลค่ารวม Active</p>
+                  <p className="text-base font-bold">{contractStats.totalValue.toLocaleString()}</p>
+                  <p className="text-[10px] text-muted">THB</p>
+                </div>
+              </div>
+
+              {/* Renewal alert for this customer */}
+              {contractStats.expiringSoon.length > 0 && (
+                <div className="rounded-xl bg-red-900/10 border border-red-800/50 p-3">
+                  <p className="text-xs font-semibold text-red-400 mb-2">⚠ Renewal Action — สัญญาใกล้หมดอายุ</p>
+                  <div className="space-y-1">
+                    {contractStats.expiringSoon.map(({ c, days }) => {
+                      const meta = contractTypeMeta[c.type];
+                      return (
+                        <div key={c.id} className="flex items-center gap-2 text-xs py-1 border-b border-red-800/30 last:border-0">
+                          <span>{meta.icon}</span>
+                          <span className="font-medium flex-1 truncate">{c.title}</span>
+                          <span className="text-muted">หมด {c.end_date}</span>
+                          <span className={`font-bold ${days! <= 7 ? "text-red-400" : "text-amber-400"}`}>เหลือ {days}d</span>
+                          {c.contract_value ? <span className="text-green-400 w-16 text-right">{c.contract_value.toLocaleString()}</span> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Full table */}
+              <div className="rounded-xl bg-card border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
+                    <th className="px-4 py-2.5">ประเภท</th>
+                    <th className="px-4 py-2.5">หัวข้อ</th>
+                    <th className="px-4 py-2.5">เริ่ม → สิ้นสุด</th>
+                    <th className="px-4 py-2.5 text-center">วันคงเหลือ</th>
+                    <th className="px-4 py-2.5 text-right">มูลค่า</th>
+                    <th className="px-4 py-2.5">สถานะ</th>
+                  </tr></thead>
+                  <tbody>{contractStats.enriched.sort((a, b) => (a.c.end_date || "9999").localeCompare(b.c.end_date || "9999")).map(({ c, days, effectiveStatus }) => {
+                    const meta = contractTypeMeta[c.type];
+                    const dayColor = days === null ? "text-muted" : days < 0 ? "text-red-500 font-bold" : days <= 30 ? "text-red-400 font-semibold" : days <= 60 ? "text-amber-400" : days <= 90 ? "text-yellow-400" : "text-muted";
+                    return (
+                      <tr key={c.id} className="border-b border-border last:border-0 hover:bg-card-hover">
+                        <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.color}`}>{meta.icon} {meta.label}</span></td>
+                        <td className="px-4 py-2.5">
+                          <p className="font-medium">{c.title}</p>
+                          {c.type === "service_contract" && (
+                            <p className="text-[10px] text-muted">{c.service_level}{c.visits_per_year ? ` · PM ${c.visits_per_year}/ปี` : ""}{c.response_time_hours ? ` · Response ${c.response_time_hours}h` : ""}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-muted text-xs whitespace-nowrap">
+                          <p>{c.start_date || "-"}</p>
+                          <p>→ {c.end_date || "-"}</p>
+                        </td>
+                        <td className={`px-4 py-2.5 text-center text-xs ${dayColor}`}>
+                          {days === null ? "—" : days < 0 ? `เลย ${Math.abs(days)}d` : `${days}d`}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">{c.contract_value ? c.contract_value.toLocaleString() : "-"}</td>
+                        <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${contractStatusColor[effectiveStatus]}`}>{effectiveStatus}</span></td>
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+              <div className="text-center">
+                <Link href="/contracts" className="text-xs text-accent hover:underline">→ จัดการสัญญาทั้งหมด ที่หน้า Contracts</Link>
               </div>
             </>
           )}

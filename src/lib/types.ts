@@ -215,6 +215,35 @@ export interface VendorPrice {
   active: boolean;
 }
 
+export interface ServiceContract {
+  id?: string;
+  tenant_id: string;
+  customer_id: string;
+  customer_name: string;        // denormalized for display
+  project_id?: string;
+  project_name?: string;
+  // Coverage
+  type: "product_warranty" | "installation_warranty" | "service_contract";
+  title: string;                // เช่น "WiFi Phase 1 Warranty", "MA Server Room 2026"
+  description?: string;
+  scope_items?: string;         // รายการสินค้า/บริการที่คุ้มครอง
+  // Period
+  start_date: string;           // YYYY-MM-DD
+  end_date: string;             // YYYY-MM-DD
+  // MA / service contract specific
+  service_level?: string;       // "8x5", "24x7", "On-site", "Remote"
+  visits_per_year?: number;     // PM visits per year
+  response_time_hours?: number; // SLA response
+  // Financial
+  contract_value?: number;      // มูลค่าสัญญา (THB)
+  // Status
+  status: "active" | "expired" | "cancelled" | "pending";
+  // Reminder
+  reminder_days_before?: number; // default 30
+  reminder_sent?: boolean;
+  notes?: string;
+}
+
 export interface PriceHistory {
   id?: string;
   tenant_id: string;

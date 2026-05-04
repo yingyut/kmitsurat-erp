@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation } from "@/lib/types";
+import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract } from "@/lib/types";
 import {
   BarChart, Bar, PieChart, Pie, Cell, FunnelChart, Funnel, LabelList,
   XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -24,15 +24,17 @@ export default function DashboardPage() {
   const [service, setService] = useState<ServiceTicket[]>([]);
   const [quotas, setQuotas] = useState<SalesQuota[]>([]);
   const [quots, setQuots] = useState<Quotation[]>([]);
+  const [contracts, setContracts] = useState<ServiceContract[]>([]);
 
   async function load() {
     try {
       const fs = await import("@/lib/firestore");
-      const [p, s, pr, sv, q, qt] = await Promise.all([
+      const [p, s, pr, sv, q, qt, ct] = await Promise.all([
         fs.projects.list(), fs.salesActivities.list(), fs.presaleRequests.list(),
         fs.serviceTickets.list(), fs.salesQuotas.list(), fs.quotations.list(),
+        fs.serviceContracts.list(),
       ]);
-      setProjects(p); setSales(s); setPresale(pr); setService(sv); setQuotas(q); setQuots(qt);
+      setProjects(p); setSales(s); setPresale(pr); setService(sv); setQuotas(q); setQuots(qt); setContracts(ct);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -62,6 +64,25 @@ export default function DashboardPage() {
   // Estimated profit from approved quotations (auto-source for "potential")
   const approvedQuotProfit = quots.filter(q => q.status === "approved").reduce((s, q) => s + (q.gross_profit || 0), 0);
   const pipelineQuotProfit = quots.filter(q => q.status === "draft" || q.status === "sent").reduce((s, q) => s + (q.gross_profit || 0), 0);
+
+  // === CONTRACTS / WARRANTY (renewal alerts) ===
+  function dayDiff(date?: string): number | null {
+    if (!date) return null;
+    const t = new Date(date); t.setHours(0, 0, 0, 0);
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    return Math.floor((t.getTime() - now.getTime()) / 86400000);
+  }
+  const expiringContracts = contracts.filter(c => {
+    if (c.status !== "active") return false;
+    const d = dayDiff(c.end_date);
+    return d !== null && d >= 0 && d <= 30;
+  });
+  const expiredContracts = contracts.filter(c => {
+    if (c.status !== "active") return false;
+    const d = dayDiff(c.end_date);
+    return d !== null && d < 0;
+  });
+  const contractRenewalValue = expiringContracts.reduce((s, c) => s + (c.contract_value || 0), 0);
 
   // Sales
   const funnelData = [
@@ -143,6 +164,8 @@ export default function DashboardPage() {
   projects.filter(p => p.value >= 1000000 && !["won", "lost"].includes(p.status)).forEach(p => alerts.push({ id: `hp-${p.id}`, msg: `ดีลใหญ่: ${p.name} (${(p.value / 1000000).toFixed(1)}M)`, level: "orange", href: "/projects" }));
   const draftQ = quots.filter(q => q.status === "draft").length;
   if (draftQ > 0) alerts.push({ id: "dq", msg: `${draftQ} ใบเสนอราคา Draft รอส่ง`, level: "green", href: "/quotations" });
+  expiredContracts.forEach(c => alerts.push({ id: `ec-${c.id}`, msg: `🛡️ สัญญาหมดอายุ: ${c.title} — ${c.customer_name}`, level: "red", href: "/contracts" }));
+  if (expiringContracts.length > 0) alerts.push({ id: "rc", msg: `🛡️ ${expiringContracts.length} สัญญาใกล้หมด ≤30 วัน (รวม ${(contractRenewalValue / 1000).toLocaleString()}K) — เสนอ renewal`, level: "orange", href: "/contracts" });
 
   // Work items
   type WI = { id: string; title: string; sub: string; type: string; status: string; value?: number; href: string };

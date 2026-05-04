@@ -29,6 +29,7 @@ const sections: Section[] = [
       { href: "/presale", label: "Presale Tasks", thai: "งานพรีเซลล์ (BOQ / Solution)", icon: "📋" },
       { href: "/project-management", label: "Project Execution", thai: "ดำเนินโปรเจค / Action Plan", icon: "🗂️" },
       { href: "/service", label: "Service Tickets", thai: "งานบริการ / ติดตั้ง / ซ่อม", icon: "🔧" },
+      { href: "/contracts", label: "Contracts", thai: "สัญญา / รับประกัน / MA", icon: "🛡️" },
     ],
   },
   {
