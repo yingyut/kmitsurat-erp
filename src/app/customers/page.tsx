@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, lazy, Suspense } from "react";
+import Link from "next/link";
 import type { Customer, Project, Quotation, ServiceTicket } from "@/lib/types";
 
 const ThailandMap = lazy(() => import("@/components/ThailandMap"));
@@ -210,13 +211,16 @@ export default function CustomersPage() {
             <tbody>{sorted.map(c => (
               <tr key={c.id} className="border-b border-border last:border-0 hover:bg-card-hover relative"
                 onMouseEnter={e => handleMouseEnter(e, c)} onMouseLeave={() => setHoverCust(null)}>
-                <td className="px-4 py-2.5 font-medium">{c.company_name}</td>
+                <td className="px-4 py-2.5 font-medium">
+                  <Link href={`/customers/${c.id}`} className="hover:text-accent hover:underline">{c.company_name}</Link>
+                </td>
                 <td className="px-4 py-2.5 text-muted">{c.contact_name}</td>
                 <td className="px-4 py-2.5 text-muted">{c.phone}</td>
                 <td className="px-4 py-2.5 text-muted">{c.province || "-"}</td>
                 <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${orgColor[c.org_type] || "bg-gray-700"}`}>{orgLabels[c.org_type] || c.org_type}</span></td>
                 <td className="px-4 py-2.5">
                   <div className="flex gap-2">
+                    <Link href={`/customers/${c.id}`} title="ดูประวัติทั้งหมด — QT / Project / Service" className="text-xs text-blue-400 hover:underline">📋 ประวัติ</Link>
                     <button onClick={() => openEdit(c)} title="แก้ไข" className="text-xs text-accent hover:underline">แก้ไข</button>
                     <button onClick={() => handleDelete(c.id!, c.company_name)} title="ลบ" className="text-xs text-danger hover:underline">ลบ</button>
                   </div>
