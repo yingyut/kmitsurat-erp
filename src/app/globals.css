@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
-:root {
+/* ═══════════════════════════════════════════════
+   THEME: Midnight (Default) — inspired by Linear/Vercel
+   Deep space dark with indigo accent
+   ═══════════════════════════════════════════════ */
+:root, [data-theme="midnight"] {
   --background: #080c14;
   --foreground: #e0e7ef;
   --card: #0f1729;
@@ -12,12 +16,64 @@
   --warning: #fbbf24;
   --danger: #f87171;
   --muted: #64748b;
-  /* Neon glow colors */
-  --neon-blue: #38bdf8;
-  --neon-purple: #a78bfa;
-  --neon-green: #4ade80;
-  --neon-pink: #f472b6;
-  --neon-cyan: #22d3ee;
+  --glow: rgba(99, 102, 241, 0.12);
+}
+
+/* ═══════════════════════════════════════════════
+   THEME: Obsidian — inspired by GitHub Dark/Notion Dark
+   Warm charcoal with amber accent
+   ═══════════════════════════════════════════════ */
+[data-theme="obsidian"] {
+  --background: #111111;
+  --foreground: #ededec;
+  --card: #191919;
+  --card-hover: #222222;
+  --border: #2e2e2e;
+  --accent: #f59e0b;
+  --accent-hover: #fbbf24;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --muted: #737373;
+  --glow: rgba(245, 158, 11, 0.1);
+}
+
+/* ═══════════════════════════════════════════════
+   THEME: Snow — inspired by Apple/Stripe
+   Clean white with blue accent
+   ═══════════════════════════════════════════════ */
+[data-theme="snow"] {
+  --background: #fafafa;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-hover: #f5f5f5;
+  --border: #e5e5e5;
+  --accent: #2563eb;
+  --accent-hover: #3b82f6;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --muted: #a3a3a3;
+  --glow: rgba(37, 99, 235, 0.08);
+}
+
+/* ═══════════════════════════════════════════════
+   THEME: Cyberpunk — inspired by Cyberpunk/Figma Dark
+   True black with electric cyan + pink neon
+   ═══════════════════════════════════════════════ */
+[data-theme="cyberpunk"] {
+  --background: #030303;
+  --foreground: #f0f0f0;
+  --card: #0a0a0a;
+  --card-hover: #141414;
+  --border: #1f1f1f;
+  --accent: #06b6d4;
+  --accent-hover: #22d3ee;
+  --success: #4ade80;
+  --warning: #facc15;
+  --danger: #fb7185;
+  --muted: #525252;
+  --glow: rgba(6, 182, 212, 0.15);
 }
 
 @theme inline {
@@ -40,56 +96,50 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
-/* Neon glow effects */
-.neon-border {
-  border-color: rgba(99, 102, 241, 0.3);
-  box-shadow: 0 0 8px rgba(99, 102, 241, 0.08), inset 0 0 8px rgba(99, 102, 241, 0.03);
-}
-
-/* Scrollbar — sleek dark */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--background); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
 /* Selection */
-::selection { background: rgba(99, 102, 241, 0.3); color: #fff; }
+::selection { background: var(--accent); color: #fff; opacity: 0.3; }
+[data-theme="snow"] ::selection { opacity: 0.2; }
 
-/* Focus ring — neon */
+/* Focus */
 *:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Table row hover glow */
-tr:hover td { transition: background 0.15s; }
-
-/* Button press effect */
+/* Interactions */
 button:active:not(:disabled) { transform: scale(0.98); }
 
-/* Card hover glow */
-.rounded-xl:hover { transition: all 0.2s ease; }
-
-/* Input focus glow */
 input:focus, select:focus, textarea:focus {
-  box-shadow: 0 0 0 1px var(--accent), 0 0 12px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 12px var(--glow);
 }
 
-/* Badge glow */
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
+/* Page transition */
+main { animation: fadeIn 0.15s ease-out; }
+@keyframes fadeIn { from { opacity: 0.85; } to { opacity: 1; } }
 
-/* Smooth page transitions */
-main { animation: fadeIn 0.2s ease-out; }
-@keyframes fadeIn { from { opacity: 0.8; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+/* Progress bar */
+[class*="rounded-full"][style*="width"] { transition: width 0.5s ease-out; }
 
-/* Progress bar animation */
-[class*="rounded-full"][style*="width"] { transition: width 0.6s ease-out; }
-
-/* Gradient text helper */
+/* Gradient text */
 .text-gradient {
-  background: linear-gradient(135deg, var(--neon-blue), var(--neon-purple));
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+[data-theme="cyberpunk"] .text-gradient {
+  background: linear-gradient(135deg, #06b6d4, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+[data-theme="obsidian"] .text-gradient {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  -webkit-background-clip: text;
   background-clip: text;
 }

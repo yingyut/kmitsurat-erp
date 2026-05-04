@@ -37,6 +37,13 @@ const settingsLinks = [
     desc: "ตั้งค่า Workflow แจ้งเตือนผ่าน Email, LINE, Teams, Webhook เมื่อเกิด event เช่น สร้างใบเสนอราคา, GP ต่ำ, สัญญาหมดอายุ",
     icon: "🔔",
   },
+  {
+    href: "/settings/theme",
+    title: "Theme / ธีมสี",
+    thai: "เปลี่ยนธีมสี",
+    desc: "เลือกธีมสีที่ชอบ: Midnight (ม่วงเข้ม), Obsidian (เทาอุ่น), Snow (ขาวสะอาด), Cyberpunk (นีออน)",
+    icon: "🎨",
+  },
 ];
 
 export default function SettingsPage() {

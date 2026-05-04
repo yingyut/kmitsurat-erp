@@ -59,7 +59,7 @@ export default function Sidebar() {
   const { currentUser, setCurrentUser, users } = useCurrentUser();
 
   return (
-    <aside className="fixed left-0 top-0 flex h-full w-52 flex-col bg-[#0a1020] border-r border-border/50 z-50">
+    <aside className="fixed left-0 top-0 flex h-full w-52 flex-col bg-card border-r border-border/50 z-50">
       <div className="px-4 py-4" title="ระบบบริหารงาน KMITSURAT">
         <h1 className="text-base font-bold tracking-tight text-gradient">KMITSURAT</h1>
         <p className="text-[10px] text-muted/60">Work Portal v1.6</p>
@@ -88,16 +88,12 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="border-t border-border px-3 py-3" title="เลือกผู้ใช้ปัจจุบัน">
+      <div className="border-t border-border px-3 py-2.5">
         <select value={currentUser?.name || ""} onChange={e => { const u = users.find(x => x.name === e.target.value); if (u) setCurrentUser(u); }}
-          className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-[10px] focus:outline-none focus:border-accent mb-1.5 truncate">
+          className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-[10px] focus:outline-none focus:border-accent mb-1 truncate">
           {users.map(u => <option key={u.id} value={u.name}>{u.nickname || u.name} ({u.role})</option>)}
         </select>
-        {currentUser && (
-          <div className="text-[10px] text-muted truncate" title={currentUser.email}>
-            {currentUser.email}
-          </div>
-        )}
+        {currentUser && <p className="text-[9px] text-muted truncate" title={currentUser.email}>{currentUser.email}</p>}
       </div>
     </aside>
   );
