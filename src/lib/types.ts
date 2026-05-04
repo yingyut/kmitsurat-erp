@@ -172,6 +172,9 @@ export interface Vendor {
   active: boolean;
   payment_terms?: string; // เช่น "เครดิต 30 วัน", "เงินสด"
   tax_id?: string;
+  vendor_type: "distributor" | "contractor_company" | "contractor_personal" | "internal_team";
+  has_vat: boolean; // จด VAT หรือไม่
+  withholding_tax_rate?: number; // อัตราหัก ณ ที่จ่าย (%) เช่น 3 สำหรับงานบริการบุคคล, 1 สำหรับบริษัท
 }
 
 export interface VendorPrice {

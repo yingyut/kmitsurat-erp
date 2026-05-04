@@ -453,6 +453,19 @@ type VendorPanelProps = {
   trendForVendor: (vid: string) => { pct: number; direction: "up" | "down" | "flat" } | null;
 };
 
+const VENDOR_TYPE_ICON: Record<string, string> = {
+  distributor: "🏭",
+  contractor_company: "🏗️",
+  contractor_personal: "👷",
+  internal_team: "🧑‍🔧",
+};
+const VENDOR_TYPE_LABEL: Record<string, string> = {
+  distributor: "Distributor",
+  contractor_company: "ผู้รับเหมาบริษัท",
+  contractor_personal: "ผู้รับเหมาบุคคล",
+  internal_team: "ทีม KMIT",
+};
+
 function VendorPanel(props: VendorPanelProps) {
   const { product, vendors, vendorPrices, history, cheapest, vpForm, setVpForm, vpEditId, openVpEdit, cancelVpEdit, saveVendorPrice, deleteVendorPrice, saving, showHistory, toggleHistory, trendForVendor } = props;
 
@@ -463,6 +476,7 @@ function VendorPanel(props: VendorPanelProps) {
   // Vendor IDs already linked (so we can disable in dropdown when adding new)
   const linkedVendorIds = new Set(vendorPrices.map(vp => vp.vendor_id));
   const isEditing = !!vpEditId;
+  const vendorById = (id: string) => vendors.find(v => v.id === id);
 
   return (
     <div className="space-y-3">
@@ -495,11 +509,14 @@ function VendorPanel(props: VendorPanelProps) {
                 className="w-full rounded bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent mt-0.5"
               >
                 <option value="">-- เลือก Vendor --</option>
-                {activeVendors.map(v => (
-                  <option key={v.id} value={v.id} disabled={!isEditing && linkedVendorIds.has(v.id!)}>
-                    {v.name} {linkedVendorIds.has(v.id!) && !isEditing ? "(มีอยู่แล้ว)" : ""}
-                  </option>
-                ))}
+                {activeVendors.map(v => {
+                  const icon = VENDOR_TYPE_ICON[v.vendor_type || "distributor"];
+                  return (
+                    <option key={v.id} value={v.id} disabled={!isEditing && linkedVendorIds.has(v.id!)}>
+                      {icon} {v.name} {!v.has_vat ? "(ไม่มี VAT)" : ""} {linkedVendorIds.has(v.id!) && !isEditing ? "— มีอยู่แล้ว" : ""}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             <div>
@@ -555,9 +572,16 @@ function VendorPanel(props: VendorPanelProps) {
               {sortedVps.map(vp => {
                 const isCheapest = cheapest?.id === vp.id;
                 const trend = trendForVendor(vp.vendor_id);
+                const v = vendorById(vp.vendor_id);
+                const vt = v?.vendor_type || "distributor";
                 return (
                   <tr key={vp.id} className={`border-b border-border last:border-0 ${isCheapest ? "bg-yellow-900/10" : ""}`}>
-                    <td className="px-3 py-2 font-medium">{isCheapest && <span className="mr-1" title="ราคาถูกสุด">🥇</span>}{vp.vendor_name}</td>
+                    <td className="px-3 py-2 font-medium">
+                      {isCheapest && <span className="mr-1" title="ราคาถูกสุด">🥇</span>}
+                      <span title={VENDOR_TYPE_LABEL[vt]}>{VENDOR_TYPE_ICON[vt]}</span> {vp.vendor_name}
+                      {v && !v.has_vat && <span className="ml-1 text-[10px] text-muted">(ไม่มี VAT)</span>}
+                      {v && v.withholding_tax_rate ? <span className="ml-1 text-[10px] text-amber-400">หัก {v.withholding_tax_rate}%</span> : null}
+                    </td>
                     <td className={`px-3 py-2 text-right font-semibold ${isCheapest ? "text-yellow-400" : ""}`}>{(vp.current_price || 0).toLocaleString()}</td>
                     <td className="px-3 py-2 text-center">
                       {trend ? (
