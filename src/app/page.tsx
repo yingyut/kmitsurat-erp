@@ -1,16 +1,10 @@
-import Link from "next/link";
+"use client";
+import { useEffect } from "react";
 
 export default function Home() {
-  return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold mb-4">Welcome to KMITSURAT Work Portal</h1>
-      <p className="text-muted mb-6">Select a menu from the sidebar or go to the dashboard.</p>
-      <Link
-        href="/dashboard"
-        className="rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent-hover transition-colors"
-      >
-        Go to Dashboard
-      </Link>
-    </div>
-  );
+  useEffect(() => {
+    const loggedIn = localStorage.getItem("kmit_logged_in") === "true";
+    window.location.href = loggedIn ? "/dashboard" : "/login";
+  }, []);
+  return <div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted">Redirecting...</p></div>;
 }

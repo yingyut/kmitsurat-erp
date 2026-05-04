@@ -38,6 +38,13 @@ const settingsLinks = [
     icon: "🔔",
   },
   {
+    href: "/settings/permissions",
+    title: "Permissions / สิทธิ์",
+    thai: "สิทธิ์การเข้าถึง",
+    desc: "กำหนดว่าแต่ละ Role (Sale, Presale, Service) เข้าถึงเมนูไหนได้บ้าง",
+    icon: "🔒",
+  },
+  {
     href: "/settings/theme",
     title: "Theme / ธีมสี",
     thai: "เปลี่ยนธีมสี",

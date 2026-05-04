@@ -56,7 +56,7 @@ const sections: Section[] = [
 export default function Sidebar() {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
-  const { currentUser, setCurrentUser, users } = useCurrentUser();
+  const { currentUser, logout, hasAccess } = useCurrentUser();
 
   return (
     <aside className="fixed left-0 top-0 flex h-full w-52 flex-col bg-card border-r border-border/50 z-50">
@@ -75,7 +75,7 @@ export default function Sidebar() {
                 </p>
               </div>
             )}
-            {section.items.map((item) => {
+            {section.items.filter(item => hasAccess(item.href)).map((item) => {
               const active = isActive(item.href);
               return (
                 <Link key={item.href} href={item.href} title={item.thai}
@@ -89,11 +89,16 @@ export default function Sidebar() {
         ))}
       </nav>
       <div className="border-t border-border px-3 py-2.5">
-        <select value={currentUser?.name || ""} onChange={e => { const u = users.find(x => x.name === e.target.value); if (u) setCurrentUser(u); }}
-          className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-[10px] focus:outline-none focus:border-accent mb-1 truncate">
-          {users.map(u => <option key={u.id} value={u.name}>{u.nickname || u.name} ({u.role})</option>)}
-        </select>
-        {currentUser && <p className="text-[9px] text-muted truncate" title={currentUser.email}>{currentUser.email}</p>}
+        {currentUser && (
+          <div className="flex items-center gap-2 mb-1.5">
+            <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center text-xs font-bold text-accent shrink-0">{(currentUser.nickname || currentUser.name || "?").charAt(0)}</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-medium truncate">{currentUser.nickname || currentUser.name}</p>
+              <p className="text-[9px] text-muted truncate">{currentUser.role} · {currentUser.email}</p>
+            </div>
+          </div>
+        )}
+        <button onClick={logout} className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-[10px] text-muted hover:text-danger hover:border-danger/30 transition-colors">🚪 ออกจากระบบ</button>
       </div>
     </aside>
   );
