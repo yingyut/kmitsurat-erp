@@ -48,6 +48,10 @@ export default function ProjectsPage() {
 
   // Detail
   const [detail, setDetail] = useState<Project | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<"compact" | "detailed">("compact");
+  const [showSummary, setShowSummary] = useState(() => { try { return localStorage.getItem("pipeline_showSummary") !== "false"; } catch { return true; } });
+  const [ownerFilter, setOwnerFilter] = useState("all");
 
   // Customer quick-create
   const [showNewCust, setShowNewCust] = useState(false);
@@ -176,6 +180,17 @@ export default function ProjectsPage() {
     await load();
   }
 
+  function toggleExpand(id: string) {
+    setExpandedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  }
+  function expandAll() { setExpandedIds(new Set(filtered.map(p => p.id!).filter(Boolean))); }
+  function collapseAll() { setExpandedIds(new Set()); }
+  function toggleSummary() { const v = !showSummary; setShowSummary(v); try { localStorage.setItem("pipeline_showSummary", String(v)); } catch {} }
+
+  // Owner filter
+  const owners = [...new Set(list.map(p => p.assigned_to).filter(Boolean))];
+  const filteredFinal = filtered.filter(p => ownerFilter === "all" || p.assigned_to === ownerFilter);
+
   async function markReminderSent(id: string) {
     const fs = await import("@/lib/firestore");
     await fs.projects.update(id, { reminder_sent: true });
@@ -222,44 +237,44 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Dashboard */}
-      {!loading && list.length > 0 && (
-        <div className="space-y-3 mb-4">
-          {/* Overall metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div className="rounded-lg bg-card border border-border p-3">
-              <p className="text-[10px] text-muted">ดีลทั้งหมด</p>
-              <p className="text-lg font-bold">{stats.total}</p>
-              <p className="text-[10px] text-muted">{(stats.totalValue / 1000).toLocaleString()}K THB</p>
-            </div>
-            <div className="rounded-lg bg-card border border-border p-3">
-              <p className="text-[10px] text-muted" title="ดีลที่ยังไม่ปิด (Lead/Opportunity/Proposal/Negotiation)">Pipeline (Active)</p>
-              <p className="text-lg font-bold text-blue-400">{stats.active}</p>
-              <p className="text-[10px] text-muted">{(stats.activeValue / 1000).toLocaleString()}K THB</p>
-            </div>
-            <div className="rounded-lg bg-card border border-border p-3">
-              <p className="text-[10px] text-muted">Won</p>
-              <p className="text-lg font-bold text-green-400">{stats.won}</p>
-              <p className="text-[10px] text-muted">{(stats.wonValue / 1000).toLocaleString()}K THB</p>
-            </div>
-            <div className="rounded-lg bg-card border border-border p-3">
-              <p className="text-[10px] text-muted" title="อัตราชนะ = Won / (Won + Lost)">Win Rate</p>
-              <p className="text-lg font-bold">{winRate}%</p>
-              <p className="text-[10px] text-muted">{stats.won}/{closedCount} closed</p>
-            </div>
+      {/* Summary + Pipeline — collapsible */}
+      {!loading && list.length > 0 && showSummary && (
+        <div className="rounded-xl bg-card border border-border p-4 mb-4">
+          {/* KPI row */}
+          <div className="grid grid-cols-4 gap-4 mb-4">
+            <div><p className="text-xs text-muted mb-0.5">Total Deals</p><p className="text-2xl font-bold">{stats.total}</p><p className="text-xs text-muted">{(stats.totalValue/1e6).toFixed(1)}M THB</p></div>
+            <div><p className="text-xs text-muted mb-0.5">Active Pipeline</p><p className="text-2xl font-bold text-blue-400">{stats.active}</p><p className="text-xs text-muted">{(stats.activeValue/1e6).toFixed(1)}M THB</p></div>
+            <div><p className="text-xs text-muted mb-0.5">Won</p><p className="text-2xl font-bold text-green-400">{stats.won}</p><p className="text-xs text-muted">{(stats.wonValue/1e6).toFixed(1)}M THB</p></div>
+            <div><p className="text-xs text-muted mb-0.5">Win Rate</p><p className="text-2xl font-bold">{winRate}<span className="text-lg">%</span></p><p className="text-xs text-muted">{stats.won} won / {closedCount} closed</p></div>
           </div>
 
-          {/* Pipeline by status — clickable filter */}
-          <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
+          {/* Pipeline funnel bar */}
+          <div className="mb-3">
+            <div className="flex rounded-lg overflow-hidden h-8">
+              {statuses.filter(s => s !== "lost").map(s => {
+                const count = list.filter(p => p.status === s).length;
+                if (count === 0 && s !== "won") return null;
+                const total = list.filter(p => p.status !== "lost").length || 1;
+                const pct = (count / total) * 100;
+                const colors: Record<string, string> = { lead: "bg-gray-600", opportunity: "bg-blue-600", proposal: "bg-purple-600", negotiation: "bg-yellow-600", won: "bg-green-600" };
+                return <div key={s} className={`${colors[s]} flex items-center justify-center text-[10px] font-medium text-white transition-all`} style={{ width: `${Math.max(pct, 8)}%` }} title={`${statusLabels[s]}: ${count} (${pct.toFixed(0)}%)`}>{count > 0 && `${statusLabels[s]} ${count}`}</div>;
+              })}
+            </div>
+            {list.filter(p => p.status === "lost").length > 0 && <p className="text-[10px] text-red-400 mt-1">Lost: {stats.lost} ({(stats.lostValue/1e6).toFixed(1)}M)</p>}
+          </div>
+
+          {/* Stage buttons */}
+          <div className="flex gap-1.5">
             {statuses.map(s => {
               const count = list.filter(p => p.status === s).length;
               const value = list.filter(p => p.status === s).reduce((sum, p) => sum + (p.value || 0), 0);
+              const colors: Record<string, string> = { lead: "border-gray-600", opportunity: "border-blue-600", proposal: "border-purple-600", negotiation: "border-yellow-600", won: "border-green-600", lost: "border-red-600" };
               return (
                 <button key={s} onClick={() => setStatusFilter(statusFilter === s ? "all" : s)}
-                  className={`rounded-lg border p-3 text-center transition-colors ${statusFilter === s ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
-                  <p className="text-lg font-bold">{count}</p>
-                  <p className="text-[10px] text-muted">{statusLabels[s]}</p>
-                  <p className="text-[10px] text-muted">{(value / 1000).toFixed(0)}K</p>
+                  className={`flex-1 rounded-lg border-2 px-2 py-2 text-center transition-all ${statusFilter === s ? `${colors[s]} bg-accent/10` : "border-transparent bg-background hover:bg-card-hover"}`}>
+                  <p className={`text-lg font-bold ${statusColor[s]?.split(" ")[1] || ""}`}>{count}</p>
+                  <p className="text-[9px] text-muted leading-tight">{statusLabels[s]}</p>
+                  <p className="text-[9px] text-muted">{(value/1000).toFixed(0)}K</p>
                 </button>
               );
             })}
@@ -267,14 +282,25 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex gap-2 mb-4 flex-wrap">
-        <input placeholder="ค้นหาโปรเจค..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} title="กรองตามสถานะ" className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+      {/* Control bar */}
+      <div className="flex gap-2 mb-3 flex-wrap items-center">
+        <input placeholder="🔍 ค้นหาดีล..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[180px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="rounded-lg bg-card border border-border px-2 py-2 text-xs focus:outline-none focus:border-accent">
           <option value="all">ทุกสถานะ</option>
-          {statuses.map(s => <option key={s} value={s}>{statusLabels[s]}</option>)}
+          {statuses.map(s => <option key={s} value={s}>{statusLabels[s]} ({list.filter(p => p.status === s).length})</option>)}
         </select>
-        <p className="text-xs text-muted self-center ml-1">{filtered.length} รายการ</p>
+        <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className="rounded-lg bg-card border border-border px-2 py-2 text-xs focus:outline-none focus:border-accent">
+          <option value="all">ทุกเซลล์</option>
+          {owners.map(o => <option key={o} value={o}>{o.split(" ")[0]}</option>)}
+        </select>
+        <div className="flex gap-1 border border-border rounded-lg overflow-hidden">
+          <button onClick={() => setViewMode("compact")} title="Compact" className={`px-2.5 py-1.5 text-[10px] ${viewMode === "compact" ? "bg-accent text-white" : "text-muted hover:bg-card-hover"}`}>▤</button>
+          <button onClick={() => setViewMode("detailed")} title="Detailed" className={`px-2.5 py-1.5 text-[10px] ${viewMode === "detailed" ? "bg-accent text-white" : "text-muted hover:bg-card-hover"}`}>☰</button>
+        </div>
+        <button onClick={toggleSummary} title={showSummary ? "ซ่อน Summary" : "แสดง Summary"} className="rounded-lg border border-border px-2 py-1.5 text-[10px] text-muted hover:bg-card-hover">{showSummary ? "▲ ซ่อน" : "▼ แสดง"}</button>
+        <button onClick={expandAll} title="กางทั้งหมด" className="rounded-lg border border-border px-2 py-1.5 text-[10px] text-muted hover:bg-card-hover">⊞</button>
+        <button onClick={collapseAll} title="หุบทั้งหมด" className="rounded-lg border border-border px-2 py-1.5 text-[10px] text-muted hover:bg-card-hover">⊟</button>
+        <p className="text-[10px] text-muted">{filteredFinal.length} รายการ</p>
       </div>
 
       {/* Form */}
@@ -528,31 +554,112 @@ export default function ProjectsPage() {
 
       {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
 
-      {/* Project list */}
-      {filtered.length === 0 ? <p className="text-muted text-sm">ไม่พบโปรเจค</p> : (
-        <div className="space-y-2">
-          {filtered.map(p => (
-            <div key={p.id} className="rounded-xl bg-card border border-border p-4 hover:bg-card-hover cursor-pointer transition-colors" onClick={() => setDetail(p)}>
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="font-medium text-sm truncate">{p.name}</p>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[p.status]}`}>{statusLabels[p.status]}</span>
-                    {p.re_engage && <span className="shrink-0 rounded-full bg-amber-900/50 px-2 py-0.5 text-[10px] text-amber-400" title={`Re-engage: ${p.re_engage_date}`}>📌 Re-engage</span>}
-                    {p.reminder_date && p.reminder_type !== "none" && !p.reminder_sent && <span className="shrink-0 rounded-full bg-blue-900/50 px-2 py-0.5 text-[10px] text-blue-400" title={`Reminder: ${p.reminder_date}`}>🔔</span>}
-                    {contractCountForProject(p.id!) > 0 && <span className="shrink-0 rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] text-emerald-400" title={`${contractCountForProject(p.id!)} สัญญา/รับประกัน`}>🛡️ {contractCountForProject(p.id!)}</span>}
+      {/* Project list — collapsible cards */}
+      {filteredFinal.length === 0 ? <p className="text-muted text-sm">ไม่พบโปรเจค</p> : (
+        <div className="space-y-2.5">
+          {filteredFinal.map(p => {
+            const isExpanded = expandedIds.has(p.id!) || viewMode === "detailed";
+            const types = p.job_types?.length ? p.job_types : p.type ? [p.type] : [];
+            const cCount = contractCountForProject(p.id!);
+            return (
+              <div key={p.id} className="rounded-xl bg-card border border-border overflow-hidden hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all">
+                {/* Compact row */}
+                <div className="flex items-center cursor-pointer min-h-[76px]" onClick={() => toggleExpand(p.id!)}>
+                  {/* Status bar — thick */}
+                  <div className={`w-1.5 self-stretch shrink-0 ${p.status === "won" ? "bg-green-500" : p.status === "lost" ? "bg-red-500" : p.status === "negotiation" ? "bg-yellow-500" : p.status === "proposal" ? "bg-purple-500" : p.status === "opportunity" ? "bg-blue-500" : "bg-gray-600"}`} />
+
+                  <div className="flex items-center gap-4 flex-1 min-w-0 px-5 py-4">
+                    {/* Name + customer */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-[15px] truncate leading-tight">{p.name}</p>
+                        {p.re_engage && <span className="text-xs text-amber-400 shrink-0">📌</span>}
+                        {p.reminder_date && p.reminder_type !== "none" && !p.reminder_sent && <span className="text-xs text-blue-400 shrink-0">🔔</span>}
+                        {cCount > 0 && <span className="text-xs text-emerald-400 shrink-0">🛡️</span>}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm text-muted">{p.customer_name}</span>
+                        {p.assigned_to && <span className="text-xs text-muted/50">· {p.assigned_to.split(" ")[0]}</span>}
+                      </div>
+                    </div>
+
+                    {/* Tags */}
+                    {types.length > 0 && (
+                      <div className="hidden lg:flex gap-1 shrink-0">
+                        {types.slice(0, 3).map(t => <span key={t} className="rounded-md bg-accent/10 text-accent px-2 py-0.5 text-[10px] whitespace-nowrap">{t}</span>)}
+                        {types.length > 3 && <span className="text-[10px] text-muted">+{types.length - 3}</span>}
+                      </div>
+                    )}
+
+                    {/* Value — big + colored */}
+                    <div className="text-right shrink-0 min-w-[100px]">
+                      <p className={`text-xl font-bold tabular-nums ${p.status === "won" ? "text-green-400" : p.status === "lost" ? "text-red-400/50" : "text-foreground"}`}>{(p.value || 0).toLocaleString()}</p>
+                      <p className="text-[10px] text-muted">THB</p>
+                    </div>
+
+                    {/* Status badge — bigger */}
+                    <div className="flex flex-col items-end gap-1.5 shrink-0 min-w-[90px]">
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusColor[p.status]}`}>{statusLabels[p.status]}</span>
+                      <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => openEdit(p)} className="text-[10px] text-accent hover:underline">แก้ไข</button>
+                        <button onClick={() => handleDelete(p.id!, p.name)} className="text-[10px] text-danger hover:underline">ลบ</button>
+                      </div>
+                    </div>
+
+                    {/* Expand indicator */}
+                    <span className="text-muted/30 text-sm shrink-0">{isExpanded ? "▲" : "▼"}</span>
                   </div>
-                  <p className="text-xs text-muted">{p.customer_name} · {(p.job_types?.length ? p.job_types.join(", ") : p.type) || "—"} · {(p.value || 0).toLocaleString()} THB{p.assigned_to && ` · ${p.assigned_to}`}</p>
-                  {p.win_loss_reason && <p className="text-xs mt-1 text-muted italic">{p.status === "won" ? "✓" : "✗"} {p.win_loss_reason.slice(0, 60)}{p.win_loss_reason.length > 60 ? "..." : ""}</p>}
-                  {p.re_engage && p.re_engage_date && <p className="text-[10px] text-amber-400 mt-0.5">เสนอใหม่: {p.re_engage_date} — {p.re_engage_note?.slice(0, 40)}</p>}
                 </div>
-                <div className="flex gap-2 shrink-0 ml-3" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => openEdit(p)} title="แก้ไข" className="text-xs text-accent hover:underline">แก้ไข</button>
-                  <button onClick={() => handleDelete(p.id!, p.name)} title="ลบ" className="text-xs text-danger hover:underline">ลบ</button>
-                </div>
+
+                {/* Expanded detail */}
+                {isExpanded && (
+                  <div className="border-t border-border px-4 py-3 bg-background/30">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                      {/* Left: Info */}
+                      <div className="space-y-2">
+                        {types.length > 0 && (
+                          <div><p className="text-[10px] text-muted mb-1">ประเภทงาน</p><div className="flex flex-wrap gap-1">{types.map(t => <span key={t} className="rounded-full bg-accent/15 text-accent px-2 py-0.5 text-[10px]">{t}</span>)}</div></div>
+                        )}
+                        {p.assigned_to && <div><p className="text-[10px] text-muted">ผู้รับผิดชอบ</p><p>{p.assigned_to}</p></div>}
+                        {p.probability != null && <div><p className="text-[10px] text-muted">โอกาสปิด</p><p>{p.probability}%</p></div>}
+                        {p.expected_close_date && <div><p className="text-[10px] text-muted">คาดว่าปิด</p><p>{p.expected_close_date}</p></div>}
+                      </div>
+                      {/* Middle: Actions & Notes */}
+                      <div className="space-y-2">
+                        {p.next_action && <div><p className="text-[10px] text-muted">Next Action</p><p>{p.next_action}{p.next_action_date && ` (${p.next_action_date})`}</p></div>}
+                        {p.notes && <div><p className="text-[10px] text-muted">หมายเหตุ</p><p className="text-muted">{p.notes}</p></div>}
+                        {p.win_loss_reason && <div><p className="text-[10px] text-muted">{p.status === "won" ? "เหตุผลที่ชนะ" : "เหตุผลที่แพ้"}</p><p className={p.status === "won" ? "text-green-400" : "text-red-400"}>{p.win_loss_reason}</p>{p.lost_competitor && <p className="text-muted">คู่แข่ง: {p.lost_competitor}</p>}</div>}
+                      </div>
+                      {/* Right: Re-engage & Reminder */}
+                      <div className="space-y-2">
+                        {p.re_engage && (
+                          <div className="rounded-lg bg-amber-900/10 border border-amber-800/30 p-2">
+                            <p className="text-[10px] text-amber-400 font-medium">📌 Re-engage</p>
+                            <p className="text-muted">{p.re_engage_note}</p>
+                            <p className="text-amber-400 text-[10px]">เสนอใหม่: {p.re_engage_date}</p>
+                          </div>
+                        )}
+                        {p.reminder_date && p.reminder_type !== "none" && (
+                          <div className="rounded-lg bg-blue-900/10 border border-blue-800/30 p-2">
+                            <p className="text-[10px] text-blue-400 font-medium">🔔 Reminder</p>
+                            <p className="text-muted">{p.reminder_date} · {p.reminder_to_name || "—"}</p>
+                            {p.reminder_sent ? <p className="text-green-400 text-[10px]">✓ ส่งแล้ว</p> : <p className="text-yellow-400 text-[10px]">ยังไม่ส่ง</p>}
+                          </div>
+                        )}
+                        {/* Quick actions */}
+                        <div className="flex gap-1.5 pt-1">
+                          <button onClick={() => setDetail(p)} className="text-[10px] bg-card border border-border rounded px-2 py-1 hover:bg-card-hover">📄 Detail</button>
+                          <Link href="/quotations" className="text-[10px] bg-card border border-border rounded px-2 py-1 hover:bg-card-hover">💰 QT</Link>
+                          <Link href="/presale" className="text-[10px] bg-card border border-border rounded px-2 py-1 hover:bg-card-hover">📋 PS</Link>
+                          <Link href="/service" className="text-[10px] bg-card border border-border rounded px-2 py-1 hover:bg-card-hover">🔧 SV</Link>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

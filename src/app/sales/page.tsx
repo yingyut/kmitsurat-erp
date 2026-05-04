@@ -212,47 +212,112 @@ export default function SalesPage() {
 
       {/* ═══ DASHBOARD ═══ */}
       {tab === "dashboard" && (<>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-          <div className="rounded-xl bg-card border border-border p-4" title="เป้ายอดขายรายเดือน"><p className="text-[10px] text-muted">Monthly Target</p><p className="text-2xl font-bold">{totalTarget.toLocaleString()}</p>{totalTarget > 0 && <div className="mt-2 h-1.5 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${(totalActual/totalTarget*100) >= 100 ? "bg-green-500" : "bg-yellow-500"}`} style={{ width: `${Math.min(totalActual/totalTarget*100, 100)}%` }} /></div>}<p className="text-[10px] text-muted mt-1">Actual: {totalActual.toLocaleString()} ({totalTarget > 0 ? (totalActual/totalTarget*100).toFixed(0) : 0}%)</p></div>
-          <div className="rounded-xl bg-card border border-border p-4" title="มูลค่าดีลรอปิด"><p className="text-[10px] text-muted">Pipeline</p><p className="text-2xl font-bold text-blue-400">{(pipelineValue/1000000).toFixed(1)}M</p><p className="text-[10px] text-muted">THB</p></div>
-          <div className="rounded-xl bg-card border border-border p-4" title="ดีลที่ปิดได้"><p className="text-[10px] text-muted">Won Deals</p><p className="text-2xl font-bold text-green-400">{wonDeals}</p></div>
-          <div className="rounded-xl bg-card border border-border p-4" title="งานเลยกำหนด"><p className="text-[10px] text-muted">Overdue</p><p className={`text-2xl font-bold ${overdueActs.length > 0 ? "text-red-400" : "text-green-400"}`}>{overdueActs.length}</p></div>
+        {/* KPI Cards — clickable */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <button onClick={() => setTab("plan")} className="rounded-xl bg-card border border-border p-5 text-left hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all" title="คลิกไปหน้า Plan / Quota">
+            <p className="text-xs text-muted mb-1">Monthly Target</p>
+            <p className="text-3xl font-bold tracking-tight">{(totalTarget / 1e6).toFixed(1)}<span className="text-lg text-muted ml-0.5">M</span></p>
+            {totalTarget > 0 && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-[10px] text-muted mb-1"><span>Actual</span><span className={`font-semibold ${(totalActual/totalTarget*100) >= 100 ? "text-green-400" : (totalActual/totalTarget*100) >= 70 ? "text-yellow-400" : "text-red-400"}`}>{(totalActual/totalTarget*100).toFixed(0)}%</span></div>
+                <div className="h-2 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full transition-all ${(totalActual/totalTarget*100) >= 100 ? "bg-green-500" : (totalActual/totalTarget*100) >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(totalActual/totalTarget*100, 100)}%` }} /></div>
+                <p className="text-xs text-muted mt-1">{totalActual.toLocaleString()} THB</p>
+              </div>
+            )}
+          </button>
+          <button onClick={() => setTab("pipeline")} className="rounded-xl bg-card border border-border p-5 text-left hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all" title="คลิกไปหน้า Pipeline">
+            <p className="text-xs text-muted mb-1">Pipeline Value</p>
+            <p className="text-3xl font-bold text-blue-400 tracking-tight">{(pipelineValue/1e6).toFixed(1)}<span className="text-lg ml-0.5">M</span></p>
+            <p className="text-xs text-muted mt-3">{projects.filter(p => !["won","lost"].includes(p.status)).length} active deals</p>
+          </button>
+          <button onClick={() => { setTab("pipeline"); setStageFilter("won"); }} className="rounded-xl bg-card border border-border p-5 text-left hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all" title="คลิกดูดีลที่ Won">
+            <p className="text-xs text-muted mb-1">Won Deals</p>
+            <p className="text-3xl font-bold text-green-400 tracking-tight">{wonDeals}</p>
+            <p className="text-xs text-muted mt-3">{(projects.filter(p => p.status === "won").reduce((s,p) => s + (p.value||0), 0) / 1e6).toFixed(1)}M THB</p>
+          </button>
+          <button onClick={() => { setTab("activities"); setTimeFilter("overdue"); }} className="rounded-xl bg-card border border-border p-5 text-left hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all" title="คลิกดูงาน Overdue">
+            <p className="text-xs text-muted mb-1">Overdue</p>
+            <p className={`text-3xl font-bold tracking-tight ${overdueActs.length > 0 ? "text-red-400" : "text-green-400"}`}>{overdueActs.length}</p>
+            <p className="text-xs text-muted mt-3">{overdueActs.length > 0 ? "ต้องติดตามด่วน!" : "ไม่มีงานค้าง ✓"}</p>
+          </button>
         </div>
 
-        {/* Conversion funnel */}
-        <div className="rounded-xl bg-card border border-border p-4 mb-5">
-          <h3 className="text-sm font-semibold mb-3" title="วงจร Plan → Activity → Pipeline">Conversion Flow</h3>
-          <div className="flex items-center justify-center gap-2 text-xs">
-            <div className="text-center rounded-lg bg-background border border-border px-4 py-3"><p className="text-lg font-bold">{plans.length}</p><p className="text-muted">Plans</p></div>
-            <span className="text-muted text-lg">→</span>
-            <div className="text-center rounded-lg bg-background border border-border px-4 py-3"><p className="text-lg font-bold">{totalActs}</p><p className="text-muted">Activities</p></div>
-            <span className="text-muted text-lg">→</span>
-            <div className="text-center rounded-lg bg-background border border-border px-4 py-3"><p className="text-lg font-bold text-blue-400">{projects.filter(p => !["won","lost"].includes(p.status)).length}</p><p className="text-muted">Pipeline</p></div>
-            <span className="text-muted text-lg">→</span>
-            <div className="text-center rounded-lg bg-background border border-border px-4 py-3"><p className="text-lg font-bold text-green-400">{wonDeals}</p><p className="text-muted">Won</p></div>
+        {/* Conversion Flow — visual funnel */}
+        <div className="rounded-xl bg-card border border-border p-5 mb-6">
+          <h3 className="text-sm font-semibold mb-4">Sales Conversion Flow</h3>
+          <div className="flex items-stretch gap-0">
+            {[
+              { label: "Plans", value: plans.length, color: "from-gray-700 to-gray-600", tab: "plan" as const },
+              { label: "Activities", value: totalActs, color: "from-blue-700 to-blue-600", tab: "activities" as const },
+              { label: "Pipeline", value: projects.filter(p => !["won","lost"].includes(p.status)).length, color: "from-purple-700 to-purple-600", tab: "pipeline" as const },
+              { label: "Won", value: wonDeals, color: "from-green-700 to-green-600", tab: "pipeline" as const },
+            ].map((step, i) => (
+              <div key={step.label} className="flex items-stretch flex-1">
+                <button onClick={() => { setTab(step.tab); if (step.label === "Won") setStageFilter("won"); }} className={`flex-1 bg-gradient-to-r ${step.color} rounded-lg px-3 py-4 text-center hover:brightness-125 transition-all cursor-pointer`}>
+                  <p className="text-2xl font-bold text-white">{step.value}</p>
+                  <p className="text-[10px] text-white/70 mt-0.5">{step.label}</p>
+                </button>
+                {i < 3 && <div className="flex items-center px-1"><span className="text-muted/30 text-xl">›</span></div>}
+              </div>
+            ))}
           </div>
-          {totalActs > 0 && <p className="text-[10px] text-muted text-center mt-2">Conversion: {convertedToProject}/{totalActs} activities → pipeline ({totalActs > 0 ? (convertedToProject/totalActs*100).toFixed(0) : 0}%)</p>}
+          {totalActs > 0 && <p className="text-[10px] text-muted text-center mt-3">Activity → Pipeline: <span className="text-accent font-medium">{convertedToProject}/{totalActs} ({(convertedToProject/totalActs*100).toFixed(0)}%)</span></p>}
         </div>
 
-        {/* Follow-ups */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <div className="rounded-xl bg-card border border-border p-4">
-            <h3 className="text-sm font-semibold text-yellow-400 mb-2" title="นัดวันนี้">Today ({todayActs.length})</h3>
-            {todayActs.length === 0 ? <p className="text-xs text-muted">ไม่มีนัดวันนี้</p> : todayActs.slice(0, 5).map(a => (
-              <div key={a.id} className="text-xs py-1.5 border-b border-border last:border-0"><p>{a.description}</p><p className="text-muted">{a.customer_name}</p></div>
-            ))}
+        {/* Today / Overdue / Plans — clean cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Today */}
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <button onClick={() => { setTab("activities"); setTimeFilter("today"); }} className="w-full px-5 py-3 border-b border-border flex items-center justify-between hover:bg-card-hover transition-colors">
+              <h3 className="text-sm font-semibold">📅 Today</h3>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${todayActs.length > 0 ? "bg-yellow-900/50 text-yellow-400" : "bg-green-900/50 text-green-400"}`}>{todayActs.length}</span>
+            </button>
+            <div className="p-4">
+              {todayActs.length === 0 ? <p className="text-sm text-muted text-center py-3">ไม่มีนัดวันนี้ ✓</p> : (
+                <div className="space-y-2">{todayActs.slice(0, 5).map(a => (
+                  <button key={a.id} onClick={() => { setTab("activities"); setTimeFilter("today"); }} className="flex items-start gap-3 w-full text-left rounded-lg px-2 py-1.5 hover:bg-card-hover transition-colors -mx-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 mt-1.5 shrink-0" />
+                    <div><p className="text-sm leading-snug">{a.description}</p><p className="text-xs text-muted mt-0.5">{a.customer_name}</p></div>
+                  </button>
+                ))}</div>
+              )}
+            </div>
           </div>
-          <div className="rounded-xl bg-card border border-border p-4">
-            <h3 className="text-sm font-semibold text-red-400 mb-2" title="เลยกำหนด">Overdue ({overdueActs.length})</h3>
-            {overdueActs.length === 0 ? <p className="text-xs text-muted">ไม่มี</p> : overdueActs.slice(0, 5).map(a => (
-              <div key={a.id} className="text-xs py-1.5 border-b border-border last:border-0"><p>{a.description}</p><p className="text-muted">{a.customer_name} · {a.next_follow_up || a.next_action_date}</p></div>
-            ))}
+
+          {/* Overdue */}
+          <div className={`rounded-xl border overflow-hidden ${overdueActs.length > 0 ? "bg-red-950/20 border-red-800/50" : "bg-card border-border"}`}>
+            <button onClick={() => { setTab("activities"); setTimeFilter("overdue"); }} className="w-full px-5 py-3 border-b border-red-800/30 flex items-center justify-between hover:bg-red-950/30 transition-colors">
+              <h3 className="text-sm font-semibold">⚠️ Overdue</h3>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${overdueActs.length > 0 ? "bg-red-900/50 text-red-400" : "bg-green-900/50 text-green-400"}`}>{overdueActs.length}</span>
+            </button>
+            <div className="p-4">
+              {overdueActs.length === 0 ? <p className="text-sm text-muted text-center py-3">ไม่มีงานค้าง ✓</p> : (
+                <div className="space-y-2">{overdueActs.slice(0, 5).map(a => (
+                  <button key={a.id} onClick={() => { setTab("activities"); setTimeFilter("overdue"); }} className="flex items-start gap-3 w-full text-left rounded-lg px-2 py-1.5 hover:bg-red-950/30 transition-colors -mx-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5 shrink-0" />
+                    <div><p className="text-sm leading-snug">{a.description}</p><p className="text-xs text-red-400/70 mt-0.5">{a.customer_name} · {a.next_follow_up || a.next_action_date}</p></div>
+                  </button>
+                ))}</div>
+              )}
+            </div>
           </div>
-          <div className="rounded-xl bg-card border border-border p-4">
-            <h3 className="text-sm font-semibold text-blue-400 mb-2" title="แผนที่ยังไม่ได้ทำ">Pending Plans ({plans.length})</h3>
-            {plans.length === 0 ? <p className="text-xs text-muted">ไม่มี</p> : plans.slice(0, 5).map(a => (
-              <div key={a.id} className="text-xs py-1.5 border-b border-border last:border-0"><p>{a.expected_outcome || a.description}</p><p className="text-muted">{a.plan_date} · {typeLabels[a.type]}</p></div>
-            ))}
+
+          {/* Pending Plans */}
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <button onClick={() => setTab("plan")} className="w-full px-5 py-3 border-b border-border flex items-center justify-between hover:bg-card-hover transition-colors">
+              <h3 className="text-sm font-semibold">📋 Plans</h3>
+              <span className="rounded-full bg-blue-900/50 text-blue-400 px-2.5 py-0.5 text-xs font-bold">{plans.length}</span>
+            </button>
+            <div className="p-4">
+              {plans.length === 0 ? <p className="text-sm text-muted text-center py-3">ไม่มีแผนค้าง</p> : (
+                <div className="space-y-2">{plans.slice(0, 5).map(a => (
+                  <button key={a.id} onClick={() => setTab("plan")} className="flex items-start gap-3 w-full text-left rounded-lg px-2 py-1.5 hover:bg-card-hover transition-colors -mx-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+                    <div><p className="text-sm leading-snug">{a.expected_outcome || a.description}</p><p className="text-xs text-muted mt-0.5">{a.plan_date} · {typeLabels[a.type]}</p></div>
+                  </button>
+                ))}</div>
+              )}
+            </div>
           </div>
         </div>
       </>)}
@@ -295,27 +360,105 @@ export default function SalesPage() {
           ))}</div>
         )}
 
-        {/* Quota section */}
-        <div className="flex items-center justify-between mb-2 mt-4">
-          <h3 className="text-sm font-semibold">เป้ายอดขายเดือนนี้</h3>
-          <button onClick={() => setShowQuotaForm(!showQuotaForm)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover">{showQuotaForm ? "Cancel" : "+ ตั้งเป้า"}</button>
-        </div>
-        {showQuotaForm && (
-          <div className="rounded-xl bg-card border border-border p-5 mb-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-              <div><label className="text-[10px] text-muted">เซลล์ *</label><select value={quotaForm.user_name} onChange={e => setQuotaForm({ ...quotaForm, user_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
-              <div><label className="text-[10px] text-muted">เป้ายอดขาย</label><input type="number" value={quotaForm.quota_target || ""} onChange={e => setQuotaForm({ ...quotaForm, quota_target: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-              <div><label className="text-[10px] text-muted">ยอดจริง</label><input type="number" value={quotaForm.actual_sales || ""} onChange={e => setQuotaForm({ ...quotaForm, actual_sales: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+        {/* ── Quota section — redesigned ── */}
+        {(() => {
+          const tTarget = monthQuota.reduce((s,q) => s + (q.quota_target||0), 0);
+          const tActual = monthQuota.reduce((s,q) => s + (q.actual_sales||0), 0);
+          const tRemaining = tTarget - tActual;
+          const tPct = tTarget > 0 ? (tActual/tTarget*100) : 0;
+          const topPerformer = [...monthQuota].sort((a,b) => (b.actual_sales||0) - (a.actual_sales||0))[0];
+          return (<>
+            {/* KPI Summary */}
+            <div className="rounded-xl bg-card border border-border p-5 mb-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold">เป้ายอดขายเดือนนี้</h3>
+                <button onClick={() => setShowQuotaForm(!showQuotaForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showQuotaForm ? "Cancel" : "+ ตั้งเป้า"}</button>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div><p className="text-xs text-muted mb-0.5">เป้ารวม</p><p className="text-2xl font-bold">{(tTarget/1e6).toFixed(1)}<span className="text-sm text-muted ml-0.5">M</span></p></div>
+                <div><p className="text-xs text-muted mb-0.5">ยอดจริง</p><p className={`text-2xl font-bold ${tPct >= 100 ? "text-green-400" : tPct >= 70 ? "text-yellow-400" : "text-red-400"}`}>{(tActual/1e6).toFixed(1)}<span className="text-sm ml-0.5">M</span></p></div>
+                <div><p className="text-xs text-muted mb-0.5">เหลืออีก</p><p className={`text-2xl font-bold ${tRemaining <= 0 ? "text-green-400" : "text-yellow-400"}`}>{(Math.abs(tRemaining)/1e6).toFixed(1)}<span className="text-sm ml-0.5">M</span></p><p className="text-[10px] text-muted">{tRemaining <= 0 ? "เกินเป้าแล้ว! 🎉" : "ต้องทำเพิ่ม"}</p></div>
+                <div><p className="text-xs text-muted mb-0.5">Achievement</p><p className={`text-2xl font-bold ${tPct >= 100 ? "text-green-400" : tPct >= 70 ? "text-yellow-400" : "text-red-400"}`}>{tPct.toFixed(0)}<span className="text-sm ml-0.5">%</span></p>
+                  <div className="h-2 rounded-full bg-background overflow-hidden mt-2"><div className={`h-full rounded-full ${tPct >= 100 ? "bg-green-500" : tPct >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(tPct,100)}%` }} /></div>
+                </div>
+              </div>
+              {topPerformer && <p className="text-xs text-muted">🏆 Top: <span className="text-accent font-medium">{topPerformer.user_name?.split(" ")[0]}</span> — {topPerformer.actual_sales?.toLocaleString()} THB</p>}
             </div>
-            <button onClick={saveQuota} disabled={saving || !quotaForm.user_name} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึก"}</button>
+          </>);
+        })()}
+
+        {/* Quota form */}
+        {showQuotaForm && (
+          <div className="rounded-xl bg-card border border-accent/30 p-5 mb-4">
+            <h3 className="text-sm font-semibold mb-3">{quotaForm.user_name ? `แก้ไข: ${quotaForm.user_name.split(" ")[0]}` : "ตั้งเป้าใหม่"}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+              <div><label className="text-[10px] text-muted">เซลล์ *</label><select value={quotaForm.user_name} onChange={e => setQuotaForm({ ...quotaForm, user_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกเซลล์ --</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">เป้ายอดขาย (THB)</label><input type="number" placeholder="เช่น 2000000" value={quotaForm.quota_target || ""} onChange={e => setQuotaForm({ ...quotaForm, quota_target: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              <div><label className="text-[10px] text-muted">ยอดจริง (THB)</label><input type="number" placeholder="ยอดที่ปิดได้" value={quotaForm.actual_sales || ""} onChange={e => setQuotaForm({ ...quotaForm, actual_sales: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              <div><label className="text-[10px] text-muted">Won Deals</label><input type="number" value={quotaForm.won_deals || ""} onChange={e => setQuotaForm({ ...quotaForm, won_deals: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={saveQuota} disabled={saving || !quotaForm.user_name} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึก"}</button>
+              <button onClick={() => setShowQuotaForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+            </div>
           </div>
         )}
+
+        {/* Quota cards — modern design */}
         {monthQuota.length === 0 ? <p className="text-muted text-sm">ยังไม่มีเป้า</p> : (
-          <div className="rounded-xl bg-card border border-border overflow-hidden">
-            <table className="w-full text-sm"><thead><tr className="border-b border-border text-left text-xs text-muted uppercase"><th className="px-4 py-2.5">Person</th><th className="px-4 py-2.5 text-right">Target</th><th className="px-4 py-2.5 text-right">Actual</th><th className="px-4 py-2.5">Progress</th><th className="px-4 py-2.5 w-12"></th></tr></thead>
-            <tbody>{monthQuota.map(q => { const p = q.quota_target > 0 ? (q.actual_sales/q.quota_target*100) : 0; return (
-              <tr key={q.id} className="border-b border-border last:border-0 hover:bg-card-hover"><td className="px-4 py-2.5 font-medium">{q.user_name}</td><td className="px-4 py-2.5 text-right">{q.quota_target.toLocaleString()}</td><td className="px-4 py-2.5 text-right text-green-400">{q.actual_sales.toLocaleString()}</td><td className="px-4 py-2.5"><div className="flex items-center gap-2"><div className="h-2 w-20 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${p >= 100 ? "bg-green-500" : p >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(p,100)}%` }} /></div><span className="text-xs text-muted">{p.toFixed(0)}%</span></div></td><td className="px-4 py-2.5"><button onClick={async () => { if (!confirm("ลบ?")) return; const { salesQuotas } = await import("@/lib/firestore"); await salesQuotas.remove(q.id!); await load(); }} className="text-xs text-danger hover:underline">ลบ</button></td></tr>);
-            })}</tbody></table>
+          <div className="space-y-3">
+            {[...monthQuota].sort((a,b) => {
+              const pa = a.quota_target > 0 ? (a.actual_sales/a.quota_target*100) : 0;
+              const pb = b.quota_target > 0 ? (b.actual_sales/b.quota_target*100) : 0;
+              return pb - pa;
+            }).map((q, rank) => {
+              const pct = q.quota_target > 0 ? (q.actual_sales/q.quota_target*100) : 0;
+              const remaining = q.quota_target - q.actual_sales;
+              const medal = rank === 0 ? "🥇" : rank === 1 ? "🥈" : rank === 2 ? "🥉" : "";
+              const barColor = pct >= 100 ? "bg-green-500" : pct >= 70 ? "bg-yellow-500" : "bg-red-500";
+              const textColor = pct >= 100 ? "text-green-400" : pct >= 70 ? "text-yellow-400" : "text-red-400";
+              return (
+                <div key={q.id} className="rounded-xl bg-card border border-border overflow-hidden hover:border-accent/20 transition-all">
+                  <div className="flex items-center">
+                    {/* Left color bar */}
+                    <div className={`w-1.5 self-stretch shrink-0 ${barColor}`} />
+                    <div className="flex-1 px-5 py-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          {medal && <span className="text-lg">{medal}</span>}
+                          <div>
+                            <p className="font-bold text-[15px]">{q.user_name}</p>
+                            <p className="text-[10px] text-muted"><span className={`rounded-full px-1.5 py-0.5 ${q.role === "avenger" ? "bg-purple-900/50 text-purple-400" : "bg-blue-900/50 text-blue-400"}`}>{q.role}</span></p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-3xl font-bold tabular-nums ${textColor}`}>{pct.toFixed(0)}<span className="text-lg">%</span></p>
+                        </div>
+                      </div>
+
+                      {/* Progress bar — full width */}
+                      <div className="h-3 rounded-full bg-background overflow-hidden mb-3">
+                        <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                      </div>
+
+                      {/* Stats row */}
+                      <div className="grid grid-cols-4 gap-3 text-xs">
+                        <div><p className="text-muted">เป้า</p><p className="font-semibold tabular-nums">{q.quota_target.toLocaleString()}</p></div>
+                        <div><p className="text-muted">ยอดจริง</p><p className="font-semibold text-green-400 tabular-nums">{q.actual_sales.toLocaleString()}</p></div>
+                        <div><p className="text-muted">เหลือ</p><p className={`font-semibold tabular-nums ${remaining <= 0 ? "text-green-400" : "text-yellow-400"}`}>{remaining <= 0 ? "ถึงเป้า ✓" : remaining.toLocaleString()}</p></div>
+                        <div><p className="text-muted">Won</p><p className="font-semibold tabular-nums">{q.won_deals || 0} deals</p></div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col gap-1.5 px-4 shrink-0">
+                      <button onClick={() => { setQuotaForm({ user_name: q.user_name, role: q.role || "sale", month: q.month || currentMonth, quota_target: q.quota_target, actual_sales: q.actual_sales, profit_target: q.profit_target || 0, actual_profit: q.actual_profit || 0, target_gp_percent: q.target_gp_percent || 0, won_deals: q.won_deals || 0, total_activities: q.total_activities || 0 }); setShowQuotaForm(true); }} title="แก้ไข" className="text-[10px] bg-accent/10 text-accent rounded-lg px-3 py-1.5 hover:bg-accent/20">✏️ แก้ไข</button>
+                      <button onClick={async () => { if (!confirm(`ลบเป้า ${q.user_name}?`)) return; const { salesQuotas } = await import("@/lib/firestore"); await salesQuotas.remove(q.id!); await load(); }} title="ลบ" className="text-[10px] text-danger/70 rounded-lg px-3 py-1.5 hover:bg-red-900/20">🗑 ลบ</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </>)}

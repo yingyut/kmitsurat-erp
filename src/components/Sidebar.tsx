@@ -59,17 +59,17 @@ export default function Sidebar() {
   const { currentUser, setCurrentUser, users } = useCurrentUser();
 
   return (
-    <aside className="fixed left-0 top-0 flex h-full w-52 flex-col bg-card border-r border-border z-50">
+    <aside className="fixed left-0 top-0 flex h-full w-52 flex-col bg-[#0a1020] border-r border-border/50 z-50">
       <div className="px-4 py-4" title="ระบบบริหารงาน KMITSURAT">
-        <h1 className="text-base font-bold tracking-tight text-accent">KMITSURAT</h1>
-        <p className="text-[10px] text-muted">Work Portal v1.6</p>
+        <h1 className="text-base font-bold tracking-tight text-gradient">KMITSURAT</h1>
+        <p className="text-[10px] text-muted/60">Work Portal v1.6</p>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 px-2 overflow-y-auto pb-3">
         {sections.map((section, i) => (
           <div key={i} className={i === 0 ? "" : "mt-3"}>
             {section.title && (
               <div className="px-3 pt-1 pb-1.5">
-                <p className="text-[9px] font-bold tracking-wider text-muted/70" title={section.subtitle}>
+                <p className="text-[9px] font-bold tracking-widest text-accent/40 uppercase" title={section.subtitle}>
                   {section.title}
                   {section.subtitle && <span className="ml-1.5 font-normal normal-case tracking-normal text-muted/50">· {section.subtitle}</span>}
                 </p>
@@ -79,7 +79,7 @@ export default function Sidebar() {
               const active = isActive(item.href);
               return (
                 <Link key={item.href} href={item.href} title={item.thai}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${active ? "bg-accent text-white font-medium" : "text-muted hover:bg-card-hover hover:text-foreground"}`}>
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all ${active ? "bg-accent/15 text-accent font-medium shadow-[0_0_12px_rgba(99,102,241,0.15)] border border-accent/20" : "text-muted/80 hover:bg-card-hover hover:text-foreground border border-transparent"}`}>
                   <span className="text-sm">{item.icon}</span>
                   {item.label}
                 </Link>
