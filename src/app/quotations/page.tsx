@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { Quotation, QuotationItem, Customer, Project, Product } from "@/lib/types";
+import type { Quotation, QuotationItem, Customer, Project, Product, User } from "@/lib/types";
+import { generateNumber } from "@/lib/numbering";
 
 const emptyItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0, price_tier: "general" };
 
@@ -22,6 +23,8 @@ export default function QuotationsPage() {
   const [custs, setCusts] = useState<Customer[]>([]);
   const [projs, setProjs] = useState<Project[]>([]);
   const [prods, setProds] = useState<Product[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [createdById, setCreatedById] = useState<string>("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | Quotation["status"]>("all");
   const [loading, setLoading] = useState(true);
@@ -45,7 +48,11 @@ export default function QuotationsPage() {
 
   async function load() {
     const fs = await import("@/lib/firestore");
-    try { const [q, c, p, pr] = await Promise.all([fs.quotations.list(), fs.customers.list(), fs.projects.list(), fs.products.list()]); setList(q); setCusts(c); setProjs(p); setProds(pr.filter((x) => x.active)); } catch (e) { console.error(e); } finally { setLoading(false); }
+    try {
+      const [q, c, p, pr, u] = await Promise.all([fs.quotations.list(), fs.customers.list(), fs.projects.list(), fs.products.list(), fs.users.list()]);
+      setList(q); setCusts(c); setProjs(p); setProds(pr.filter((x) => x.active));
+      setUsers(u.filter(x => x.active && (x.role === "sale" || x.role === "avenger" || x.role === "admin")));
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   }
   useEffect(() => { setMounted(true); load(); }, []);
 
@@ -148,7 +155,10 @@ export default function QuotationsPage() {
   async function handleSave() {
     if (!custId || items.length === 0) return; setSaving(true);
     const { quotations } = await import("@/lib/firestore");
-    const qNum = `QT-${Date.now().toString(36).toUpperCase()}`;
+    const creator = users.find(u => u.id === createdById);
+    const userCode = creator?.sales_code || "";
+    const fromTemplate = await generateNumber("quotation", { user_code: userCode });
+    const qNum = fromTemplate || `QT-${Date.now().toString(36).toUpperCase()}`;
     try {
       await quotations.add({
         quotation_number: qNum, customer_id: custId, customer_name: custName,
@@ -156,7 +166,7 @@ export default function QuotationsPage() {
         total_cost: totalCost, total_selling: subtotalSelling, total_discount: totalDiscount,
         gross_profit: grossProfit, gp_percent: gpPercent,
         vat_mode: vatMode, vat_rate: vatRate, vat_amount: vatAmount, grand_total: grandTotal,
-        status: "draft", notes, created_by: "",
+        status: "draft", notes, created_by: creator?.name || "",
       } as unknown as Record<string, unknown>);
       setCustId(""); setCustName(""); setProjId(""); setProjName(""); setItems([{ ...emptyItem }]); setNotes("");
       setVatMode("exclusive"); setVatRate(7);
@@ -254,9 +264,27 @@ export default function QuotationsPage() {
       {showForm && (
         <div className="rounded-xl bg-card border border-border p-5 mb-5">
           <h2 className="text-base font-semibold mb-3">New Quotation</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-            <select value={custId} onChange={(e) => { setCustId(e.target.value); setCustName(custs.find((c) => c.id === e.target.value)?.company_name || ""); }} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="">-- Customer --</option>{custs.map((c) => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select>
-            <select value={projId} onChange={(e) => { setProjId(e.target.value); setProjName(projs.find((p) => p.id === e.target.value)?.name || ""); }} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="">-- Project --</option>{projs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            <div>
+              <label className="text-[10px] text-muted">ลูกค้า *</label>
+              <select value={custId} onChange={(e) => { setCustId(e.target.value); setCustName(custs.find((c) => c.id === e.target.value)?.company_name || ""); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกลูกค้า --</option>{custs.map((c) => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select>
+            </div>
+            <div>
+              <label className="text-[10px] text-muted">โปรเจค</label>
+              <select value={projId} onChange={(e) => { setProjId(e.target.value); setProjName(projs.find((p) => p.id === e.target.value)?.name || ""); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกโปรเจค --</option>{projs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+            </div>
+            <div>
+              <label className="text-[10px] text-muted">ผู้สร้าง / เซลล์ <span className="text-muted/60">(ใช้ใน QT number)</span></label>
+              <select value={createdById} onChange={(e) => setCreatedById(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                <option value="">-- เลือกเซลล์ --</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.name} {u.sales_code ? `[${u.sales_code}]` : "(ไม่มี code)"}</option>
+                ))}
+              </select>
+              {createdById && !users.find(u => u.id === createdById)?.sales_code && (
+                <p className="text-[10px] text-amber-400 mt-0.5">⚠ user นี้ยังไม่มี sales_code — <Link href="/users" className="underline">ตั้งค่า</Link></p>
+              )}
+            </div>
           </div>
 
           <p className="text-sm font-medium mb-2">รายการสินค้า / บริการ <span className="text-[10px] text-muted ml-1">(พิมพ์ค้นหา หรือใส่ชื่อเองได้)</span></p>

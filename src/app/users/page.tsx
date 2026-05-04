@@ -7,7 +7,7 @@ const roleLabels: Record<string, string> = { admin: "ผู้ดูแลระ
 const roleColor: Record<string, string> = { admin: "bg-cyan-900/50 text-cyan-400", sale: "bg-blue-900/50 text-blue-400", presale: "bg-purple-900/50 text-purple-400", service: "bg-rose-900/50 text-rose-400", avenger: "bg-orange-900/50 text-orange-400" };
 const teamTypes = ["sales", "presale", "service", "avenger", "admin"] as const;
 
-const emptyUser = { name: "", email: "", role: "sale" as User["role"], position: "", department: "", phone: "", bio: "", active: true };
+const emptyUser = { name: "", email: "", role: "sale" as User["role"], position: "", department: "", phone: "", bio: "", active: true, sales_code: "" };
 const emptyTeam = { name: "", type: "sales" as Team["type"] };
 
 export default function UsersPage() {
@@ -61,6 +61,7 @@ export default function UsersPage() {
       name: user.name, email: user.email, role: user.role,
       position: user.position || "", department: user.department || "",
       phone: user.phone || "", bio: user.bio || "", active: user.active,
+      sales_code: user.sales_code || "",
     });
     setShowUserForm(true);
     setSelectedUser(null);
@@ -163,6 +164,7 @@ export default function UsersPage() {
                 <input placeholder="เบอร์โทร" value={userForm.phone} onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
                 <input placeholder="ตำแหน่ง" value={userForm.position} onChange={(e) => setUserForm({ ...userForm, position: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
                 <input placeholder="แผนก" value={userForm.department} onChange={(e) => setUserForm({ ...userForm, department: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                <input placeholder="รหัสเซลล์ (Sales Code) เช่น SPLC" maxLength={5} value={userForm.sales_code} onChange={(e) => setUserForm({ ...userForm, sales_code: e.target.value.toUpperCase() })} title="รหัส 3-5 ตัวอักษร ใช้ใน Document Numbering — ตั้งค่าได้ที่ /settings/numbering" className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent uppercase font-mono" />
                 <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value as User["role"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
                   {roles.map((r) => <option key={r} value={r}>{r} - {roleLabels[r]}</option>)}
                 </select>

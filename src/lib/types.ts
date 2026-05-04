@@ -13,6 +13,7 @@ export interface User {
   phone?: string;
   avatar?: string;
   bio?: string;
+  sales_code?: string; // 3-4 letter code for document numbering (e.g. "SPLC")
 }
 
 export interface Team {
@@ -27,6 +28,19 @@ export interface ProjectType {
   tenant_id: string;
   name: string;
   description: string;
+}
+
+export interface NumberingSetting {
+  id?: string;
+  tenant_id: string;
+  doc_type: "quotation" | "contract" | "invoice" | "po" | "service_ticket";
+  label: string;                  // friendly name e.g. "ใบเสนอราคา"
+  prefix: string;                 // e.g. "QON", "KM", "INV"
+  template: string;               // e.g. "{prefix}{user_code}{year_ce_2}{month}-{seq3}"
+  current_seq: number;            // last issued (0 initially → next will be 1)
+  reset_cycle: "never" | "yearly" | "monthly";
+  last_reset_period?: string;     // "2026-04" or "2026"
+  active: boolean;
 }
 
 export interface ProductCategory {
@@ -218,6 +232,7 @@ export interface VendorPrice {
 export interface ServiceContract {
   id?: string;
   tenant_id: string;
+  contract_number?: string;     // human-readable number (e.g. KM-6704-0023)
   customer_id: string;
   customer_name: string;        // denormalized for display
   project_id?: string;

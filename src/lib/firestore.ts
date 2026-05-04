@@ -8,12 +8,14 @@ import { db } from "./firebase";
 import type {
   User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
+  NumberingSetting,
 } from "./types";
 
 // Re-export types
 export type {
   User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, QuotationItem, SalesQuota,
+  NumberingSetting,
 } from "./types";
 
 // ============================================================
@@ -80,6 +82,7 @@ export const products = svc<Product>("products");
 export const projectTypes = svc<ProjectType>("project_types");
 export const projectTasks = svc<ProjectTask>("project_tasks");
 export const productCategories = svc<ProductCategory>("product_categories");
+export const numberingSettings = svc<NumberingSetting>("numbering_settings");
 export const vendors = svc<Vendor>("vendors");
 export const vendorPrices = svc<VendorPrice>("vendor_prices");
 export const priceHistories = svc<PriceHistory>("price_histories");

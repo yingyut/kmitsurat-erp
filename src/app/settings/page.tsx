@@ -16,6 +16,13 @@ const settingsLinks = [
     desc: "จัดการหมวดหมู่สินค้า เช่น กล้อง CCTV, Server, Network, ไฟฟ้า, งานติดตั้ง",
     icon: "📦",
   },
+  {
+    href: "/settings/numbering",
+    title: "Document Numbering",
+    thai: "เลขเอกสาร / รูปแบบเลขที่",
+    desc: "ตั้ง prefix + format ของใบเสนอราคา / สัญญา / Invoice / PO เช่น QONSPLC2404-056, KM-6704-0023",
+    icon: "🔢",
+  },
 ];
 
 export default function SettingsPage() {

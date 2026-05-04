@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import type { ServiceContract, Customer, Project } from "@/lib/types";
+import { generateNumber } from "@/lib/numbering";
 
 type ContractType = ServiceContract["type"];
 type ContractStatus = ServiceContract["status"];
@@ -50,6 +51,73 @@ const emptyForm = {
   reminder_days_before: 30,
   notes: "",
 };
+
+// SEED templates — one customer-cluster per group, multi-contract per project
+type SeedSpec = {
+  type: ContractType;
+  title: string;
+  scope_items: string;
+  duration_days: number;
+  days_until_end: number;       // negative = expired
+  contract_value: number;
+  service_level?: string;
+  visits_per_year?: number;
+  response_time_hours?: number;
+};
+const SEED_TEMPLATES: Array<{ customer_index: number; project_name: string; contracts: SeedSpec[] }> = [
+  // Customer #1 — Server Room (3 contracts: 🛡️ + 🔧 + 📋)
+  {
+    customer_index: 0,
+    project_name: "Server Room Phase 1",
+    contracts: [
+      { type: "product_warranty",      title: "รับประกันสินค้า Server Room (Server, Storage, Switch)", scope_items: "Dell R750 SN:001-005, NetApp AFF250, Cisco N9K x4", duration_days: 1095, days_until_end: 730, contract_value: 380000 },
+      { type: "installation_warranty", title: "รับประกันงานติดตั้ง Server Room",                           scope_items: "งานเดินสาย, Rack, UPS, Cooling, Raised Floor",         duration_days: 365,  days_until_end: 90,  contract_value: 180000 },
+      { type: "service_contract",      title: "MA Server Room 24x7",                                       scope_items: "PM Quarterly + Emergency 24x7",                          duration_days: 365,  days_until_end: 25,  contract_value: 540000, service_level: "24x7", visits_per_year: 4, response_time_hours: 4 },
+    ],
+  },
+  // Customer #2 — CCTV (2 contracts: 🛡️ + 🔧)
+  {
+    customer_index: 1,
+    project_name: "CCTV 32 จุด",
+    contracts: [
+      { type: "product_warranty",      title: "รับประกันสินค้า CCTV",            scope_items: "Hikvision Camera x32, NVR DS-7732, HDD Surveillance 8TB x2", duration_days: 730, days_until_end: 540, contract_value: 95000 },
+      { type: "installation_warranty", title: "รับประกันงานติดตั้ง CCTV",        scope_items: "เดินสาย UTP/Fiber + ติดตั้งกล้อง 32 จุด",                       duration_days: 365, days_until_end: 60,  contract_value: 35000 },
+    ],
+  },
+  // Customer #3 — WiFi MA — about to expire (URGENT 7 days)
+  {
+    customer_index: 2,
+    project_name: "WiFi Solution",
+    contracts: [
+      { type: "service_contract", title: "MA WiFi 8x5",                          scope_items: "Aruba Controller 7030 + AP-515 x24",                            duration_days: 365, days_until_end: 7, contract_value: 145000, service_level: "8x5", visits_per_year: 4, response_time_hours: 8 },
+    ],
+  },
+  // Customer #4 — expired (renewal lost)
+  {
+    customer_index: 3,
+    project_name: "",
+    contracts: [
+      { type: "service_contract", title: "MA Network 2025 (รอ Renewal)",         scope_items: "Core Switch + Firewall",                                         duration_days: 365, days_until_end: -45, contract_value: 220000, service_level: "8x5", visits_per_year: 4, response_time_hours: 4 },
+    ],
+  },
+  // Customer #5 — safe long-term warranty
+  {
+    customer_index: 4,
+    project_name: "Solar Cell Rooftop",
+    contracts: [
+      { type: "product_warranty",      title: "รับประกัน Solar Panel + Inverter (10 ปี)", scope_items: "Solar Panel 300kW + Inverter SMA",                        duration_days: 3650, days_until_end: 2900, contract_value: 0 },
+      { type: "installation_warranty", title: "รับประกันงานติดตั้ง Solar (2 ปี)",          scope_items: "งานติดตั้ง + เดินสาย DC/AC + Mounting",                    duration_days: 730,  days_until_end: 530,  contract_value: 80000 },
+    ],
+  },
+];
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function dateOffset(days: number): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setTime(d.getTime() + days * 86400000);
+  return d.toISOString().slice(0, 10);
+}
 
 export default function ContractsPage() {
   const [list, setList] = useState<ServiceContract[]>([]);
@@ -204,8 +272,12 @@ export default function ContractsPage() {
     setSaving(true);
     const fs = await import("@/lib/firestore");
     try {
-      if (editId) await fs.serviceContracts.update(editId, form as unknown as Record<string, unknown>);
-      else await fs.serviceContracts.add(form as unknown as Record<string, unknown>);
+      if (editId) {
+        await fs.serviceContracts.update(editId, form as unknown as Record<string, unknown>);
+      } else {
+        const contract_number = (await generateNumber("contract")) || "";
+        await fs.serviceContracts.add({ ...form, contract_number } as unknown as Record<string, unknown>);
+      }
       setForm(emptyForm); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
@@ -216,6 +288,56 @@ export default function ContractsPage() {
     const fs = await import("@/lib/firestore");
     await fs.serviceContracts.remove(id);
     await load();
+  }
+
+  async function seedSamples() {
+    if (customers.length === 0) {
+      alert("กรุณาเพิ่มลูกค้าก่อน — ไป /customers แล้วเพิ่มอย่างน้อย 1 ราย");
+      return;
+    }
+    const usableTemplates = SEED_TEMPLATES.filter(t => customers[t.customer_index]);
+    const totalContracts = usableTemplates.reduce((s, t) => s + t.contracts.length, 0);
+    if (!confirm(
+      `โหลดสัญญาตัวอย่าง ${totalContracts} รายการ ?\n\n` +
+      usableTemplates.map(t => `• ${customers[t.customer_index].company_name} (${t.project_name || "ไม่ผูกโปรเจค"}) — ${t.contracts.length} สัญญา`).join("\n")
+    )) return;
+    setSaving(true);
+    const fs = await import("@/lib/firestore");
+    try {
+      const existingTitles = new Set(list.map(c => `${c.customer_id}|${c.title.toLowerCase()}`));
+      // Try matching project IDs by name + customer
+      const findProjectId = (customerId: string, projectName: string) => {
+        if (!projectName) return "";
+        const p = projects.find(x => x.customer_id === customerId && x.name === projectName);
+        return p?.id || "";
+      };
+      for (const tpl of usableTemplates) {
+        const cust = customers[tpl.customer_index];
+        const projectId = findProjectId(cust.id!, tpl.project_name);
+        for (const spec of tpl.contracts) {
+          const key = `${cust.id}|${spec.title.toLowerCase()}`;
+          if (existingTitles.has(key)) continue;
+          const start_date = dateOffset(spec.days_until_end - spec.duration_days);
+          const end_date = dateOffset(spec.days_until_end);
+          await fs.serviceContracts.add({
+            customer_id: cust.id!, customer_name: cust.company_name,
+            project_id: projectId, project_name: tpl.project_name,
+            type: spec.type, title: spec.title, scope_items: spec.scope_items,
+            description: "",
+            start_date, end_date,
+            service_level: spec.service_level || "",
+            visits_per_year: spec.visits_per_year || 0,
+            response_time_hours: spec.response_time_hours || 0,
+            contract_value: spec.contract_value,
+            status: "active",
+            reminder_days_before: 30,
+            notes: "",
+          } as unknown as Record<string, unknown>);
+        }
+      }
+      await load();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
   }
 
   async function markReminded(c: ServiceContract) {
@@ -244,7 +366,12 @@ export default function ContractsPage() {
           <h1 className="text-xl font-bold" title="สัญญาและการรับประกัน">Contracts / Warranty</h1>
           <p className="text-xs text-muted">รับประกันสินค้า · งานติดตั้ง · MA — ติดตามวันหมดอายุเพื่อ renewal</p>
         </div>
-        <button onClick={openAdd} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ เพิ่มสัญญา</button>
+        <div className="flex gap-2">
+          {list.length === 0 && (
+            <button onClick={seedSamples} disabled={saving} className="rounded-lg border border-accent text-accent px-4 py-2 text-sm hover:bg-accent/10 disabled:opacity-50">📥 โหลดตัวอย่าง</button>
+          )}
+          <button onClick={openAdd} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ เพิ่มสัญญา</button>
+        </div>
       </div>
 
       {!loading && list.length > 0 && (
@@ -491,6 +618,7 @@ export default function ContractsPage() {
                       <td className="px-4 py-2 w-32"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.color}`}>{meta.icon} {meta.thai}</span></td>
                       <td className="px-4 py-2">
                         <p className="font-medium text-sm">{c.title}</p>
+                        {c.contract_number && <p className="text-[10px] text-accent font-mono">{c.contract_number}</p>}
                         {c.type === "service_contract" && (
                           <p className="text-[10px] text-muted">{c.service_level}{c.visits_per_year ? ` · PM ${c.visits_per_year}/ปี` : ""}{c.response_time_hours ? ` · Response ${c.response_time_hours}h` : ""}</p>
                         )}
@@ -518,7 +646,7 @@ export default function ContractsPage() {
       {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? (
         <div className="rounded-xl bg-card border border-border p-8 text-center">
           <p className="text-muted text-sm mb-2">{list.length === 0 ? "ยังไม่มีสัญญา" : "ไม่พบสัญญาตามตัวกรอง"}</p>
-          {list.length === 0 && <p className="text-[11px] text-muted">กด <b className="text-accent">+ เพิ่มสัญญา</b> เพื่อเริ่ม</p>}
+          {list.length === 0 && <p className="text-[11px] text-muted">กด <b className="text-accent">📥 โหลดตัวอย่าง</b> เพื่อเริ่มอย่างเร็ว หรือ <b className="text-accent">+ เพิ่มสัญญา</b> เพื่อสร้างเอง</p>}
         </div>
       ) : groupBy === "flat" ? (
         <div className="rounded-xl bg-card border border-border overflow-hidden">
@@ -544,6 +672,7 @@ export default function ContractsPage() {
                   </td>
                   <td className="px-4 py-2.5">
                     <p className="font-medium text-sm">{c.title}</p>
+                    {c.contract_number && <p className="text-[10px] text-accent font-mono">{c.contract_number}</p>}
                     {c.type === "service_contract" && (
                       <p className="text-[10px] text-muted">
                         {c.service_level && `${c.service_level}`}
