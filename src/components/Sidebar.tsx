@@ -7,6 +7,7 @@ const nav = [
   { href: "/dashboard", label: "Dashboard", thai: "แดชบอร์ด", icon: "📊" },
   { href: "/customers", label: "Customers", thai: "ลูกค้า", icon: "🏢" },
   { href: "/projects", label: "Projects", thai: "โปรเจกต์ / โอกาสขาย", icon: "📁" },
+  { href: "/project-management", label: "Project Mgmt", thai: "บริหารโปรเจกต์ / Action Plan", icon: "🗂️" },
   { href: "/sales", label: "Sales", thai: "งานขาย", icon: "📞" },
   { href: "/presale", label: "Presale", thai: "พรีเซลล์", icon: "📋" },
   { href: "/service", label: "Service", thai: "งานบริการ", icon: "🔧" },

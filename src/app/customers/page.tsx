@@ -23,6 +23,7 @@ export default function CustomersPage() {
   const [search, setSearch] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("all");
   const [orgFilter, setOrgFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name_asc" | "name_desc" | "province" | "org_type">("newest");
   const [saving, setSaving] = useState(false);
 
   // Form
@@ -51,6 +52,26 @@ export default function CustomersPage() {
     const matchProv = provinceFilter === "all" ? true : c.province === provinceFilter;
     const matchOrg = orgFilter === "all" ? true : c.org_type === orgFilter;
     return matchSearch && matchProv && matchOrg;
+  });
+
+  // Sort
+  function getCreatedTime(c: Customer): number {
+    const ts = (c as unknown as { created_at?: { toMillis?: () => number; seconds?: number } }).created_at;
+    if (!ts) return 0;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    return 0;
+  }
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case "newest": return getCreatedTime(b) - getCreatedTime(a);
+      case "oldest": return getCreatedTime(a) - getCreatedTime(b);
+      case "name_asc": return (a.company_name || "").localeCompare(b.company_name || "", "th");
+      case "name_desc": return (b.company_name || "").localeCompare(a.company_name || "", "th");
+      case "province": return (a.province || "").localeCompare(b.province || "", "th");
+      case "org_type": return (orgLabels[a.org_type] || a.org_type || "").localeCompare(orgLabels[b.org_type] || b.org_type || "", "th");
+      default: return 0;
+    }
   });
 
   // Provinces that have customers
@@ -126,6 +147,14 @@ export default function CustomersPage() {
           <option value="all">ทุกประเภท</option>
           {orgTypes.map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
         </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} title="จัดเรียง" className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+          <option value="newest">เรียง: ใหม่ที่สุด</option>
+          <option value="oldest">เรียง: เก่าที่สุด</option>
+          <option value="name_asc">ชื่อ A → Z (ก-ฮ)</option>
+          <option value="name_desc">ชื่อ Z → A (ฮ-ก)</option>
+          <option value="province">จังหวัด ก-ฮ</option>
+          <option value="org_type">ประเภทหน่วยงาน</option>
+        </select>
       </div>
 
       {/* Add/Edit Form */}
@@ -159,19 +188,26 @@ export default function CustomersPage() {
       {/* Customer Table */}
       <div className="rounded-xl bg-card border border-border overflow-hidden mb-5">
         <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
-          <p className="text-sm font-semibold">รายชื่อลูกค้า ({filtered.length})</p>
+          <p className="text-sm font-semibold">รายชื่อลูกค้า ({sorted.length})</p>
+          <p className="text-[10px] text-muted">เรียงโดย: {({newest:"ใหม่ที่สุด",oldest:"เก่าที่สุด",name_asc:"ชื่อ ก-ฮ",name_desc:"ชื่อ ฮ-ก",province:"จังหวัด",org_type:"ประเภท"} as Record<string,string>)[sortBy]}</p>
         </div>
-        {filtered.length === 0 ? <p className="text-muted text-sm p-4">ไม่พบลูกค้า</p> : (
+        {sorted.length === 0 ? <p className="text-muted text-sm p-4">ไม่พบลูกค้า</p> : (
           <table className="w-full text-sm">
             <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
-              <th className="px-4 py-2.5" title="ชื่อบริษัท">Company</th>
+              <th className="px-4 py-2.5 cursor-pointer hover:text-accent" title="คลิกเพื่อเรียงตามชื่อ" onClick={() => setSortBy(sortBy === "name_asc" ? "name_desc" : "name_asc")}>
+                Company {sortBy === "name_asc" ? "▲" : sortBy === "name_desc" ? "▼" : ""}
+              </th>
               <th className="px-4 py-2.5" title="ผู้ติดต่อ">Contact</th>
               <th className="px-4 py-2.5" title="เบอร์โทร">Phone</th>
-              <th className="px-4 py-2.5" title="จังหวัด">Province</th>
-              <th className="px-4 py-2.5" title="ประเภท">Type</th>
+              <th className="px-4 py-2.5 cursor-pointer hover:text-accent" title="คลิกเพื่อเรียงตามจังหวัด" onClick={() => setSortBy("province")}>
+                Province {sortBy === "province" ? "▲" : ""}
+              </th>
+              <th className="px-4 py-2.5 cursor-pointer hover:text-accent" title="คลิกเพื่อเรียงตามประเภท" onClick={() => setSortBy("org_type")}>
+                Type {sortBy === "org_type" ? "▲" : ""}
+              </th>
               <th className="px-4 py-2.5 w-28" title="จัดการ">Actions</th>
             </tr></thead>
-            <tbody>{filtered.map(c => (
+            <tbody>{sorted.map(c => (
               <tr key={c.id} className="border-b border-border last:border-0 hover:bg-card-hover relative"
                 onMouseEnter={e => handleMouseEnter(e, c)} onMouseLeave={() => setHoverCust(null)}>
                 <td className="px-4 py-2.5 font-medium">{c.company_name}</td>

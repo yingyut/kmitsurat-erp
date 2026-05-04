@@ -70,6 +70,24 @@ export interface Project {
   reminder_note: string;
 }
 
+export interface ProjectTask {
+  id?: string;
+  tenant_id: string;
+  project_id: string;
+  project_name: string;
+  order: number;
+  phase: string; // เช่น Pre-sale / Implementation / Delivery / Post-sale
+  title: string;
+  description: string;
+  assigned_to: string;
+  start_date: string;
+  due_date: string;
+  status: "pending" | "in_progress" | "completed" | "blocked";
+  progress: number; // 0-100
+  notes: string;
+  completed_at: string;
+}
+
 export interface JobRequest {
   id?: string;
   tenant_id: string;
