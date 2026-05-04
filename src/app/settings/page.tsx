@@ -23,6 +23,13 @@ const settingsLinks = [
     desc: "ตั้ง prefix + format ของใบเสนอราคา / สัญญา / Invoice / PO เช่น QONSPLC2404-056, KM-6704-0023",
     icon: "🔢",
   },
+  {
+    href: "/settings/integrations",
+    title: "File Storage Integrations",
+    thai: "เชื่อม SharePoint / OneDrive / Drive",
+    desc: "ตั้ง base URL + folder template — ระบบจะสร้างลิงก์ folder อัตโนมัติในงาน Presale",
+    icon: "📘",
+  },
 ];
 
 export default function SettingsPage() {

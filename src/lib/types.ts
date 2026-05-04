@@ -30,6 +30,18 @@ export interface ProjectType {
   description: string;
 }
 
+export interface IntegrationSetting {
+  id?: string;
+  tenant_id: string;
+  type: "o365_sharepoint" | "onedrive" | "google_drive" | "dropbox" | "other";
+  label: string;                   // friendly name (e.g., "SharePoint - Sales Site")
+  base_url: string;                // root URL of the document library
+  folder_template: string;         // path with placeholders e.g. "{year}/{customer}/{project}"
+  default_subfolders: string[];   // e.g. ["01-Solution", "02-BOM-BOQ", "03-Drawing", ...]
+  active: boolean;
+  notes?: string;
+}
+
 export interface NumberingSetting {
   id?: string;
   tenant_id: string;

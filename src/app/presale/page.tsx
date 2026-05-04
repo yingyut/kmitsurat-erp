@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { PresaleRequest, Customer, Project, JobRequest, User, Product, QuotationItem, BomItem, PresaleAttachment } from "@/lib/types";
+import type { PresaleRequest, Customer, Project, JobRequest, User, Product, QuotationItem, BomItem, PresaleAttachment, IntegrationSetting } from "@/lib/types";
 import { generateNumber } from "@/lib/numbering";
+import { buildProjectFolderUrl, buildSubfolderUrl } from "@/lib/integrations";
 
 const reqTypes = ["solution_design","requirement_summary","boq","technical_proposal","site_survey","project_planning"] as const;
 const typeLabels: Record<string, string> = { solution_design: "Solution Design", requirement_summary: "Requirement Summary", boq: "BOQ Preparation", technical_proposal: "Technical Proposal", site_survey: "Site Survey", project_planning: "Project Planning" };
@@ -111,6 +112,7 @@ export default function PresalePage() {
   const [custs, setCusts] = useState<Customer[]>([]);
   const [projs, setProjs] = useState<Project[]>([]);
   const [prods, setProds] = useState<Product[]>([]);
+  const [integration, setIntegration] = useState<IntegrationSetting | null>(null);
   const [incomingReqs, setIncomingReqs] = useState<JobRequest[]>([]);
   const [presaleUsers, setPresaleUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
@@ -135,14 +137,17 @@ export default function PresalePage() {
   async function load() {
     const fs = await import("@/lib/firestore");
     try {
-      const [r, c, p, jr, u, pd] = await Promise.all([
+      const [r, c, p, jr, u, pd, ints] = await Promise.all([
         fs.presaleRequests.list(), fs.customers.list(), fs.projects.list(),
         fs.jobRequests.list(), fs.users.list(), fs.products.list(),
+        fs.integrationSettings.list(),
       ]);
       setList(r); setCusts(c); setProjs(p);
       setProds(pd.filter(x => x.active));
       setIncomingReqs(jr.filter(j => j.request_to_team === "presale"));
       setPresaleUsers(u.filter(x => x.active && x.role === "presale"));
+      // Pick the first active integration (UX: simplicity)
+      setIntegration(ints.find(i => i.active) || null);
       // Refresh detail panel if open
       if (detail) {
         const updated = r.find(x => x.id === detail.id);
@@ -337,6 +342,9 @@ export default function PresalePage() {
   // === Attachment editor ===
   function addAttachmentRow() {
     setAttachments([...attachments, { ...emptyAttachment, uploaded_at: todayStr(), uploaded_by: detail?.assigned_to || "" }]);
+  }
+  function addAttachmentWithUrl(url: string, name: string, type: PresaleAttachment["type"] = "other") {
+    setAttachments([...attachments, { type, name, url, uploaded_at: todayStr(), uploaded_by: detail?.assigned_to || "", notes: "" }]);
   }
   function updateAttachment(idx: number, field: keyof PresaleAttachment, val: string) {
     setAttachments(attachments.map((a, i) => i === idx ? { ...a, [field]: val } : a));
@@ -698,6 +706,56 @@ export default function PresalePage() {
           {detailTab === "files" && (
             <div className="space-y-2">
               <p className="text-[10px] text-muted">ลิงก์ไฟล์ภายนอก (Google Drive, OneDrive, Dropbox, etc.) — ไม่อัพโหลดเข้าระบบ</p>
+
+              {/* Suggested folders from integration */}
+              {integration && detail.customer_name && (
+                <div className="rounded-lg bg-emerald-900/10 border border-emerald-800/40 p-3">
+                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                    <p className="text-xs font-semibold text-emerald-400">
+                      📁 Folder ใน {integration.label}
+                      {detail.project_name ? ` — ${detail.project_name}` : ` — ${detail.customer_name}`}
+                    </p>
+                    <a
+                      href={buildProjectFolderUrl(integration, { customer_name: detail.customer_name, project_name: detail.project_name, customer_id: detail.customer_id, project_id: detail.project_id })}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-[11px] text-accent hover:underline"
+                      title="เปิด root folder ของโปรเจคนี้"
+                    >🔗 เปิด root folder ↗</a>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                    {(integration.default_subfolders || []).map(sub => {
+                      const url = buildSubfolderUrl(integration, { customer_name: detail.customer_name, project_name: detail.project_name, customer_id: detail.customer_id, project_id: detail.project_id }, sub);
+                      const guessType: PresaleAttachment["type"] =
+                        /solution/i.test(sub) ? "design" :
+                        /BOM|BOQ/i.test(sub) ? "spec" :
+                        /draw/i.test(sub) ? "drawing" :
+                        /present/i.test(sub) ? "presentation" :
+                        /photo|image|site/i.test(sub) ? "image" :
+                        /contract|hand/i.test(sub) ? "document" : "other";
+                      const alreadyAdded = attachments.some(a => a.url === url);
+                      return (
+                        <div key={sub} className="flex items-center gap-1.5 rounded bg-card border border-border px-2 py-1.5 text-[11px]">
+                          <span className="flex-1 truncate font-mono">{sub}</span>
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline shrink-0" title={url}>↗ เปิด</a>
+                          {alreadyAdded ? (
+                            <span className="text-[10px] text-muted shrink-0">✓ added</span>
+                          ) : (
+                            <button onClick={() => addAttachmentWithUrl(url, sub, guessType)} className="text-emerald-400 hover:underline shrink-0" title="เพิ่มเป็น attachment">+ ใช้ลิงก์นี้</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-muted mt-2">💡 ลิงก์อ้างอิงโครงสร้าง folder ที่ตั้งค่าไว้ — สร้าง folder ใน SharePoint ตามที่ template กำหนด ก่อนใช้งาน</p>
+                </div>
+              )}
+              {!integration && (
+                <div className="rounded-lg bg-blue-900/10 border border-blue-800/40 p-3 text-[11px]">
+                  💡 ตั้งค่า SharePoint / OneDrive ที่ <Link href="/settings/integrations" className="text-accent hover:underline">/settings/integrations</Link> เพื่อให้ระบบสร้างลิงก์ folder อัตโนมัติ
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 {attachments.map((a, i) => (
                   <div key={i} className="grid grid-cols-12 gap-2 items-center rounded-lg bg-background border border-border p-2">
