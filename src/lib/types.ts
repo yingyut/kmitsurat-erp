@@ -145,6 +145,24 @@ export interface SalesActivity {
   next_follow_up: string;
 }
 
+export interface BomItem {
+  code: string;
+  name: string;
+  brand: string;
+  qty: number;
+  unit: string;
+  notes: string;
+}
+
+export interface PresaleAttachment {
+  type: "design" | "drawing" | "presentation" | "spec" | "image" | "document" | "other";
+  name: string;
+  url: string;
+  uploaded_at: string;          // YYYY-MM-DD
+  uploaded_by: string;
+  notes?: string;
+}
+
 export interface PresaleRequest {
   id?: string;
   tenant_id: string;
@@ -158,6 +176,18 @@ export interface PresaleRequest {
   assigned_to: string;
   due_date: string;
   status: "pending" | "in_progress" | "completed";
+  // Artifacts
+  solution_summary?: string;     // markdown / plain text
+  bom_items?: BomItem[];          // light parts list
+  boq_items?: QuotationItem[];    // structured BOQ — convertible to Quotation
+  boq_total_cost?: number;
+  boq_total_selling?: number;
+  boq_gp_percent?: number;
+  attachments?: PresaleAttachment[];
+  // Convert tracking
+  converted_to_quotation_id?: string;
+  converted_quotation_number?: string;
+  converted_at?: string;
 }
 
 export interface ServiceTicket {

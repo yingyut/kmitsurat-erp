@@ -14,6 +14,7 @@ import type {
 // Re-export types
 export type {
   User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
+  BomItem, PresaleAttachment,
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, QuotationItem, SalesQuota,
   NumberingSetting,
 } from "./types";
