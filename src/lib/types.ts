@@ -160,6 +160,50 @@ export interface ServiceTicket {
   status: "open" | "in_progress" | "resolved" | "closed";
 }
 
+export interface Vendor {
+  id?: string;
+  tenant_id: string;
+  name: string;
+  contact_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+  active: boolean;
+  payment_terms?: string; // เช่น "เครดิต 30 วัน", "เงินสด"
+  tax_id?: string;
+}
+
+export interface VendorPrice {
+  id?: string;
+  tenant_id: string;
+  product_id: string;
+  product_name: string;       // denormalized for display
+  vendor_id: string;
+  vendor_name: string;        // denormalized for display
+  current_price: number;
+  min_qty: number;            // ขั้นต่ำสั่ง
+  lead_time_days: number;     // วันรับของหลังสั่ง
+  notes: string;
+  last_updated: string;       // YYYY-MM-DD
+  active: boolean;
+}
+
+export interface PriceHistory {
+  id?: string;
+  tenant_id: string;
+  product_id: string;
+  product_name: string;
+  vendor_id: string;
+  vendor_name: string;
+  old_price: number;          // 0 if first entry
+  new_price: number;
+  change_pct: number;         // negative = cheaper, positive = more expensive
+  effective_date: string;     // YYYY-MM-DD when this price became effective
+  recorded_at: string;        // ISO timestamp when entry was created
+  note: string;
+}
+
 export interface Product {
   id?: string;
   tenant_id: string;

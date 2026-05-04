@@ -35,6 +35,7 @@ const sections: Section[] = [
     title: "MASTER DATA",
     items: [
       { href: "/customers", label: "Customers", thai: "ฐานข้อมูลลูกค้า", icon: "🏢" },
+      { href: "/vendors", label: "Vendors", thai: "ผู้ขาย / Suppliers", icon: "🏪" },
       { href: "/products", label: "Products", thai: "สินค้า / ราคา", icon: "📦" },
     ],
   },
