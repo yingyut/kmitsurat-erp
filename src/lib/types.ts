@@ -46,6 +46,69 @@ export interface IntegrationSetting {
   notes?: string;
 }
 
+// Notification system
+export type NotifyChannelType = "email" | "line_notify" | "line_messaging" | "ms_teams" | "webhook";
+
+export interface NotificationChannel {
+  id?: string;
+  tenant_id: string;
+  type: NotifyChannelType;
+  name: string;                    // e.g. "Sales LINE Group", "IT Teams Channel"
+  active: boolean;
+  // Email
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_user?: string;
+  smtp_pass?: string;
+  from_email?: string;
+  from_name?: string;
+  // LINE Notify
+  line_notify_token?: string;
+  // LINE Messaging API
+  line_channel_token?: string;
+  line_channel_secret?: string;
+  line_group_id?: string;
+  // Microsoft Teams
+  teams_webhook_url?: string;
+  // Generic Webhook
+  webhook_url?: string;
+  webhook_method?: "POST" | "GET";
+  webhook_headers?: string;        // JSON string
+}
+
+export type NotifyTrigger =
+  | "quotation_created"
+  | "quotation_gp_below"
+  | "quotation_sent_review"
+  | "quotation_approved"
+  | "quotation_rejected"
+  | "project_opened"
+  | "contract_expiring"
+  | "service_ticket_created"
+  | "ticket_status_changed";
+
+export interface NotificationWorkflow {
+  id?: string;
+  tenant_id: string;
+  name: string;                    // e.g. "แจ้งเตือน GP ต่ำ"
+  module: string;                  // e.g. "quotations", "projects", "service"
+  trigger: NotifyTrigger;
+  condition: string;               // e.g. "gp_percent < 15", or "" for no condition
+  // Recipients
+  recipient_roles: string[];       // e.g. ["admin", "sale"]
+  recipient_users: string[];       // specific user names
+  recipient_emails: string[];      // additional emails
+  recipient_line_group?: string;   // LINE group name
+  // Channels
+  channels: NotifyChannelType[];   // which channels to use
+  channel_ids: string[];           // specific channel document IDs
+  // Templates
+  subject_template: string;        // e.g. "ใบเสนอราคาใหม่: {quotation_number}"
+  body_template: string;           // e.g. "ลูกค้า: {customer_name}\nมูลค่า: {total_selling}"
+  // State
+  active: boolean;
+}
+
 export interface NumberingSetting {
   id?: string;
   tenant_id: string;
@@ -283,6 +346,8 @@ export interface ServiceContract {
   customer_name: string;        // denormalized for display
   project_id?: string;
   project_name?: string;
+  group_id?: string;             // slug key for grouping multiple contracts (e.g. "server-room-phase1")
+  group_name?: string;           // display label for the group
   // Coverage
   type: "product_warranty" | "installation_warranty" | "service_contract";
   title: string;                // เช่น "WiFi Phase 1 Warranty", "MA Server Room 2026"

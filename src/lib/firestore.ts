@@ -8,7 +8,7 @@ import { db } from "./firebase";
 import type {
   User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
-  NumberingSetting, IntegrationSetting,
+  NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow,
 } from "./types";
 
 // Re-export types
@@ -16,7 +16,7 @@ export type {
   User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
   BomItem, PresaleAttachment,
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, QuotationItem, SalesQuota,
-  NumberingSetting, IntegrationSetting,
+  NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow, NotifyChannelType, NotifyTrigger,
 } from "./types";
 
 // ============================================================
@@ -90,3 +90,5 @@ export const vendorPrices = svc<VendorPrice>("vendor_prices");
 export const priceHistories = svc<PriceHistory>("price_histories");
 export const jobRequests = svc<JobRequest>("job_requests");
 export const salesQuotas = svc<SalesQuota>("sales_quotas");
+export const notificationChannels = svc<NotificationChannel>("notification_channels");
+export const notificationWorkflows = svc<NotificationWorkflow>("notification_workflows");

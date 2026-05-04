@@ -30,6 +30,13 @@ const settingsLinks = [
     desc: "ตั้ง base URL + folder template — ระบบจะสร้างลิงก์ folder อัตโนมัติในงาน Presale",
     icon: "📘",
   },
+  {
+    href: "/settings/notifications",
+    title: "Notification Workflows",
+    thai: "แจ้งเตือนอัตโนมัติ",
+    desc: "ตั้งค่า Workflow แจ้งเตือนผ่าน Email, LINE, Teams, Webhook เมื่อเกิด event เช่น สร้างใบเสนอราคา, GP ต่ำ, สัญญาหมดอายุ",
+    icon: "🔔",
+  },
 ];
 
 export default function SettingsPage() {

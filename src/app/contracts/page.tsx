@@ -42,6 +42,7 @@ function expiryTier(days: number | null, status: ContractStatus): "expired" | "u
 
 const emptyForm = {
   customer_id: "", customer_name: "", project_id: "", project_name: "",
+  group_id: "", group_name: "",
   type: "service_contract" as ContractType,
   title: "", description: "", scope_items: "",
   start_date: "", end_date: "",
@@ -130,7 +131,7 @@ export default function ContractsPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | ContractType>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | ContractStatus | "expiring_30" | "expiring_60" | "expiring_90">("all");
-  const [groupBy, setGroupBy] = useState<"flat" | "project">("flat");
+  const [groupBy, setGroupBy] = useState<"flat" | "project" | "group">("flat");
 
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -239,12 +240,44 @@ export default function ContractsPage() {
     return arr;
   }, [filtered]);
 
+  // Group by group_name
+  const groupedByGroup = useMemo(() => {
+    const groups = new Map<string, { key: string; groupName: string; contracts: typeof filtered }>();
+    filtered.forEach(c => {
+      const key = c.group_id || `__nogroup__${c.id}`;
+      const label = c.group_name || "";
+      if (!groups.has(key)) groups.set(key, { key, groupName: label, contracts: [] });
+      groups.get(key)!.contracts.push(c);
+    });
+    const arr = [...groups.values()].map(g => {
+      const totalValue = g.contracts.reduce((s, c) => s + (c.contract_value || 0), 0);
+      const active = g.contracts.filter(c => c._effectiveStatus === "active");
+      const validDays = active.map(c => c._days).filter((d): d is number => d !== null);
+      const nextExpiry = validDays.length > 0 ? Math.min(...validDays) : null;
+      return { ...g, totalValue, nextExpiry, activeCount: active.length };
+    });
+    arr.sort((a, b) => {
+      if (!a.groupName && !b.groupName) return 0;
+      if (!a.groupName) return 1;
+      if (!b.groupName) return -1;
+      return a.groupName.localeCompare(b.groupName, "th");
+    });
+    return arr;
+  }, [filtered]);
+
+  // Unique group names for datalist
+  const existingGroups = useMemo(() => {
+    const names = new Set(list.map(c => c.group_name).filter(Boolean) as string[]);
+    return [...names].sort((a, b) => a.localeCompare(b, "th"));
+  }, [list]);
+
   function openAdd() { setEditId(null); setForm(emptyForm); setShowForm(true); }
   function openEdit(c: ServiceContract) {
     setEditId(c.id!);
     setForm({
       customer_id: c.customer_id, customer_name: c.customer_name,
       project_id: c.project_id || "", project_name: c.project_name || "",
+      group_id: c.group_id || "", group_name: c.group_name || "",
       type: c.type, title: c.title, description: c.description || "", scope_items: c.scope_items || "",
       start_date: c.start_date || "", end_date: c.end_date || "",
       service_level: c.service_level || "8x5",
@@ -272,11 +305,15 @@ export default function ContractsPage() {
     setSaving(true);
     const fs = await import("@/lib/firestore");
     try {
+      const group_id = form.group_name.trim()
+        ? form.group_name.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9฀-๿-]/g, "")
+        : "";
+      const payload = { ...form, group_id };
       if (editId) {
-        await fs.serviceContracts.update(editId, form as unknown as Record<string, unknown>);
+        await fs.serviceContracts.update(editId, payload as unknown as Record<string, unknown>);
       } else {
         const contract_number = (await generateNumber("contract")) || "";
-        await fs.serviceContracts.add({ ...form, contract_number } as unknown as Record<string, unknown>);
+        await fs.serviceContracts.add({ ...payload, contract_number } as unknown as Record<string, unknown>);
       }
       setForm(emptyForm); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); }
@@ -504,6 +541,12 @@ export default function ContractsPage() {
                 {(Object.keys(statusMeta) as ContractStatus[]).map(s => <option key={s} value={s}>{statusMeta[s].label}</option>)}
               </select>
             </div>
+            <div>
+              <label className="text-[10px] text-muted">กลุ่มสัญญา (Group)</label>
+              <input list="group-list" placeholder="เช่น Server Room Phase 1, CCTV Building A" value={form.group_name} onChange={e => setForm({ ...form, group_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+              <datalist id="group-list">{existingGroups.map(g => <option key={g} value={g} />)}</datalist>
+              <p className="text-[10px] text-muted mt-0.5">ใส่ชื่อเดียวกันเพื่อรวมกลุ่ม</p>
+            </div>
             <div className="lg:col-span-3">
               <label className="text-[10px] text-muted">หัวข้อสัญญา *</label>
               <input placeholder="เช่น MA Server Room 2026, รับประกัน CCTV 32 จุด" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
@@ -588,9 +631,59 @@ export default function ContractsPage() {
         <div className="flex gap-1 text-xs">
           <button onClick={() => setGroupBy("flat")} className={`rounded-md px-2.5 py-1 ${groupBy === "flat" ? "bg-accent text-white" : "border border-border text-muted hover:bg-card-hover"}`}>📋 Flat</button>
           <button onClick={() => setGroupBy("project")} className={`rounded-md px-2.5 py-1 ${groupBy === "project" ? "bg-accent text-white" : "border border-border text-muted hover:bg-card-hover"}`}>📁 จัดกลุ่มตามโปรเจค</button>
+          <button onClick={() => setGroupBy("group")} className={`rounded-md px-2.5 py-1 ${groupBy === "group" ? "bg-accent text-white" : "border border-border text-muted hover:bg-card-hover"}`}>📦 จัดกลุ่ม</button>
         </div>
         <p className="text-xs text-muted shrink-0">{filtered.length} รายการ</p>
       </div>
+
+      {/* Grouped by group view */}
+      {!loading && groupBy === "group" && filtered.length > 0 && (
+        <div className="space-y-3">
+          {groupedByGroup.map(g => (
+            <div key={g.key} className="rounded-xl bg-card border border-border overflow-hidden">
+              <div className="px-4 py-3 border-b border-border bg-background/50 flex items-center justify-between gap-2 flex-wrap">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">📦 {g.groupName || <span className="italic text-muted">ไม่มีกลุ่ม</span>}</p>
+                  <p className="text-[10px] text-muted">{g.contracts.length} สัญญา ({g.activeCount} active) · มูลค่ารวม {g.totalValue.toLocaleString()} THB</p>
+                </div>
+                {g.nextExpiry !== null && (
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${g.nextExpiry < 0 ? "bg-red-900/50 text-red-400" : g.nextExpiry <= 30 ? "bg-amber-900/50 text-amber-400" : g.nextExpiry <= 90 ? "bg-yellow-900/50 text-yellow-400" : "bg-green-900/50 text-green-400"}`}>
+                    ถัดไปหมดอายุ: {g.nextExpiry < 0 ? `เลย ${Math.abs(g.nextExpiry)}d` : `อีก ${g.nextExpiry}d`}
+                  </span>
+                )}
+              </div>
+              <table className="w-full text-sm">
+                <tbody>{g.contracts.map(c => {
+                  const meta = typeMeta[c.type];
+                  const sm = statusMeta[c._effectiveStatus];
+                  const dayColor = c._tier === "expired" ? "text-red-500 font-bold" : c._tier === "urgent" ? "text-red-400 font-semibold" : c._tier === "soon" ? "text-amber-400" : c._tier === "later" ? "text-yellow-400" : "text-muted";
+                  return (
+                    <tr key={c.id} className="border-b border-border last:border-0 hover:bg-card-hover">
+                      <td className="px-4 py-2 w-32"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.color}`}>{meta.icon} {meta.thai}</span></td>
+                      <td className="px-4 py-2">
+                        <p className="font-medium text-sm">{c.title}</p>
+                        {c.contract_number && <p className="text-[10px] text-accent font-mono">{c.contract_number}</p>}
+                        {c.project_name && <p className="text-[10px] text-muted">📁 {c.project_name}</p>}
+                      </td>
+                      <td className="px-4 py-2"><Link href={`/customers/${c.customer_id}`} className="text-muted hover:text-accent text-xs">{c.customer_name}</Link></td>
+                      <td className="px-4 py-2 text-muted text-xs whitespace-nowrap">{c.start_date} → {c.end_date}</td>
+                      <td className={`px-4 py-2 text-center text-xs ${dayColor} w-20`}>{c._days === null ? "—" : c._days < 0 ? `เลย ${Math.abs(c._days)}d` : `${c._days}d`}</td>
+                      <td className="px-4 py-2 text-right w-24">{c.contract_value ? c.contract_value.toLocaleString() : "-"}</td>
+                      <td className="px-4 py-2 w-20"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sm.color}`}>{sm.label}</span></td>
+                      <td className="px-4 py-2 w-20">
+                        <div className="flex gap-1.5">
+                          <button onClick={() => openEdit(c)} className="text-[10px] text-accent hover:underline">แก้ไข</button>
+                          <button onClick={() => handleDelete(c.id!, c.title)} className="text-[10px] text-danger hover:underline">ลบ</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Grouped by project view */}
       {!loading && groupBy === "project" && filtered.length > 0 && (
@@ -648,7 +741,7 @@ export default function ContractsPage() {
           <p className="text-muted text-sm mb-2">{list.length === 0 ? "ยังไม่มีสัญญา" : "ไม่พบสัญญาตามตัวกรอง"}</p>
           {list.length === 0 && <p className="text-[11px] text-muted">กด <b className="text-accent">📥 โหลดตัวอย่าง</b> เพื่อเริ่มอย่างเร็ว หรือ <b className="text-accent">+ เพิ่มสัญญา</b> เพื่อสร้างเอง</p>}
         </div>
-      ) : groupBy === "flat" ? (
+      ) : groupBy === "flat" && filtered.length > 0 ? (
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <table className="w-full text-sm">
             <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">

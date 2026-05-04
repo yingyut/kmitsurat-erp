@@ -46,6 +46,7 @@ const sections: Section[] = [
       { href: "/users", label: "Users / Teams", thai: "ผู้ใช้ / ทีม", icon: "👥" },
       { href: "/reports", label: "Reports", thai: "รายงาน / ส่งออก", icon: "📈" },
       { href: "/settings", label: "Settings", thai: "ตั้งค่าระบบ", icon: "⚙️" },
+      { href: "/help", label: "Help", thai: "คู่มือการใช้งาน", icon: "📖" },
     ],
   },
 ];
