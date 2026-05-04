@@ -1,22 +1,21 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest } from "@/lib/types";
 
 const actTypes = ["phone_call","visit","quotation_created","quotation_sent","follow_up","meeting","customer_update"] as const;
-const typeLabels: Record<string, string> = { phone_call: "Phone Call", visit: "Visit", quotation_created: "QT Created", quotation_sent: "QT Sent", follow_up: "Follow-up", meeting: "Meeting", customer_update: "Update" };
+const typeLabels: Record<string, string> = { phone_call: "โทร", visit: "เยี่ยม", quotation_created: "สร้าง QT", quotation_sent: "ส่ง QT", follow_up: "Follow-up", meeting: "ประชุม", customer_update: "Update" };
+const resultLabels: Record<string, string> = { success: "สำเร็จ", no_answer: "ไม่รับสาย", interested: "สนใจ", rejected: "ปฏิเสธ", pending: "รอผล", "": "—" };
+const resultColor: Record<string, string> = { success: "text-green-400", interested: "text-blue-400", no_answer: "text-yellow-400", rejected: "text-red-400", pending: "text-muted" };
+const stages = ["lead","opportunity","proposal","negotiation","won","lost"] as const;
+const stageColor: Record<string, string> = { lead: "bg-gray-700", opportunity: "bg-blue-900/50 text-blue-400", proposal: "bg-purple-900/50 text-purple-400", negotiation: "bg-yellow-900/50 text-yellow-400", won: "bg-green-900/50 text-green-400", lost: "bg-red-900/50 text-red-400" };
 
 const today = new Date().toISOString().slice(0, 10);
 const currentMonth = new Date().toISOString().slice(0, 7);
+const nextWeekStr = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
 
 export default function SalesPage() {
-  const [tab, setTab] = useState<"dashboard" | "pipeline" | "activities" | "requests" | "plan">("dashboard");
-
-  // Plan form
-  const [showPlanForm, setShowPlanForm] = useState(false);
-  const [planForm, setPlanForm] = useState({ user_name: "", role: "sale" as "sale"|"avenger", month: new Date().toISOString().slice(0, 7), quota_target: 0, actual_sales: 0, profit_target: 0, actual_profit: 0, target_gp_percent: 0, won_deals: 0, total_activities: 0 });
-
-  // Pipeline filter
-  const [stageFilter, setStageFilter] = useState("all");
+  const [tab, setTab] = useState<"dashboard" | "plan" | "activities" | "pipeline" | "requests">("dashboard");
   const [activities, setActivities] = useState<SalesActivity[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -25,16 +24,25 @@ export default function SalesPage() {
   const [jobReqs, setJobReqs] = useState<JobRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
-
-  // Filters
   const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // Forms
-  const [showActForm, setShowActForm] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [showReqForm, setShowReqForm] = useState(false);
-  const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", project_id: "", project_name: "", assigned_to: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "" });
+  const [showPlanForm, setShowPlanForm] = useState(false);
+  const [showQuotaForm, setShowQuotaForm] = useState(false);
+  const [stageFilter, setStageFilter] = useState("all");
+  const [timeFilter, setTimeFilter] = useState<"all"|"today"|"week"|"overdue">("all");
+
+  // Activity/Plan form
+  const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", project_id: "", project_name: "", assigned_to: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "" });
+
+  // Request form
   const [reqForm, setReqForm] = useState({ request_from: "", request_to_team: "presale" as JobRequest["request_to_team"], request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium" as JobRequest["priority"], status: "pending" as JobRequest["status"], assigned_to: "", reject_reason: "", accept_note: "" });
-  const [saving, setSaving] = useState(false);
+
+  // Quota form
+  const [quotaForm, setQuotaForm] = useState({ user_name: "", role: "sale" as "sale"|"avenger", month: currentMonth, quota_target: 0, actual_sales: 0, profit_target: 0, actual_profit: 0, target_gp_percent: 0, won_deals: 0, total_activities: 0 });
 
   async function load() {
     try {
@@ -44,398 +52,415 @@ export default function SalesPage() {
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
-
   useEffect(() => { setMounted(true); load(); }, []);
 
-  // KPI calculations
-  const monthQuota = quotas.find((q) => q.month === currentMonth);
-  const target = monthQuota?.quota_target || 0;
-  const actualSales = monthQuota?.actual_sales || 0;
-  // Profit (เป้าหมายหลักของบริษัท)
-  const profitTarget = monthQuota?.profit_target || 0;
-  const actualProfit = monthQuota?.actual_profit || 0;
-  const profitPct = profitTarget > 0 ? (actualProfit / profitTarget * 100) : 0;
-  const gpPct = actualSales > 0 ? (actualProfit / actualSales * 100) : 0;
-  const pipelineValue = projects.filter((p) => !["won","lost"].includes(p.status)).reduce((s, p) => s + (p.value || 0), 0);
-  const wonDeals = projects.filter((p) => p.status === "won").length;
+  // Helpers
+  function selectCust(id: string, target: "act"|"req") {
+    const c = customers.find(x => x.id === id);
+    if (target === "act") setActForm({ ...actForm, customer_id: id, customer_name: c?.company_name || "" });
+    else setReqForm({ ...reqForm, customer_id: id, customer_name: c?.company_name || "" });
+  }
+  function selectProj(id: string, target: "act"|"req") {
+    const p = projects.find(x => x.id === id);
+    if (target === "act") setActForm({ ...actForm, project_id: id, project_name: p?.name || "" });
+    else setReqForm({ ...reqForm, project_id: id, project_name: p?.name || "" });
+  }
 
-  // Follow-ups
-  const todayFollowups = activities.filter((a) => a.next_follow_up === today);
-  const overdueFollowups = activities.filter((a) => a.next_follow_up && a.next_follow_up < today && a.status !== "done");
-  const upcomingFollowups = activities.filter((a) => a.next_follow_up && a.next_follow_up > today && a.status !== "done").slice(0, 5);
+  // KPIs
+  const monthQuota = quotas.filter(q => q.month === currentMonth);
+  const totalTarget = monthQuota.reduce((s, q) => s + (q.quota_target || 0), 0);
+  const totalActual = monthQuota.reduce((s, q) => s + (q.actual_sales || 0), 0);
+  const pipelineValue = projects.filter(p => !["won","lost"].includes(p.status)).reduce((s, p) => s + (p.value || 0), 0);
+  const wonDeals = projects.filter(p => p.status === "won").length;
 
-  // Activity summary
-  const todayActivities = activities.filter((a) => a.next_follow_up === today || (a.status === "new")).length;
-  const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-  const weekStr = weekStart.toISOString().slice(0, 10);
-  const weekActivities = activities.filter((a) => (a.next_follow_up || "") >= weekStr).length;
+  // Plans & Activities
+  const plans = activities.filter(a => a.is_plan && a.status !== "done");
+  const realActivities = activities.filter(a => !a.is_plan);
+  const overdueActs = realActivities.filter(a => (a.next_follow_up && a.next_follow_up < today || a.next_action_date && a.next_action_date < today) && a.status !== "done");
+  const todayActs = realActivities.filter(a => a.next_follow_up === today || a.next_action_date === today);
 
-  // Filtered activities
-  const filteredActivities = search ? activities.filter((a) => a.description.toLowerCase().includes(search.toLowerCase()) || a.customer_name.toLowerCase().includes(search.toLowerCase())) : activities;
+  // Conversion stats
+  const convertedToProject = realActivities.filter(a => a.converted_to_project_id).length;
+  const totalActs = realActivities.length;
 
-  function selectCust(id: string) { const c = customers.find((x) => x.id === id); setActForm({ ...actForm, customer_id: id, customer_name: c?.company_name || "" }); }
-  function selectProj(id: string) { const p = projects.find((x) => x.id === id); setActForm({ ...actForm, project_id: id, project_name: p?.name || "" }); }
+  // Time filter
+  function matchTimeFilter(a: SalesActivity) {
+    if (timeFilter === "all") return true;
+    const d = a.next_follow_up || a.next_action_date || a.plan_date || "";
+    if (timeFilter === "today") return d === today;
+    if (timeFilter === "week") return d >= today && d <= nextWeekStr;
+    if (timeFilter === "overdue") return d && d < today && a.status !== "done";
+    return true;
+  }
 
-  async function saveActivity() {
-    if (!actForm.description.trim()) return; setSaving(true);
+  // CRUD
+  async function saveActivity(isPlan = false) {
+    if (!actForm.description.trim() && !actForm.expected_outcome?.trim()) return;
+    setSaving(true);
     const { salesActivities } = await import("@/lib/firestore");
-    try { await salesActivities.add(actForm as unknown as Record<string, unknown>); setActForm({ type: "phone_call", customer_id: "", customer_name: "", project_id: "", project_name: "", assigned_to: "", description: "", status: "new", next_follow_up: "" }); setShowActForm(false); await load(); }
+    const data = { ...actForm, is_plan: isPlan };
+    try { await salesActivities.add(data as unknown as Record<string, unknown>); resetActForm(); setShowForm(false); setShowPlanForm(false); await load(); }
     catch (e) { console.error(e); } finally { setSaving(false); }
   }
 
-  async function updateActivityStatus(id: string, status: string) {
-    const { salesActivities: sa } = await import("@/lib/firestore");
-    await sa.update(id, { status }); await load();
+  function resetActForm() { setActForm({ type: "phone_call", customer_id: "", customer_name: "", project_id: "", project_name: "", assigned_to: "", description: "", status: "new", next_follow_up: "", result: "", next_action: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "" }); }
+
+  async function updateActivity(id: string, data: Record<string, unknown>) {
+    const { salesActivities } = await import("@/lib/firestore");
+    await salesActivities.update(id, data); await load();
   }
 
   async function deleteActivity(id: string) {
-    if (!confirm("Delete?")) return;
-    const { salesActivities: sa } = await import("@/lib/firestore"); await sa.remove(id); await load();
+    if (!confirm("ลบ?")) return;
+    const { salesActivities } = await import("@/lib/firestore"); await salesActivities.remove(id); await load();
   }
+
+  // Convert Plan → Activity
+  async function convertPlanToActivity(plan: SalesActivity) {
+    const { salesActivities } = await import("@/lib/firestore");
+    await salesActivities.update(plan.id!, { is_plan: false, status: "in_progress", description: plan.description || plan.expected_outcome || "" });
+    await load();
+  }
+
+  // Convert Activity → Pipeline
+  async function convertActivityToPipeline(act: SalesActivity) {
+    const name = prompt("ชื่อดีล / โปรเจค:", `${act.customer_name} - ${typeLabels[act.type]}`);
+    if (!name) return;
+    const value = Number(prompt("มูลค่าโดยประมาณ (THB):", "0") || 0);
+    setSaving(true);
+    const { projects: ps, salesActivities: sa } = await import("@/lib/firestore");
+    try {
+      const ref = await ps.add({ name, customer_id: act.customer_id, customer_name: act.customer_name, type: "", value, status: "lead", assigned_to: act.assigned_to, notes: act.description, probability: 20, expected_close_date: "", next_action: act.next_action || "", next_action_date: act.next_action_date || "", support_teams: [], converted_from_activity_id: act.id, win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" } as unknown as Record<string, unknown>);
+      await sa.update(act.id!, { converted_to_project_id: ref.id, status: "done" });
+      await load();
+    } catch (e) { console.error(e); } finally { setSaving(false); }
+  }
+
+  // Save request
+  async function saveRequest() {
+    if (!reqForm.title.trim() || !reqForm.description.trim()) return;
+    setSaving(true);
+    const { jobRequests } = await import("@/lib/firestore");
+    try { await jobRequests.add(reqForm as unknown as Record<string, unknown>); setReqForm({ request_from: "", request_to_team: "presale", request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium", status: "pending", assigned_to: "", reject_reason: "", accept_note: "" }); setShowReqForm(false); await load(); }
+    catch (e) { console.error(e); } finally { setSaving(false); }
+  }
+
+  // Save quota
+  async function saveQuota() {
+    if (!quotaForm.user_name.trim() || quotaForm.quota_target <= 0) return;
+    setSaving(true);
+    const { salesQuotas } = await import("@/lib/firestore");
+    const remaining = quotaForm.quota_target - quotaForm.actual_sales;
+    const percent = quotaForm.quota_target > 0 ? (quotaForm.actual_sales / quotaForm.quota_target * 100) : 0;
+    const profit_percent = quotaForm.profit_target > 0 ? (quotaForm.actual_profit / quotaForm.profit_target * 100) : 0;
+    try { await salesQuotas.add({ ...quotaForm, remaining, percent, profit_percent } as unknown as Record<string, unknown>); setQuotaForm({ user_name: "", role: "sale", month: currentMonth, quota_target: 0, actual_sales: 0, profit_target: 0, actual_profit: 0, target_gp_percent: 0, won_deals: 0, total_activities: 0 }); setShowQuotaForm(false); await load(); }
+    catch (e) { console.error(e); } finally { setSaving(false); }
+  }
+
+  // Pipeline update
+  async function updateProjectStatus(id: string, status: string) {
+    const { projects: ps } = await import("@/lib/firestore"); await ps.update(id, { status }); await load();
+  }
+
+  // Filtered lists
+  const filteredActs = realActivities.filter(a => {
+    const s = search.toLowerCase();
+    const matchSearch = !s || a.description.toLowerCase().includes(s) || a.customer_name.toLowerCase().includes(s);
+    return matchSearch && matchTimeFilter(a);
+  });
+  const filteredPipeline = projects.filter(p => {
+    const s = search.toLowerCase();
+    const matchSearch = !s || p.name.toLowerCase().includes(s) || p.customer_name.toLowerCase().includes(s);
+    const matchStage = stageFilter === "all" || p.status === stageFilter;
+    return matchSearch && matchStage;
+  });
 
   if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
 
   return (
     <div className="p-6">
+      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold" title="กิจกรรมงานขาย — บันทึก follow-up และส่ง Job Request">Sales Activities</h1>
-          <p className="text-xs text-muted">บันทึกการโทร/เยี่ยมลูกค้า และส่ง Job Request ไปทีม Presale/Service</p>
+          <h1 className="text-xl font-bold" title="งานขาย — วางแผน บันทึกกิจกรรม ติดตามดีล">Sales</h1>
+          <p className="text-xs text-muted">Plan → Activity → Pipeline → Quotation</p>
         </div>
         <div className="flex gap-2">
-          {tab === "activities" && <button onClick={() => setShowActForm(!showActForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showActForm ? "Cancel" : "+ New Activity"}</button>}
+          {tab === "plan" && <button onClick={() => { resetActForm(); setActForm(f => ({ ...f, is_plan: true, plan_date: today })); setShowPlanForm(!showPlanForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showPlanForm ? "Cancel" : "+ วางแผน"}</button>}
+          {tab === "activities" && <button onClick={() => { resetActForm(); setShowForm(!showForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ บันทึกกิจกรรม"}</button>}
           {tab === "requests" && <button onClick={() => setShowReqForm(!showReqForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showReqForm ? "Cancel" : "+ Job Request"}</button>}
-          {tab === "plan" && <button onClick={() => setShowPlanForm(!showPlanForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showPlanForm ? "Cancel" : "+ Set Quota"}</button>}
+          {tab === "pipeline" && <Link href="/quotations" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">→ สร้าง QT</Link>}
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b border-border">
-        {(["dashboard","pipeline","activities","requests","plan"] as const).map((t) => {
-          const labels: Record<string, string> = { dashboard: "Dashboard", pipeline: "Pipeline", activities: "Activities", requests: "Requests", plan: "Plan / Quota" };
-          const thaiTitles: Record<string, string> = { dashboard: "แดชบอร์ดภาพรวมทีมขาย", pipeline: "ท่อขาย / ดีลทั้งหมด", activities: "บันทึกกิจกรรมขาย", requests: "ขอความช่วยเหลือจากทีมอื่น", plan: "แผนยอดขาย / โควต้า" };
-          const reqCount = t === "requests" ? jobReqs.filter(r => r.status === "pending").length : 0;
+      <div className="flex gap-1 mb-5 border-b border-border overflow-x-auto">
+        {(["dashboard","plan","activities","pipeline","requests"] as const).map(t => {
+          const labels: Record<string,string> = { dashboard: "Dashboard", plan: "Plan / Quota", activities: "Activities", pipeline: "Pipeline", requests: "Requests" };
+          const thaiTips: Record<string,string> = { dashboard: "ภาพรวม", plan: "วางแผน + ตั้งเป้า", activities: "บันทึกกิจกรรมจริง", pipeline: "ติดตามดีล", requests: "ขอช่วย Presale/Service" };
+          const badge = t === "requests" ? jobReqs.filter(r => r.status === "pending").length : t === "activities" ? overdueActs.length : 0;
           return (
-          <button key={t} onClick={() => setTab(t)} title={thaiTitles[t]} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
-            {labels[t]}
-            {t === "requests" && reqCount > 0 && <span className="rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold">{reqCount}</span>}
-          </button>
-        );})}
+            <button key={t} onClick={() => setTab(t)} title={thaiTips[t]} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
+              {labels[t]}
+              {badge > 0 && <span className={`rounded-full text-white text-[10px] px-1.5 py-0.5 font-bold ${t === "activities" ? "bg-red-500" : "bg-red-500"}`}>{badge}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
 
-        {/* ===== DASHBOARD TAB ===== */}
-        {tab === "dashboard" && (<>
-          {/* KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-            <div className="rounded-xl bg-card border border-border p-4">
-              <p className="text-xs text-muted mb-1" title="เป้ายอดขายรายเดือน">Monthly Target</p>
-              <p className="text-2xl font-bold">{target.toLocaleString()}</p>
-              <p className="text-xs text-muted">THB</p>
-            </div>
-            <div className="rounded-xl bg-card border border-border p-4">
-              <p className="text-xs text-muted mb-1" title="ยอดขายจริงที่ปิดได้">Actual Sales (Won)</p>
-              <p className="text-2xl font-bold text-green-400">{actualSales.toLocaleString()}</p>
-              {target > 0 && <div className="mt-2 h-1.5 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${actualSales >= target ? "bg-green-500" : "bg-yellow-500"}`} style={{ width: `${Math.min((actualSales / target) * 100, 100)}%` }} /></div>}
-            </div>
-            <div className="rounded-xl bg-card border border-border p-4">
-              <p className="text-xs text-muted mb-1" title="มูลค่าดีลที่กำลังดำเนินการ">Pipeline Value</p>
-              <p className="text-2xl font-bold text-blue-400">{pipelineValue.toLocaleString()}</p>
-              <p className="text-xs text-muted">THB (active)</p>
-            </div>
-            <div className="rounded-xl bg-card border border-border p-4">
-              <p className="text-xs text-muted mb-1" title="จำนวนดีลที่ปิดได้">Won Deals</p>
-              <p className="text-2xl font-bold text-green-400">{wonDeals}</p>
-              <p className="text-xs text-muted">deals closed</p>
-            </div>
-          </div>
+      {/* ═══ DASHBOARD ═══ */}
+      {tab === "dashboard" && (<>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <div className="rounded-xl bg-card border border-border p-4" title="เป้ายอดขายรายเดือน"><p className="text-[10px] text-muted">Monthly Target</p><p className="text-2xl font-bold">{totalTarget.toLocaleString()}</p>{totalTarget > 0 && <div className="mt-2 h-1.5 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${(totalActual/totalTarget*100) >= 100 ? "bg-green-500" : "bg-yellow-500"}`} style={{ width: `${Math.min(totalActual/totalTarget*100, 100)}%` }} /></div>}<p className="text-[10px] text-muted mt-1">Actual: {totalActual.toLocaleString()} ({totalTarget > 0 ? (totalActual/totalTarget*100).toFixed(0) : 0}%)</p></div>
+          <div className="rounded-xl bg-card border border-border p-4" title="มูลค่าดีลรอปิด"><p className="text-[10px] text-muted">Pipeline</p><p className="text-2xl font-bold text-blue-400">{(pipelineValue/1000000).toFixed(1)}M</p><p className="text-[10px] text-muted">THB</p></div>
+          <div className="rounded-xl bg-card border border-border p-4" title="ดีลที่ปิดได้"><p className="text-[10px] text-muted">Won Deals</p><p className="text-2xl font-bold text-green-400">{wonDeals}</p></div>
+          <div className="rounded-xl bg-card border border-border p-4" title="งานเลยกำหนด"><p className="text-[10px] text-muted">Overdue</p><p className={`text-2xl font-bold ${overdueActs.length > 0 ? "text-red-400" : "text-green-400"}`}>{overdueActs.length}</p></div>
+        </div>
 
-          {/* Profit row — เป้าหมายหลักของบริษัท */}
-          <div className="rounded-xl bg-purple-900/10 border border-purple-800/40 p-3 mb-6">
-            <div className="flex items-center gap-2 mb-2">
-              <p className="text-xs font-semibold text-purple-300">💎 Profit (กำไรขั้นต้น)</p>
-              <p className="text-[10px] text-purple-300/60">— เป้าหมายหลักของบริษัท · ข้อมูลจาก Sales Plan / Quota</p>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="rounded-xl bg-card border border-purple-800/40 p-4">
-                <p className="text-xs text-muted mb-1">Profit Target</p>
-                <p className="text-2xl font-bold">{profitTarget.toLocaleString()}</p>
-                <p className="text-xs text-muted">THB</p>
-              </div>
-              <div className="rounded-xl bg-card border border-purple-800/40 p-4">
-                <p className="text-xs text-muted mb-1">Actual Profit</p>
-                <p className="text-2xl font-bold text-purple-400">{actualProfit.toLocaleString()}</p>
-                {profitTarget > 0 && <div className="mt-2 h-1.5 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${profitPct >= 100 ? "bg-green-500" : profitPct >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(profitPct, 100)}%` }} /></div>}
-              </div>
-              <div className="rounded-xl bg-card border border-purple-800/40 p-4">
-                <p className="text-xs text-muted mb-1">Profit Achievement</p>
-                <p className={`text-2xl font-bold ${profitPct >= 100 ? "text-green-400" : profitPct >= 70 ? "text-yellow-400" : profitPct > 0 ? "text-red-400" : "text-muted"}`}>{profitPct > 0 ? `${profitPct.toFixed(1)}%` : "—"}</p>
-                <p className="text-xs text-muted">เทียบเป้ากำไร</p>
-              </div>
-              <div className="rounded-xl bg-card border border-purple-800/40 p-4" title="กำไรขั้นต้นจริง / ยอดขายจริง">
-                <p className="text-xs text-muted mb-1">Actual GP%</p>
-                <p className={`text-2xl font-bold ${gpPct >= 20 ? "text-green-400" : gpPct >= 10 ? "text-yellow-400" : gpPct > 0 ? "text-red-400" : "text-muted"}`}>{gpPct > 0 ? `${gpPct.toFixed(1)}%` : "—"}</p>
-                <p className="text-xs text-muted">margin จริง</p>
-              </div>
-            </div>
+        {/* Conversion funnel */}
+        <div className="rounded-xl bg-card border border-border p-4 mb-5">
+          <h3 className="text-sm font-semibold mb-3" title="วงจร Plan → Activity → Pipeline">Conversion Flow</h3>
+          <div className="flex items-center justify-center gap-2 text-xs">
+            <div className="text-center rounded-lg bg-background border border-border px-4 py-3"><p className="text-lg font-bold">{plans.length}</p><p className="text-muted">Plans</p></div>
+            <span className="text-muted text-lg">→</span>
+            <div className="text-center rounded-lg bg-background border border-border px-4 py-3"><p className="text-lg font-bold">{totalActs}</p><p className="text-muted">Activities</p></div>
+            <span className="text-muted text-lg">→</span>
+            <div className="text-center rounded-lg bg-background border border-border px-4 py-3"><p className="text-lg font-bold text-blue-400">{projects.filter(p => !["won","lost"].includes(p.status)).length}</p><p className="text-muted">Pipeline</p></div>
+            <span className="text-muted text-lg">→</span>
+            <div className="text-center rounded-lg bg-background border border-border px-4 py-3"><p className="text-lg font-bold text-green-400">{wonDeals}</p><p className="text-muted">Won</p></div>
           </div>
+          {totalActs > 0 && <p className="text-[10px] text-muted text-center mt-2">Conversion: {convertedToProject}/{totalActs} activities → pipeline ({totalActs > 0 ? (convertedToProject/totalActs*100).toFixed(0) : 0}%)</p>}
+        </div>
 
-          {/* Follow-ups */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6">
-            <div className="rounded-xl bg-card border border-border p-4">
-              <h3 className="text-sm font-semibold mb-2 text-yellow-400" title="นัดติดตามวันนี้">Today ({todayFollowups.length})</h3>
-              {todayFollowups.length === 0 ? <p className="text-xs text-muted">No follow-ups today</p> : todayFollowups.map((a) => (
-                <div key={a.id} className="text-xs py-1.5 border-b border-border last:border-0"><p>{a.description}</p><p className="text-muted">{a.customer_name}</p></div>
-              ))}
-            </div>
-            <div className="rounded-xl bg-card border border-border p-4">
-              <h3 className="text-sm font-semibold mb-2 text-red-400" title="เลยกำหนดติดตาม">Overdue ({overdueFollowups.length})</h3>
-              {overdueFollowups.length === 0 ? <p className="text-xs text-muted">No overdue items</p> : overdueFollowups.slice(0, 5).map((a) => (
-                <div key={a.id} className="text-xs py-1.5 border-b border-border last:border-0"><p>{a.description}</p><p className="text-muted">{a.customer_name} · {a.next_follow_up}</p></div>
-              ))}
-            </div>
-            <div className="rounded-xl bg-card border border-border p-4">
-              <h3 className="text-sm font-semibold mb-2 text-blue-400" title="นัดติดตามที่จะถึง">Upcoming ({upcomingFollowups.length})</h3>
-              {upcomingFollowups.length === 0 ? <p className="text-xs text-muted">No upcoming items</p> : upcomingFollowups.map((a) => (
-                <div key={a.id} className="text-xs py-1.5 border-b border-border last:border-0"><p>{a.description}</p><p className="text-muted">{a.customer_name} · {a.next_follow_up}</p></div>
-              ))}
-            </div>
-          </div>
-
-          {/* Activity Summary */}
+        {/* Follow-ups */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           <div className="rounded-xl bg-card border border-border p-4">
-            <h3 className="text-sm font-semibold mb-3" title="สรุปกิจกรรมทั้งหมด">Activity Summary</h3>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="text-center"><p className="text-2xl font-bold">{todayActivities}</p><p className="text-xs text-muted">Today</p></div>
-              <div className="text-center"><p className="text-2xl font-bold">{weekActivities}</p><p className="text-xs text-muted">This Week</p></div>
-              <div className="text-center"><p className="text-2xl font-bold">{activities.length}</p><p className="text-xs text-muted">Total</p></div>
+            <h3 className="text-sm font-semibold text-yellow-400 mb-2" title="นัดวันนี้">Today ({todayActs.length})</h3>
+            {todayActs.length === 0 ? <p className="text-xs text-muted">ไม่มีนัดวันนี้</p> : todayActs.slice(0, 5).map(a => (
+              <div key={a.id} className="text-xs py-1.5 border-b border-border last:border-0"><p>{a.description}</p><p className="text-muted">{a.customer_name}</p></div>
+            ))}
+          </div>
+          <div className="rounded-xl bg-card border border-border p-4">
+            <h3 className="text-sm font-semibold text-red-400 mb-2" title="เลยกำหนด">Overdue ({overdueActs.length})</h3>
+            {overdueActs.length === 0 ? <p className="text-xs text-muted">ไม่มี</p> : overdueActs.slice(0, 5).map(a => (
+              <div key={a.id} className="text-xs py-1.5 border-b border-border last:border-0"><p>{a.description}</p><p className="text-muted">{a.customer_name} · {a.next_follow_up || a.next_action_date}</p></div>
+            ))}
+          </div>
+          <div className="rounded-xl bg-card border border-border p-4">
+            <h3 className="text-sm font-semibold text-blue-400 mb-2" title="แผนที่ยังไม่ได้ทำ">Pending Plans ({plans.length})</h3>
+            {plans.length === 0 ? <p className="text-xs text-muted">ไม่มี</p> : plans.slice(0, 5).map(a => (
+              <div key={a.id} className="text-xs py-1.5 border-b border-border last:border-0"><p>{a.expected_outcome || a.description}</p><p className="text-muted">{a.plan_date} · {typeLabels[a.type]}</p></div>
+            ))}
+          </div>
+        </div>
+      </>)}
+
+      {/* ═══ PLAN / QUOTA ═══ */}
+      {tab === "plan" && (<>
+        {/* Plan form */}
+        {showPlanForm && (
+          <div className="rounded-xl bg-card border border-border p-5 mb-4">
+            <h2 className="text-base font-semibold mb-3">วางแผนกิจกรรม</h2>
+            <p className="text-[10px] text-muted mb-3">วางแผนว่าจะทำอะไร วันไหน — ยังไม่ต้องมีข้อมูลลูกค้าครบก็ได้</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+              <div><label className="text-[10px] text-muted">วันที่วางแผน</label><input type="date" value={actForm.plan_date || today} onChange={e => setActForm({ ...actForm, plan_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              <div><label className="text-[10px] text-muted">ประเภท</label><select value={actForm.type} onChange={e => setActForm({ ...actForm, type: e.target.value as SalesActivity["type"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">{actTypes.map(t => <option key={t} value={t}>{typeLabels[t]}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">ลูกค้า (ไม่บังคับ)</label><select value={actForm.customer_id} onChange={e => selectCust(e.target.value, "act")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— ยังไม่ระบุ —</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">ผู้รับผิดชอบ</label><select value={actForm.assigned_to} onChange={e => setActForm({ ...actForm, assigned_to: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— เลือก —</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
+              <div className="col-span-full"><label className="text-[10px] text-muted">ผลที่คาดหวัง / สิ่งที่จะทำ *</label><textarea placeholder="เช่น โทรนัดเข้าพบ, เยี่ยมลูกค้าเสนอ WiFi, ติดตามใบเสนอราคา" value={actForm.expected_outcome} onChange={e => setActForm({ ...actForm, expected_outcome: e.target.value, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-16 resize-y" /></div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => saveActivity(true)} disabled={saving || !actForm.expected_outcome?.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึกแผน"}</button>
+              <button onClick={() => setShowPlanForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
             </div>
           </div>
-        </>)}
+        )}
 
-        {/* ===== PIPELINE TAB ===== */}
-        {tab === "pipeline" && (<>
-          <div className="flex gap-3 mb-4">
-            <input placeholder="ค้นหาดีล..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-              <option value="all">ทุกสถานะ</option>
-              {["lead","opportunity","proposal","negotiation","won","lost"].map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+        {/* Plans list */}
+        <h3 className="text-sm font-semibold mb-2">แผนงานที่ยังไม่ได้ทำ ({plans.length})</h3>
+        {plans.length === 0 ? <p className="text-muted text-sm mb-4">ไม่มีแผน กด &quot;+ วางแผน&quot;</p> : (
+          <div className="space-y-1.5 mb-5">{plans.map(a => (
+            <div key={a.id} className="rounded-xl bg-card border border-border p-3 flex items-start justify-between">
+              <div className="flex-1">
+                <p className="text-sm">{a.expected_outcome || a.description}</p>
+                <p className="text-xs text-muted mt-0.5"><span className="rounded bg-card-hover px-1.5 py-0.5">{typeLabels[a.type]}</span> · {a.plan_date || "—"}{a.customer_name && ` · ${a.customer_name}`}{a.assigned_to && ` · ${a.assigned_to}`}</p>
+              </div>
+              <div className="flex gap-1.5 shrink-0 ml-2">
+                <button onClick={() => convertPlanToActivity(a)} title="ทำแล้ว → สร้าง Activity" className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ ทำแล้ว</button>
+                <button onClick={() => deleteActivity(a.id!)} className="text-[10px] text-danger hover:underline">ลบ</button>
+              </div>
+            </div>
+          ))}</div>
+        )}
+
+        {/* Quota section */}
+        <div className="flex items-center justify-between mb-2 mt-4">
+          <h3 className="text-sm font-semibold">เป้ายอดขายเดือนนี้</h3>
+          <button onClick={() => setShowQuotaForm(!showQuotaForm)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover">{showQuotaForm ? "Cancel" : "+ ตั้งเป้า"}</button>
+        </div>
+        {showQuotaForm && (
+          <div className="rounded-xl bg-card border border-border p-5 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+              <div><label className="text-[10px] text-muted">เซลล์ *</label><select value={quotaForm.user_name} onChange={e => setQuotaForm({ ...quotaForm, user_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">เป้ายอดขาย</label><input type="number" value={quotaForm.quota_target || ""} onChange={e => setQuotaForm({ ...quotaForm, quota_target: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              <div><label className="text-[10px] text-muted">ยอดจริง</label><input type="number" value={quotaForm.actual_sales || ""} onChange={e => setQuotaForm({ ...quotaForm, actual_sales: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+            </div>
+            <button onClick={saveQuota} disabled={saving || !quotaForm.user_name} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึก"}</button>
           </div>
-          {(() => {
-            const stages = ["lead","opportunity","proposal","negotiation","won","lost"];
-            const stageColor: Record<string,string> = { lead:"bg-gray-700", opportunity:"bg-blue-900/50 text-blue-400", proposal:"bg-purple-900/50 text-purple-400", negotiation:"bg-yellow-900/50 text-yellow-400", won:"bg-green-900/50 text-green-400", lost:"bg-red-900/50 text-red-400" };
-            const fp = projects.filter(p => {
-              const ms = search ? (p.name.toLowerCase().includes(search.toLowerCase()) || p.customer_name.toLowerCase().includes(search.toLowerCase())) : true;
-              const mst = stageFilter === "all" || p.status === stageFilter;
-              return ms && mst;
-            });
-            return (<>
-              <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
-                {stages.map(s => {
-                  const c = projects.filter(p => p.status === s).length;
-                  const v = projects.filter(p => p.status === s).reduce((sum, p) => sum + (p.value || 0), 0);
-                  return <button key={s} onClick={() => setStageFilter(stageFilter === s ? "all" : s)} className={`rounded-lg border p-2.5 text-center transition-colors ${stageFilter === s ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}><p className="text-lg font-bold">{c}</p><p className="text-[10px] text-muted">{s}</p><p className="text-[10px] text-muted">{(v/1000).toFixed(0)}K</p></button>;
-                })}
-              </div>
-              {fp.length === 0 ? <p className="text-muted text-sm">ไม่พบดีล</p> : (
-                <div className="rounded-xl bg-card border border-border overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-border text-left text-xs text-muted uppercase"><th className="px-4 py-2.5" title="ชื่อโปรเจค">Project</th><th className="px-4 py-2.5" title="ลูกค้า">Customer</th><th className="px-4 py-2.5 text-right" title="มูลค่า">Value</th><th className="px-4 py-2.5" title="สถานะ">Stage</th><th className="px-4 py-2.5" title="ผู้รับผิดชอบ">Owner</th></tr></thead>
-                    <tbody>{fp.map(p => (
-                      <tr key={p.id} className="border-b border-border last:border-0 hover:bg-card-hover">
-                        <td className="px-4 py-2.5 font-medium">{p.name}</td>
-                        <td className="px-4 py-2.5 text-muted">{p.customer_name}</td>
-                        <td className="px-4 py-2.5 text-right">{(p.value||0).toLocaleString()}</td>
-                        <td className="px-4 py-2.5"><select value={p.status} onChange={async e => { const fs = await import("@/lib/firestore"); await fs.projects.update(p.id!, { status: e.target.value }); await load(); }} className={`rounded-full px-2 py-0.5 text-xs font-medium border-0 cursor-pointer focus:outline-none ${stageColor[p.status] || "bg-gray-700"}`}>{stages.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
-                        <td className="px-4 py-2.5 text-muted text-xs">{p.assigned_to || "-"}</td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </div>
-              )}
-            </>);
-          })()}
-        </>)}
+        )}
+        {monthQuota.length === 0 ? <p className="text-muted text-sm">ยังไม่มีเป้า</p> : (
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <table className="w-full text-sm"><thead><tr className="border-b border-border text-left text-xs text-muted uppercase"><th className="px-4 py-2.5">Person</th><th className="px-4 py-2.5 text-right">Target</th><th className="px-4 py-2.5 text-right">Actual</th><th className="px-4 py-2.5">Progress</th><th className="px-4 py-2.5 w-12"></th></tr></thead>
+            <tbody>{monthQuota.map(q => { const p = q.quota_target > 0 ? (q.actual_sales/q.quota_target*100) : 0; return (
+              <tr key={q.id} className="border-b border-border last:border-0 hover:bg-card-hover"><td className="px-4 py-2.5 font-medium">{q.user_name}</td><td className="px-4 py-2.5 text-right">{q.quota_target.toLocaleString()}</td><td className="px-4 py-2.5 text-right text-green-400">{q.actual_sales.toLocaleString()}</td><td className="px-4 py-2.5"><div className="flex items-center gap-2"><div className="h-2 w-20 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${p >= 100 ? "bg-green-500" : p >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(p,100)}%` }} /></div><span className="text-xs text-muted">{p.toFixed(0)}%</span></div></td><td className="px-4 py-2.5"><button onClick={async () => { if (!confirm("ลบ?")) return; const { salesQuotas } = await import("@/lib/firestore"); await salesQuotas.remove(q.id!); await load(); }} className="text-xs text-danger hover:underline">ลบ</button></td></tr>);
+            })}</tbody></table>
+          </div>
+        )}
+      </>)}
 
-        {/* ===== ACTIVITIES TAB ===== */}
-        {tab === "activities" && (<>
-          {showActForm && (
-            <div className="rounded-xl bg-card border border-border p-5 mb-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                <select value={actForm.type} onChange={(e) => setActForm({ ...actForm, type: e.target.value as SalesActivity["type"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">{actTypes.map((t) => <option key={t} value={t}>{typeLabels[t]}</option>)}</select>
-                <select value={actForm.customer_id} onChange={(e) => selectCust(e.target.value)} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="">-- Customer --</option>{customers.map((c) => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select>
-                <select value={actForm.project_id} onChange={(e) => selectProj(e.target.value)} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="">-- Project --</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-                <input placeholder="Assigned To" value={actForm.assigned_to} onChange={(e) => setActForm({ ...actForm, assigned_to: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <input type="date" value={actForm.next_follow_up} onChange={(e) => setActForm({ ...actForm, next_follow_up: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <select value={actForm.status} onChange={(e) => setActForm({ ...actForm, status: e.target.value as SalesActivity["status"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="new">New</option><option value="in_progress">In Progress</option><option value="done">Done</option></select>
-                <textarea placeholder="Description *" value={actForm.description} onChange={(e) => setActForm({ ...actForm, description: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
-              </div>
-              <button onClick={saveActivity} disabled={saving || !actForm.description.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
+      {/* ═══ ACTIVITIES ═══ */}
+      {tab === "activities" && (<>
+        {showForm && (
+          <div className="rounded-xl bg-card border border-border p-5 mb-4">
+            <h2 className="text-base font-semibold mb-3">บันทึกกิจกรรม</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+              <div><label className="text-[10px] text-muted">ประเภท</label><select value={actForm.type} onChange={e => setActForm({ ...actForm, type: e.target.value as SalesActivity["type"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">{actTypes.map(t => <option key={t} value={t}>{typeLabels[t]}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">ลูกค้า</label><select value={actForm.customer_id} onChange={e => selectCust(e.target.value, "act")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">โปรเจค</label><select value={actForm.project_id} onChange={e => selectProj(e.target.value, "act")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">ผู้รับผิดชอบ</label><select value={actForm.assigned_to} onChange={e => setActForm({ ...actForm, assigned_to: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">ผลลัพธ์</label><select value={actForm.result || ""} onChange={e => setActForm({ ...actForm, result: e.target.value as SalesActivity["result"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— เลือก —</option><option value="success">สำเร็จ</option><option value="interested">สนใจ</option><option value="no_answer">ไม่รับสาย</option><option value="rejected">ปฏิเสธ</option><option value="pending">รอผล</option></select></div>
+              <div><label className="text-[10px] text-muted">Next Follow-up</label><input type="date" value={actForm.next_follow_up} onChange={e => setActForm({ ...actForm, next_follow_up: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียด *</label><textarea placeholder="สิ่งที่ทำ / ผลการพูดคุย" value={actForm.description} onChange={e => setActForm({ ...actForm, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-16 resize-y" /></div>
+              <div><label className="text-[10px] text-muted">Next Action</label><input placeholder="สิ่งที่ต้องทำต่อ" value={actForm.next_action || ""} onChange={e => setActForm({ ...actForm, next_action: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              <div><label className="text-[10px] text-muted">Next Action Date</label><input type="date" value={actForm.next_action_date || ""} onChange={e => setActForm({ ...actForm, next_action_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
             </div>
-          )}
-          <input placeholder="Search activities..." value={search} onChange={(e) => setSearch(e.target.value)} className="mb-4 w-full rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-          {filteredActivities.length === 0 ? <p className="text-muted text-sm">No activities.</p> : (
-            <div className="space-y-2">{filteredActivities.map((a) => (
-              <div key={a.id} className="rounded-xl bg-card border border-border p-4 flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm">{a.description}</p>
-                  <p className="text-xs text-muted mt-1"><span className="rounded bg-card-hover px-1.5 py-0.5">{typeLabels[a.type]}</span> · {a.customer_name}{a.next_follow_up && ` · Follow-up: ${a.next_follow_up}`}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <select value={a.status} onChange={(e) => updateActivityStatus(a.id!, e.target.value)} className={`rounded-full px-2 py-0.5 text-xs font-medium border-0 cursor-pointer focus:outline-none ${a.status === "done" ? "bg-green-900/50 text-green-400" : a.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}>
-                    <option value="new">New</option><option value="in_progress">In Progress</option><option value="done">Done</option>
-                  </select>
-                  <button onClick={() => deleteActivity(a.id!)} className="text-xs text-danger hover:underline">Del</button>
-                </div>
-              </div>
-            ))}</div>
-          )}
-        </>)}
-
-        {/* ===== REQUESTS TAB ===== */}
-        {tab === "requests" && (<>
-          {showReqForm && (
-            <div className="rounded-xl bg-card border border-border p-5 mb-4">
-              <h2 className="text-base font-semibold mb-3">สร้าง Job Request</h2>
-              <p className="text-[10px] text-muted mb-3">ขอความช่วยเหลือจากทีม Presale หรือ Service</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-                <div><label className="text-[10px] text-muted">หัวข้องาน *</label><input placeholder="เช่น ขอ BOQ กล้อง CCTV 32 จุด" value={reqForm.title} onChange={e => setReqForm({ ...reqForm, title: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-                <div><label className="text-[10px] text-muted">ส่งถึงทีม *</label><select value={reqForm.request_to_team} onChange={e => setReqForm({ ...reqForm, request_to_team: e.target.value as JobRequest["request_to_team"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="presale">Presale (พรีเซลล์)</option><option value="service">Service (บริการ)</option></select></div>
-                <div><label className="text-[10px] text-muted">ส่งถึงใคร (ถ้าระบุ)</label><select value={reqForm.request_to_person} onChange={e => setReqForm({ ...reqForm, request_to_person: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- ให้ทีมจัดการ --</option>{users.filter(u => u.role === reqForm.request_to_team).map(u => <option key={u.id} value={u.name}>{u.name} ({u.position})</option>)}</select></div>
-                <div><label className="text-[10px] text-muted">ลูกค้า</label><select value={reqForm.customer_id} onChange={e => { const c = customers.find(x => x.id === e.target.value); setReqForm({ ...reqForm, customer_id: e.target.value, customer_name: c?.company_name || "" }); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกลูกค้า --</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
-                <div><label className="text-[10px] text-muted">โปรเจค</label><select value={reqForm.project_id} onChange={e => { const p = projects.find(x => x.id === e.target.value); setReqForm({ ...reqForm, project_id: e.target.value, project_name: p?.name || "" }); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกโปรเจค --</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-                <div><label className="text-[10px] text-muted">มูลค่างาน (THB)</label><input type="number" placeholder="เช่น 500000" value={reqForm.value || ""} onChange={e => setReqForm({ ...reqForm, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-                <div><label className="text-[10px] text-muted">วันที่ต้องการ</label><input type="date" value={reqForm.due_date} onChange={e => setReqForm({ ...reqForm, due_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-                <div><label className="text-[10px] text-muted">ความเร่งด่วน</label><select value={reqForm.priority} onChange={e => setReqForm({ ...reqForm, priority: e.target.value as JobRequest["priority"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="low">Low (ปกติ)</option><option value="medium">Medium (ค่อนข้างด่วน)</option><option value="high">High (ด่วน)</option><option value="urgent">Urgent (ด่วนมาก)</option></select></div>
-                <div><label className="text-[10px] text-muted">ผู้ขอ</label><select value={reqForm.request_from} onChange={e => setReqForm({ ...reqForm, request_from: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- ชื่อผู้ขอ --</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
-                <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียดงาน *</label><textarea placeholder="อธิบายรายละเอียดที่ต้องการ เช่น ออกแบบระบบ WiFi 3 อาคาร, จัดทำ BOQ พร้อมแผนผัง" value={reqForm.description} onChange={e => setReqForm({ ...reqForm, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent min-h-20 resize-y mt-1" /></div>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={async () => { if (!reqForm.title.trim() || !reqForm.description.trim()) return; setSaving(true); try { const { jobRequests } = await import("@/lib/firestore"); await jobRequests.add(reqForm as unknown as Record<string, unknown>); setReqForm({ request_from: "", request_to_team: "presale", request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium", status: "pending", assigned_to: "", reject_reason: "", accept_note: "" }); setShowReqForm(false); await load(); } catch (e) { console.error(e); } finally { setSaving(false); } }} disabled={saving || !reqForm.title.trim() || !reqForm.description.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังส่ง..." : "ส่ง Request"}</button>
-                <button onClick={() => setShowReqForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
-              </div>
+            <div className="flex gap-2">
+              <button onClick={() => saveActivity(false)} disabled={saving || !actForm.description.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึก"}</button>
+              <button onClick={() => setShowForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Request list */}
-          <div className="space-y-2">
-            {jobReqs.length === 0 ? <p className="text-muted text-sm">ยังไม่มี Job Request — กด &quot;+ Job Request&quot; เพื่อขอความช่วยเหลือจากทีมอื่น</p> : jobReqs.map(r => {
-              const prioColor: Record<string, string> = { low: "bg-gray-700 text-gray-300", medium: "bg-blue-900/50 text-blue-400", high: "bg-amber-900/50 text-amber-400", urgent: "bg-red-900/50 text-red-400" };
-              const statusColor: Record<string, string> = { pending: "bg-yellow-900/50 text-yellow-400", accepted: "bg-blue-900/50 text-blue-400", in_progress: "bg-blue-900/50 text-blue-400", completed: "bg-green-900/50 text-green-400", rejected: "bg-red-900/50 text-red-400" };
-              return (
-                <div key={r.id} className="rounded-xl bg-card border border-border p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <p className="font-medium text-sm">{r.title}</p>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${r.request_to_team === "presale" ? "bg-purple-900/50 text-purple-400" : "bg-rose-900/50 text-rose-400"}`}>→ {r.request_to_team}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${prioColor[r.priority]}`}>{r.priority}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[r.status]}`}>{r.status}</span>
-                      </div>
-                      <p className="text-xs text-muted">{r.description}</p>
-                      <p className="text-xs text-muted mt-1">
-                        {r.customer_name && `ลูกค้า: ${r.customer_name} · `}
-                        {r.project_name && `โปรเจค: ${r.project_name} · `}
-                        {r.value > 0 && `มูลค่า: ${r.value.toLocaleString()} THB · `}
-                        {r.due_date && `กำหนด: ${r.due_date} · `}
-                        ผู้ขอ: {r.request_from || "-"}
-                        {r.request_to_person && ` · ถึง: ${r.request_to_person}`}
-                      </p>
-                      {r.assigned_to && <p className="text-xs text-green-400 mt-1">มอบหมายให้: {r.assigned_to}</p>}
-                      {r.reject_reason && <p className="text-xs text-red-400 mt-1">เหตุผลปฏิเสธ: {r.reject_reason}</p>}
-                      {r.accept_note && <p className="text-xs text-blue-400 mt-1">หมายเหตุรับงาน: {r.accept_note}</p>}
+        {/* Time filter */}
+        <div className="flex gap-2 mb-3">
+          {(["all","today","week","overdue"] as const).map(f => (
+            <button key={f} onClick={() => setTimeFilter(f)} className={`px-3 py-1.5 rounded-lg text-xs ${timeFilter === f ? "bg-accent text-white" : "bg-card border border-border text-muted hover:bg-card-hover"}`}>
+              {f === "all" ? "ทั้งหมด" : f === "today" ? `วันนี้ (${todayActs.length})` : f === "week" ? "สัปดาห์นี้" : `Overdue (${overdueActs.length})`}
+            </button>
+          ))}
+          <input placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 rounded-lg bg-card border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent" />
+        </div>
+
+        {filteredActs.length === 0 ? <p className="text-muted text-sm">ไม่พบกิจกรรม</p> : (
+          <div className="space-y-1.5">{filteredActs.map(a => {
+            const isOverdue = (a.next_follow_up && a.next_follow_up < today || a.next_action_date && a.next_action_date < today) && a.status !== "done";
+            return (
+              <div key={a.id} className={`rounded-xl bg-card border p-3 ${isOverdue ? "border-red-800/50" : "border-border"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm">{a.description}</p>
+                    <div className="flex flex-wrap gap-1.5 mt-1 text-[10px]">
+                      <span className="rounded bg-card-hover px-1.5 py-0.5">{typeLabels[a.type]}</span>
+                      {a.customer_name && <span className="text-muted">{a.customer_name}</span>}
+                      {a.result && <span className={resultColor[a.result] || "text-muted"}>{resultLabels[a.result]}</span>}
+                      {a.next_follow_up && <span className={isOverdue ? "text-red-400" : "text-muted"}>{isOverdue ? "⚠ " : ""}Follow: {a.next_follow_up}</span>}
+                      {a.next_action && <span className="text-blue-400">Next: {a.next_action}</span>}
+                      {a.converted_to_project_id && <span className="text-green-400">→ Pipeline</span>}
                     </div>
-                    <button onClick={async () => { if (!confirm("ลบ Request นี้?")) return; const { jobRequests } = await import("@/lib/firestore"); await jobRequests.remove(r.id!); await load(); }} className="text-xs text-danger hover:underline shrink-0">ลบ</button>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <select value={a.status} onChange={e => updateActivity(a.id!, { status: e.target.value })} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${a.status === "done" ? "bg-green-900/50 text-green-400" : a.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}><option value="new">New</option><option value="in_progress">ทำอยู่</option><option value="done">เสร็จ</option></select>
+                    {!a.converted_to_project_id && a.status !== "done" && <button onClick={() => convertActivityToPipeline(a)} title="สร้างดีล → Pipeline" className="text-[10px] bg-blue-800/50 text-blue-400 rounded px-2 py-1 hover:bg-blue-800">→ ดีล</button>}
+                    <button onClick={() => deleteActivity(a.id!)} className="text-[10px] text-danger hover:underline">ลบ</button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </>)}
-
-        {/* ===== PLAN / QUOTA TAB ===== */}
-        {tab === "plan" && (<>
-          {showPlanForm && (
-            <div className="rounded-xl bg-card border border-border p-5 mb-4">
-              <h2 className="text-base font-semibold mb-3">ตั้งเป้ายอดขาย</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                <div><label className="text-[10px] text-muted">ชื่อเซลล์ *</label><select value={planForm.user_name} onChange={e => setPlanForm({ ...planForm, user_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือก --</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
-                <div><label className="text-[10px] text-muted">Role</label><select value={planForm.role} onChange={e => setPlanForm({ ...planForm, role: e.target.value as "sale"|"avenger" })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="sale">Sale</option><option value="avenger">Avenger</option></select></div>
-                <div><label className="text-[10px] text-muted">เดือน</label><input type="month" value={planForm.month} onChange={e => setPlanForm({ ...planForm, month: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-                <div><label className="text-[10px] text-muted">เป้ายอดขาย (THB)</label><input type="number" placeholder="เช่น 2000000" value={planForm.quota_target || ""} onChange={e => setPlanForm({ ...planForm, quota_target: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-                <div><label className="text-[10px] text-muted">ยอดจริง (THB)</label><input type="number" value={planForm.actual_sales || ""} onChange={e => setPlanForm({ ...planForm, actual_sales: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-                <div><label className="text-[10px] text-muted">เป้ากำไร (THB)</label><input type="number" value={planForm.profit_target || ""} onChange={e => setPlanForm({ ...planForm, profit_target: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-                <div><label className="text-[10px] text-muted">กำไรจริง (THB)</label><input type="number" value={planForm.actual_profit || ""} onChange={e => setPlanForm({ ...planForm, actual_profit: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-                <div><label className="text-[10px] text-muted">Won Deals</label><input type="number" value={planForm.won_deals || ""} onChange={e => setPlanForm({ ...planForm, won_deals: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={async () => {
-                  if (!planForm.user_name.trim() || planForm.quota_target <= 0) return; setSaving(true);
-                  const { salesQuotas } = await import("@/lib/firestore");
-                  const remaining = planForm.quota_target - planForm.actual_sales;
-                  const percent = planForm.quota_target > 0 ? (planForm.actual_sales / planForm.quota_target * 100) : 0;
-                  const profit_percent = planForm.profit_target > 0 ? (planForm.actual_profit / planForm.profit_target * 100) : 0;
-                  try { await salesQuotas.add({ ...planForm, remaining, percent, profit_percent } as unknown as Record<string, unknown>); setPlanForm({ user_name: "", role: "sale", month: new Date().toISOString().slice(0, 7), quota_target: 0, actual_sales: 0, profit_target: 0, actual_profit: 0, target_gp_percent: 0, won_deals: 0, total_activities: 0 }); setShowPlanForm(false); await load(); }
-                  catch (e) { console.error(e); } finally { setSaving(false); }
-                }} disabled={saving || !planForm.user_name.trim() || planForm.quota_target <= 0} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : "บันทึก"}</button>
-                <button onClick={() => setShowPlanForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+            );
+          })}</div>
+        )}
+      </>)}
+
+      {/* ═══ PIPELINE ═══ */}
+      {tab === "pipeline" && (<>
+        <div className="flex gap-2 mb-3 flex-wrap">
+          {stages.map(s => {
+            const c = projects.filter(p => p.status === s).length;
+            const v = projects.filter(p => p.status === s).reduce((sum, p) => sum + (p.value || 0), 0);
+            return <button key={s} onClick={() => setStageFilter(stageFilter === s ? "all" : s)} className={`rounded-lg border p-2 text-center min-w-[80px] transition-colors ${stageFilter === s ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}><p className="text-base font-bold">{c}</p><p className="text-[9px] text-muted">{s}</p><p className="text-[9px] text-muted">{(v/1000).toFixed(0)}K</p></button>;
+          })}
+          <input placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[150px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+        </div>
+
+        {filteredPipeline.length === 0 ? <p className="text-muted text-sm">ไม่พบดีล</p> : (
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
+                <th className="px-4 py-2.5">Project</th><th className="px-4 py-2.5">Customer</th><th className="px-4 py-2.5 text-right">Value</th><th className="px-4 py-2.5">Stage</th><th className="px-4 py-2.5">%</th><th className="px-4 py-2.5">Close Date</th><th className="px-4 py-2.5">Next Action</th><th className="px-4 py-2.5 w-24">Convert</th>
+              </tr></thead>
+              <tbody>{filteredPipeline.map(p => (
+                <tr key={p.id} className="border-b border-border last:border-0 hover:bg-card-hover">
+                  <td className="px-4 py-2.5 font-medium">{p.name}</td>
+                  <td className="px-4 py-2.5 text-muted text-xs">{p.customer_name}</td>
+                  <td className="px-4 py-2.5 text-right">{(p.value||0).toLocaleString()}</td>
+                  <td className="px-4 py-2.5"><select value={p.status} onChange={e => updateProjectStatus(p.id!, e.target.value)} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${stageColor[p.status] || "bg-gray-700"}`}>{stages.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
+                  <td className="px-4 py-2.5 text-xs text-muted">{p.probability || "—"}%</td>
+                  <td className="px-4 py-2.5 text-xs text-muted">{p.expected_close_date || "—"}</td>
+                  <td className="px-4 py-2.5 text-xs text-muted">{p.next_action || "—"}{p.next_action_date && <span className="text-[9px] ml-1">({p.next_action_date})</span>}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex gap-1">
+                      <Link href="/quotations" title="สร้างใบเสนอราคา" className="text-[9px] bg-amber-800/50 text-amber-400 rounded px-1.5 py-0.5 hover:bg-amber-800">QT</Link>
+                      <Link href="/presale" title="ขอ Presale" className="text-[9px] bg-purple-800/50 text-purple-400 rounded px-1.5 py-0.5 hover:bg-purple-800">PS</Link>
+                      <Link href="/service" title="สร้าง Service" className="text-[9px] bg-rose-800/50 text-rose-400 rounded px-1.5 py-0.5 hover:bg-rose-800">SV</Link>
+                    </div>
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+      </>)}
+
+      {/* ═══ REQUESTS ═══ */}
+      {tab === "requests" && (<>
+        {showReqForm && (
+          <div className="rounded-xl bg-card border border-border p-5 mb-4">
+            <h2 className="text-base font-semibold mb-3">สร้าง Job Request</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+              <div><label className="text-[10px] text-muted">หัวข้อ *</label><input value={reqForm.title} onChange={e => setReqForm({ ...reqForm, title: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              <div><label className="text-[10px] text-muted">ส่งถึงทีม</label><select value={reqForm.request_to_team} onChange={e => setReqForm({ ...reqForm, request_to_team: e.target.value as JobRequest["request_to_team"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="presale">Presale</option><option value="service">Service</option></select></div>
+              <div><label className="text-[10px] text-muted">ลูกค้า</label><select value={reqForm.customer_id} onChange={e => selectCust(e.target.value, "req")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">วันที่ต้องการ</label><input type="date" value={reqForm.due_date} onChange={e => setReqForm({ ...reqForm, due_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              <div><label className="text-[10px] text-muted">ความเร่งด่วน</label><select value={reqForm.priority} onChange={e => setReqForm({ ...reqForm, priority: e.target.value as JobRequest["priority"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="low">ปกติ</option><option value="medium">ค่อนข้างด่วน</option><option value="high">ด่วน</option><option value="urgent">ด่วนมาก</option></select></div>
+              <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียด *</label><textarea value={reqForm.description} onChange={e => setReqForm({ ...reqForm, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-16 resize-y" /></div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={saveRequest} disabled={saving || !reqForm.title.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "ส่ง Request"}</button>
+              <button onClick={() => setShowReqForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+            </div>
+          </div>
+        )}
+
+        {jobReqs.length === 0 ? <p className="text-muted text-sm">ไม่มี Request</p> : (
+          <div className="space-y-1.5">{jobReqs.map(r => (
+            <div key={r.id} className="rounded-xl bg-card border border-border p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                    <span className="text-sm font-medium">{r.title}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${r.request_to_team === "presale" ? "bg-purple-900/50 text-purple-400" : "bg-rose-900/50 text-rose-400"}`}>→ {r.request_to_team}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${r.status === "completed" ? "bg-green-900/50 text-green-400" : r.status === "accepted" || r.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : r.status === "rejected" ? "bg-red-900/50 text-red-400" : "bg-blue-900/50 text-blue-400"}`}>{r.status}</span>
+                  </div>
+                  <p className="text-xs text-muted">{r.description}</p>
+                  <p className="text-[10px] text-muted mt-0.5">{r.customer_name}{r.due_date && ` · กำหนด: ${r.due_date}`}</p>
+                </div>
+                <button onClick={async () => { if (!confirm("ลบ?")) return; const { jobRequests } = await import("@/lib/firestore"); await jobRequests.remove(r.id!); await load(); }} className="text-[10px] text-danger hover:underline shrink-0">ลบ</button>
               </div>
             </div>
-          )}
-
-          {/* Summary */}
-          {(() => {
-            const month = new Date().toISOString().slice(0, 7);
-            const monthQ = quotas.filter(q => q.month === month);
-            const totalTarget = monthQ.reduce((s, q) => s + (q.quota_target || 0), 0);
-            const totalActual = monthQ.reduce((s, q) => s + (q.actual_sales || 0), 0);
-            const totalProfitTarget = monthQ.reduce((s, q) => s + (q.profit_target || 0), 0);
-            const totalActualProfit = monthQ.reduce((s, q) => s + (q.actual_profit || 0), 0);
-            const pct = totalTarget > 0 ? (totalActual / totalTarget * 100) : 0;
-            const profitPct = totalProfitTarget > 0 ? (totalActualProfit / totalProfitTarget * 100) : 0;
-            return (<>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                <div className="rounded-xl bg-card border border-border p-4"><p className="text-xs text-muted" title="เป้ายอดขายรวม">Target</p><p className="text-2xl font-bold">{totalTarget.toLocaleString()}</p><p className="text-xs text-muted">THB</p></div>
-                <div className="rounded-xl bg-card border border-border p-4"><p className="text-xs text-muted" title="ยอดจริง">Actual</p><p className={`text-2xl font-bold ${pct >= 100 ? "text-green-400" : pct >= 70 ? "text-yellow-400" : "text-red-400"}`}>{totalActual.toLocaleString()}</p><div className="mt-2 h-2 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${pct >= 100 ? "bg-green-500" : pct >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} /></div><p className="text-[10px] text-muted mt-1">{pct.toFixed(0)}%</p></div>
-                <div className="rounded-xl bg-card border border-border p-4"><p className="text-xs text-muted" title="เป้ากำไร">Profit Target</p><p className="text-2xl font-bold">{totalProfitTarget.toLocaleString()}</p><p className="text-xs text-muted">THB</p></div>
-                <div className="rounded-xl bg-card border border-border p-4"><p className="text-xs text-muted" title="กำไรจริง">Actual Profit</p><p className={`text-2xl font-bold ${profitPct >= 100 ? "text-green-400" : profitPct >= 70 ? "text-yellow-400" : "text-red-400"}`}>{totalActualProfit.toLocaleString()}</p><p className="text-[10px] text-muted">{profitPct.toFixed(0)}%</p></div>
-              </div>
-
-              {/* Quota table */}
-              {monthQ.length === 0 ? <p className="text-muted text-sm">ยังไม่มีข้อมูลเดือนนี้ กด &quot;+ Set Quota&quot;</p> : (
-                <div className="rounded-xl bg-card border border-border overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
-                      <th className="px-4 py-2.5" title="ชื่อเซลล์">Person</th>
-                      <th className="px-4 py-2.5 text-right" title="เป้ายอดขาย">Target</th>
-                      <th className="px-4 py-2.5 text-right" title="ยอดจริง">Actual</th>
-                      <th className="px-4 py-2.5 text-right" title="เหลือ">Remaining</th>
-                      <th className="px-4 py-2.5" title="ความคืบหน้า">Progress</th>
-                      <th className="px-4 py-2.5 text-center" title="ดีลที่ปิดได้">Deals</th>
-                      <th className="px-4 py-2.5 w-12"></th>
-                    </tr></thead>
-                    <tbody>{monthQ.map(q => {
-                      const p = q.quota_target > 0 ? (q.actual_sales / q.quota_target * 100) : 0;
-                      const rem = q.quota_target - q.actual_sales;
-                      return (
-                        <tr key={q.id} className="border-b border-border last:border-0 hover:bg-card-hover">
-                          <td className="px-4 py-2.5 font-medium">{q.user_name} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${q.role === "avenger" ? "bg-purple-900/50 text-purple-400" : "bg-blue-900/50 text-blue-400"}`}>{q.role}</span></td>
-                          <td className="px-4 py-2.5 text-right">{q.quota_target.toLocaleString()}</td>
-                          <td className="px-4 py-2.5 text-right text-green-400">{q.actual_sales.toLocaleString()}</td>
-                          <td className={`px-4 py-2.5 text-right ${rem > 0 ? "text-yellow-400" : "text-green-400"}`}>{rem.toLocaleString()}</td>
-                          <td className="px-4 py-2.5"><div className="flex items-center gap-2"><div className="h-2 w-20 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${p >= 100 ? "bg-green-500" : p >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(p, 100)}%` }} /></div><span className="text-xs text-muted">{p.toFixed(0)}%</span></div></td>
-                          <td className="px-4 py-2.5 text-center">{q.won_deals || 0}</td>
-                          <td className="px-4 py-2.5"><button onClick={async () => { if (!confirm("ลบ?")) return; const { salesQuotas } = await import("@/lib/firestore"); await salesQuotas.remove(q.id!); await load(); }} className="text-xs text-danger hover:underline">ลบ</button></td>
-                        </tr>);
-                    })}</tbody>
-                  </table>
-                </div>
-              )}
-            </>);
-          })()}
-        </>)}
+          ))}</div>
+        )}
+      </>)}
 
       </>)}
     </div>

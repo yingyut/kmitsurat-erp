@@ -149,11 +149,19 @@ export interface Project {
   name: string;
   customer_id: string;
   customer_name: string;
-  type: string;
+  type: string;                    // legacy single type (kept for backward compat)
+  job_types?: string[];            // NEW: multiple job types
   value: number;
   status: "lead" | "opportunity" | "proposal" | "negotiation" | "won" | "lost";
   assigned_to: string;
   notes: string;
+  // Enhanced fields (backward compatible)
+  probability?: number;           // % chance to win (0-100)
+  expected_close_date?: string;
+  next_action?: string;
+  next_action_date?: string;
+  support_teams?: string[];       // ["presale","service","procurement"]
+  converted_from_activity_id?: string;
   // Win/Loss tracking
   win_loss_reason: string;
   lost_competitor: string;
@@ -222,6 +230,16 @@ export interface SalesActivity {
   description: string;
   status: "new" | "in_progress" | "done";
   next_follow_up: string;
+  // Enhanced fields (backward compatible)
+  result?: "success" | "no_answer" | "interested" | "rejected" | "pending" | "";
+  next_action?: string;
+  next_action_date?: string;
+  // Plan mode
+  is_plan?: boolean;
+  plan_date?: string;
+  expected_outcome?: string;
+  // Conversion tracking
+  converted_to_project_id?: string;
 }
 
 export interface BomItem {

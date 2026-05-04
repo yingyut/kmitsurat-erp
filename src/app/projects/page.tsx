@@ -21,7 +21,7 @@ const statusLabels: Record<string, string> = { lead: "Lead", opportunity: "Oppor
 const statusColor: Record<string, string> = { lead: "bg-gray-700 text-gray-300", opportunity: "bg-blue-900/50 text-blue-400", proposal: "bg-purple-900/50 text-purple-400", negotiation: "bg-yellow-900/50 text-yellow-400", won: "bg-green-900/50 text-green-400", lost: "bg-red-900/50 text-red-400" };
 
 const emptyForm = {
-  name: "", customer_id: "", customer_name: "", type: "", value: 0,
+  name: "", customer_id: "", customer_name: "", type: "", job_types: [] as string[], value: 0,
   status: "lead" as Project["status"], assigned_to: "", notes: "",
   win_loss_reason: "", lost_competitor: "",
   re_engage: false, re_engage_date: "", re_engage_note: "",
@@ -48,6 +48,17 @@ export default function ProjectsPage() {
 
   // Detail
   const [detail, setDetail] = useState<Project | null>(null);
+
+  // Customer quick-create
+  const [showNewCust, setShowNewCust] = useState(false);
+  const [newCust, setNewCust] = useState({ company_name: "", contact_name: "", phone: "", email: "" });
+  const [custSearch, setCustSearch] = useState("");
+
+  // Job type inline add
+  const [newTypeName, setNewTypeName] = useState("");
+
+  // Filtered customers for search
+  const filteredCusts = custSearch ? custs.filter(c => c.company_name.toLowerCase().includes(custSearch.toLowerCase()) || c.contact_name.toLowerCase().includes(custSearch.toLowerCase())) : custs;
 
   // Alerts
   const today = new Date().toISOString().slice(0, 10);
@@ -104,7 +115,7 @@ export default function ProjectsPage() {
     setEditId(p.id!);
     setForm({
       name: p.name, customer_id: p.customer_id, customer_name: p.customer_name,
-      type: p.type, value: p.value, status: p.status, assigned_to: p.assigned_to, notes: p.notes,
+      type: p.type, job_types: p.job_types || (p.type ? [p.type] : []), value: p.value, status: p.status, assigned_to: p.assigned_to, notes: p.notes,
       win_loss_reason: p.win_loss_reason || "", lost_competitor: p.lost_competitor || "",
       re_engage: p.re_engage || false, re_engage_date: p.re_engage_date || "", re_engage_note: p.re_engage_note || "",
       reminder_date: p.reminder_date || "", reminder_type: p.reminder_type || "none", reminder_sent: p.reminder_sent || false,
@@ -113,13 +124,45 @@ export default function ProjectsPage() {
     setShowForm(true); setDetail(null);
   }
 
+  async function quickCreateCustomer() {
+    if (!newCust.company_name.trim()) return;
+    setSaving(true);
+    const fs = await import("@/lib/firestore");
+    try {
+      const ref = await fs.customers.add({ ...newCust, address: "", province: "", org_type: "private", notes: "" } as unknown as Record<string, unknown>);
+      setForm({ ...form, customer_id: ref.id, customer_name: newCust.company_name });
+      setNewCust({ company_name: "", contact_name: "", phone: "", email: "" });
+      setShowNewCust(false);
+      await load();
+    } catch (e) { console.error(e); } finally { setSaving(false); }
+  }
+
+  async function quickAddJobType() {
+    if (!newTypeName.trim()) return;
+    setSaving(true);
+    const fs = await import("@/lib/firestore");
+    try {
+      await fs.projectTypes.add({ name: newTypeName.trim(), description: "" });
+      setForm({ ...form, job_types: [...(form.job_types || []), newTypeName.trim()] });
+      setNewTypeName("");
+      await load();
+    } catch (e) { console.error(e); } finally { setSaving(false); }
+  }
+
+  function toggleJobType(typeName: string) {
+    const arr = form.job_types || [];
+    setForm({ ...form, job_types: arr.includes(typeName) ? arr.filter(t => t !== typeName) : [...arr, typeName] });
+  }
+
   async function handleSave() {
     if (!form.name.trim()) return;
     setSaving(true);
     const fs = await import("@/lib/firestore");
+    // Sync type field for backward compat
+    const saveData = { ...form, type: form.job_types?.length ? form.job_types.join(", ") : form.type };
     try {
-      if (editId) { await fs.projects.update(editId, form as unknown as Record<string, unknown>); }
-      else { await fs.projects.add(form as unknown as Record<string, unknown>); }
+      if (editId) { await fs.projects.update(editId, saveData as unknown as Record<string, unknown>); }
+      else { await fs.projects.add(saveData as unknown as Record<string, unknown>); }
       setForm(emptyForm); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
@@ -243,17 +286,61 @@ export default function ProjectsPage() {
           <p className="text-xs text-muted uppercase mb-2">ข้อมูลทั่วไป</p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
             <div><label className="text-[10px] text-muted">ชื่อโปรเจค *</label><input placeholder="เช่น WiFi โรงเรียน ABC" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-            <div><label className="text-[10px] text-muted">ลูกค้า</label><select value={form.customer_id} onChange={e => selectCustomer(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกลูกค้า --</option>{custs.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
             <div>
-              <label className="text-[10px] text-muted">ประเภทงาน</label>
+              <label className="text-[10px] text-muted">ลูกค้า</label>
               <div className="flex gap-1.5 mt-1">
-                <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="flex-1 rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-                  <option value="">-- เลือกประเภทงาน --</option>
-                  {pTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-                </select>
-                <Link href="/settings/project-types" title="เพิ่มประเภทงานใหม่" className="shrink-0 rounded-lg border border-border px-2.5 py-2 text-sm text-accent hover:bg-card-hover">+</Link>
+                <div className="flex-1">
+                  <input placeholder="ค้นหาลูกค้า..." value={custSearch} onChange={e => setCustSearch(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-1.5 text-[10px] focus:outline-none focus:border-accent mb-1" />
+                  <select value={form.customer_id} onChange={e => selectCustomer(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                    <option value="">-- เลือกลูกค้า --</option>
+                    {filteredCusts.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+                  </select>
+                </div>
+                <button type="button" onClick={() => setShowNewCust(!showNewCust)} title="สร้างลูกค้าใหม่" className="shrink-0 rounded-lg border border-border px-2.5 py-2 text-sm text-accent hover:bg-card-hover self-end">+</button>
               </div>
-              {pTypes.length === 0 && <p className="text-[10px] text-amber-400 mt-1">ยังไม่มีประเภทงาน <Link href="/settings/project-types" className="underline">คลิกเพื่อเพิ่ม</Link></p>}
+              {showNewCust && (
+                <div className="mt-2 p-3 rounded-lg bg-background border border-accent/50">
+                  <p className="text-[10px] text-accent font-medium mb-2">สร้างลูกค้าใหม่</p>
+                  <div className="space-y-1.5">
+                    <input placeholder="ชื่อบริษัท *" value={newCust.company_name} onChange={e => setNewCust({ ...newCust, company_name: e.target.value })} className="w-full rounded-lg bg-card border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                    <input placeholder="ชื่อผู้ติดต่อ" value={newCust.contact_name} onChange={e => setNewCust({ ...newCust, contact_name: e.target.value })} className="w-full rounded-lg bg-card border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                    <input placeholder="เบอร์โทร" value={newCust.phone} onChange={e => setNewCust({ ...newCust, phone: e.target.value })} className="w-full rounded-lg bg-card border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                    <input placeholder="อีเมล" value={newCust.email} onChange={e => setNewCust({ ...newCust, email: e.target.value })} className="w-full rounded-lg bg-card border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                    <div className="flex gap-2 pt-1">
+                      <button type="button" onClick={quickCreateCustomer} disabled={saving || !newCust.company_name.trim()} className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "สร้าง"}</button>
+                      <button type="button" onClick={() => setShowNewCust(false)} className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-card-hover">ยกเลิก</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="col-span-full">
+              <label className="text-[10px] text-muted">ประเภทงาน (เลือกได้หลายชนิด)</label>
+              {/* Selected tags */}
+              {(form.job_types || []).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-1 mb-1.5">
+                  {(form.job_types || []).map(t => (
+                    <span key={t} className="flex items-center gap-1 rounded-full bg-accent/20 text-accent px-2.5 py-0.5 text-xs">
+                      {t}
+                      <button type="button" onClick={() => toggleJobType(t)} className="hover:text-red-400">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Checkbox grid */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 mt-1 p-2 rounded-lg bg-background border border-border max-h-[120px] overflow-y-auto">
+                {pTypes.map(t => (
+                  <label key={t.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-card-hover rounded px-1.5 py-1">
+                    <input type="checkbox" checked={(form.job_types || []).includes(t.name)} onChange={() => toggleJobType(t.name)} />
+                    {t.name}
+                  </label>
+                ))}
+              </div>
+              {/* Inline add new type */}
+              <div className="flex gap-1.5 mt-1.5">
+                <input placeholder="เพิ่มประเภทใหม่..." value={newTypeName} onChange={e => setNewTypeName(e.target.value)} className="flex-1 rounded-lg bg-background border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent" />
+                <button type="button" onClick={quickAddJobType} disabled={!newTypeName.trim()} className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white hover:bg-accent-hover disabled:opacity-50">+ เพิ่ม</button>
+              </div>
             </div>
             <div><label className="text-[10px] text-muted">มูลค่า (THB)</label><input type="number" placeholder="เช่น 500000" value={form.value || ""} onChange={e => setForm({ ...form, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
             <div><label className="text-[10px] text-muted">สถานะ</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as Project["status"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">{statuses.map(s => <option key={s} value={s}>{statusLabels[s]}</option>)}</select></div>
@@ -455,7 +542,7 @@ export default function ProjectsPage() {
                     {p.reminder_date && p.reminder_type !== "none" && !p.reminder_sent && <span className="shrink-0 rounded-full bg-blue-900/50 px-2 py-0.5 text-[10px] text-blue-400" title={`Reminder: ${p.reminder_date}`}>🔔</span>}
                     {contractCountForProject(p.id!) > 0 && <span className="shrink-0 rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] text-emerald-400" title={`${contractCountForProject(p.id!)} สัญญา/รับประกัน`}>🛡️ {contractCountForProject(p.id!)}</span>}
                   </div>
-                  <p className="text-xs text-muted">{p.customer_name} · {p.type} · {(p.value || 0).toLocaleString()} THB{p.assigned_to && ` · ${p.assigned_to}`}</p>
+                  <p className="text-xs text-muted">{p.customer_name} · {(p.job_types?.length ? p.job_types.join(", ") : p.type) || "—"} · {(p.value || 0).toLocaleString()} THB{p.assigned_to && ` · ${p.assigned_to}`}</p>
                   {p.win_loss_reason && <p className="text-xs mt-1 text-muted italic">{p.status === "won" ? "✓" : "✗"} {p.win_loss_reason.slice(0, 60)}{p.win_loss_reason.length > 60 ? "..." : ""}</p>}
                   {p.re_engage && p.re_engage_date && <p className="text-[10px] text-amber-400 mt-0.5">เสนอใหม่: {p.re_engage_date} — {p.re_engage_note?.slice(0, 40)}</p>}
                 </div>
