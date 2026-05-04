@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCurrentUser } from "@/lib/UserContext";
 
 type NavItem = { href: string; label: string; thai: string; icon: string };
 type Section = { title?: string; subtitle?: string; items: NavItem[] };
@@ -19,6 +20,7 @@ const sections: Section[] = [
       { href: "/projects", label: "Pipeline", thai: "โอกาสขาย / Sales Pipeline", icon: "🎯" },
       { href: "/sales", label: "Activities", thai: "กิจกรรมงานขาย / Job Requests", icon: "📞" },
       { href: "/quotations", label: "Quotations", thai: "ใบเสนอราคา", icon: "💰" },
+      { href: "/sales-workflow", label: "Sales Workflow", thai: "ติดตามสถานะ QT → PO → ส่งมอบ", icon: "🔄" },
       { href: "/sales-plan", label: "Sales Plan", thai: "แผนยอดขาย / Quota", icon: "📈" },
     ],
   },
@@ -54,6 +56,7 @@ const sections: Section[] = [
 export default function Sidebar() {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
+  const { currentUser, setCurrentUser, users } = useCurrentUser();
 
   return (
     <aside className="fixed left-0 top-0 flex h-full w-52 flex-col bg-card border-r border-border z-50">
@@ -85,8 +88,16 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="border-t border-border px-4 py-3" title="รหัสบริษัท">
-        <p className="text-[10px] text-muted">tenant: kmitsurat</p>
+      <div className="border-t border-border px-3 py-3" title="เลือกผู้ใช้ปัจจุบัน">
+        <select value={currentUser?.name || ""} onChange={e => { const u = users.find(x => x.name === e.target.value); if (u) setCurrentUser(u); }}
+          className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-[10px] focus:outline-none focus:border-accent mb-1.5 truncate">
+          {users.map(u => <option key={u.id} value={u.name}>{u.nickname || u.name} ({u.role})</option>)}
+        </select>
+        {currentUser && (
+          <div className="text-[10px] text-muted truncate" title={currentUser.email}>
+            {currentUser.email}
+          </div>
+        )}
       </div>
     </aside>
   );

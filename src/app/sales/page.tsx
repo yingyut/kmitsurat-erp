@@ -9,7 +9,14 @@ const today = new Date().toISOString().slice(0, 10);
 const currentMonth = new Date().toISOString().slice(0, 7);
 
 export default function SalesPage() {
-  const [tab, setTab] = useState<"dashboard" | "activities" | "requests">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "pipeline" | "activities" | "requests" | "plan">("dashboard");
+
+  // Plan form
+  const [showPlanForm, setShowPlanForm] = useState(false);
+  const [planForm, setPlanForm] = useState({ user_name: "", role: "sale" as "sale"|"avenger", month: new Date().toISOString().slice(0, 7), quota_target: 0, actual_sales: 0, profit_target: 0, actual_profit: 0, target_gp_percent: 0, won_deals: 0, total_activities: 0 });
+
+  // Pipeline filter
+  const [stageFilter, setStageFilter] = useState("all");
   const [activities, setActivities] = useState<SalesActivity[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -98,14 +105,15 @@ export default function SalesPage() {
         <div className="flex gap-2">
           {tab === "activities" && <button onClick={() => setShowActForm(!showActForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showActForm ? "Cancel" : "+ New Activity"}</button>}
           {tab === "requests" && <button onClick={() => setShowReqForm(!showReqForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showReqForm ? "Cancel" : "+ Job Request"}</button>}
+          {tab === "plan" && <button onClick={() => setShowPlanForm(!showPlanForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showPlanForm ? "Cancel" : "+ Set Quota"}</button>}
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-border">
-        {(["dashboard","activities","requests"] as const).map((t) => {
-          const labels: Record<string, string> = { dashboard: "Dashboard", activities: "Activities", requests: "Requests" };
-          const thaiTitles: Record<string, string> = { dashboard: "แดชบอร์ดภาพรวมทีมขาย", activities: "บันทึกกิจกรรมขาย", requests: "ขอความช่วยเหลือจากทีมอื่น" };
+        {(["dashboard","pipeline","activities","requests","plan"] as const).map((t) => {
+          const labels: Record<string, string> = { dashboard: "Dashboard", pipeline: "Pipeline", activities: "Activities", requests: "Requests", plan: "Plan / Quota" };
+          const thaiTitles: Record<string, string> = { dashboard: "แดชบอร์ดภาพรวมทีมขาย", pipeline: "ท่อขาย / ดีลทั้งหมด", activities: "บันทึกกิจกรรมขาย", requests: "ขอความช่วยเหลือจากทีมอื่น", plan: "แผนยอดขาย / โควต้า" };
           const reqCount = t === "requests" ? jobReqs.filter(r => r.status === "pending").length : 0;
           return (
           <button key={t} onClick={() => setTab(t)} title={thaiTitles[t]} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
@@ -206,6 +214,51 @@ export default function SalesPage() {
           </div>
         </>)}
 
+        {/* ===== PIPELINE TAB ===== */}
+        {tab === "pipeline" && (<>
+          <div className="flex gap-3 mb-4">
+            <input placeholder="ค้นหาดีล..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+              <option value="all">ทุกสถานะ</option>
+              {["lead","opportunity","proposal","negotiation","won","lost"].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          {(() => {
+            const stages = ["lead","opportunity","proposal","negotiation","won","lost"];
+            const stageColor: Record<string,string> = { lead:"bg-gray-700", opportunity:"bg-blue-900/50 text-blue-400", proposal:"bg-purple-900/50 text-purple-400", negotiation:"bg-yellow-900/50 text-yellow-400", won:"bg-green-900/50 text-green-400", lost:"bg-red-900/50 text-red-400" };
+            const fp = projects.filter(p => {
+              const ms = search ? (p.name.toLowerCase().includes(search.toLowerCase()) || p.customer_name.toLowerCase().includes(search.toLowerCase())) : true;
+              const mst = stageFilter === "all" || p.status === stageFilter;
+              return ms && mst;
+            });
+            return (<>
+              <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+                {stages.map(s => {
+                  const c = projects.filter(p => p.status === s).length;
+                  const v = projects.filter(p => p.status === s).reduce((sum, p) => sum + (p.value || 0), 0);
+                  return <button key={s} onClick={() => setStageFilter(stageFilter === s ? "all" : s)} className={`rounded-lg border p-2.5 text-center transition-colors ${stageFilter === s ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}><p className="text-lg font-bold">{c}</p><p className="text-[10px] text-muted">{s}</p><p className="text-[10px] text-muted">{(v/1000).toFixed(0)}K</p></button>;
+                })}
+              </div>
+              {fp.length === 0 ? <p className="text-muted text-sm">ไม่พบดีล</p> : (
+                <div className="rounded-xl bg-card border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-border text-left text-xs text-muted uppercase"><th className="px-4 py-2.5" title="ชื่อโปรเจค">Project</th><th className="px-4 py-2.5" title="ลูกค้า">Customer</th><th className="px-4 py-2.5 text-right" title="มูลค่า">Value</th><th className="px-4 py-2.5" title="สถานะ">Stage</th><th className="px-4 py-2.5" title="ผู้รับผิดชอบ">Owner</th></tr></thead>
+                    <tbody>{fp.map(p => (
+                      <tr key={p.id} className="border-b border-border last:border-0 hover:bg-card-hover">
+                        <td className="px-4 py-2.5 font-medium">{p.name}</td>
+                        <td className="px-4 py-2.5 text-muted">{p.customer_name}</td>
+                        <td className="px-4 py-2.5 text-right">{(p.value||0).toLocaleString()}</td>
+                        <td className="px-4 py-2.5"><select value={p.status} onChange={async e => { const fs = await import("@/lib/firestore"); await fs.projects.update(p.id!, { status: e.target.value }); await load(); }} className={`rounded-full px-2 py-0.5 text-xs font-medium border-0 cursor-pointer focus:outline-none ${stageColor[p.status] || "bg-gray-700"}`}>{stages.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
+                        <td className="px-4 py-2.5 text-muted text-xs">{p.assigned_to || "-"}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+            </>);
+          })()}
+        </>)}
+
         {/* ===== ACTIVITIES TAB ===== */}
         {tab === "activities" && (<>
           {showActForm && (
@@ -300,6 +353,88 @@ export default function SalesPage() {
               );
             })}
           </div>
+        </>)}
+
+        {/* ===== PLAN / QUOTA TAB ===== */}
+        {tab === "plan" && (<>
+          {showPlanForm && (
+            <div className="rounded-xl bg-card border border-border p-5 mb-4">
+              <h2 className="text-base font-semibold mb-3">ตั้งเป้ายอดขาย</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                <div><label className="text-[10px] text-muted">ชื่อเซลล์ *</label><select value={planForm.user_name} onChange={e => setPlanForm({ ...planForm, user_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือก --</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
+                <div><label className="text-[10px] text-muted">Role</label><select value={planForm.role} onChange={e => setPlanForm({ ...planForm, role: e.target.value as "sale"|"avenger" })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="sale">Sale</option><option value="avenger">Avenger</option></select></div>
+                <div><label className="text-[10px] text-muted">เดือน</label><input type="month" value={planForm.month} onChange={e => setPlanForm({ ...planForm, month: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+                <div><label className="text-[10px] text-muted">เป้ายอดขาย (THB)</label><input type="number" placeholder="เช่น 2000000" value={planForm.quota_target || ""} onChange={e => setPlanForm({ ...planForm, quota_target: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+                <div><label className="text-[10px] text-muted">ยอดจริง (THB)</label><input type="number" value={planForm.actual_sales || ""} onChange={e => setPlanForm({ ...planForm, actual_sales: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+                <div><label className="text-[10px] text-muted">เป้ากำไร (THB)</label><input type="number" value={planForm.profit_target || ""} onChange={e => setPlanForm({ ...planForm, profit_target: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+                <div><label className="text-[10px] text-muted">กำไรจริง (THB)</label><input type="number" value={planForm.actual_profit || ""} onChange={e => setPlanForm({ ...planForm, actual_profit: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+                <div><label className="text-[10px] text-muted">Won Deals</label><input type="number" value={planForm.won_deals || ""} onChange={e => setPlanForm({ ...planForm, won_deals: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={async () => {
+                  if (!planForm.user_name.trim() || planForm.quota_target <= 0) return; setSaving(true);
+                  const { salesQuotas } = await import("@/lib/firestore");
+                  const remaining = planForm.quota_target - planForm.actual_sales;
+                  const percent = planForm.quota_target > 0 ? (planForm.actual_sales / planForm.quota_target * 100) : 0;
+                  const profit_percent = planForm.profit_target > 0 ? (planForm.actual_profit / planForm.profit_target * 100) : 0;
+                  try { await salesQuotas.add({ ...planForm, remaining, percent, profit_percent } as unknown as Record<string, unknown>); setPlanForm({ user_name: "", role: "sale", month: new Date().toISOString().slice(0, 7), quota_target: 0, actual_sales: 0, profit_target: 0, actual_profit: 0, target_gp_percent: 0, won_deals: 0, total_activities: 0 }); setShowPlanForm(false); await load(); }
+                  catch (e) { console.error(e); } finally { setSaving(false); }
+                }} disabled={saving || !planForm.user_name.trim() || planForm.quota_target <= 0} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : "บันทึก"}</button>
+                <button onClick={() => setShowPlanForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+              </div>
+            </div>
+          )}
+
+          {/* Summary */}
+          {(() => {
+            const month = new Date().toISOString().slice(0, 7);
+            const monthQ = quotas.filter(q => q.month === month);
+            const totalTarget = monthQ.reduce((s, q) => s + (q.quota_target || 0), 0);
+            const totalActual = monthQ.reduce((s, q) => s + (q.actual_sales || 0), 0);
+            const totalProfitTarget = monthQ.reduce((s, q) => s + (q.profit_target || 0), 0);
+            const totalActualProfit = monthQ.reduce((s, q) => s + (q.actual_profit || 0), 0);
+            const pct = totalTarget > 0 ? (totalActual / totalTarget * 100) : 0;
+            const profitPct = totalProfitTarget > 0 ? (totalActualProfit / totalProfitTarget * 100) : 0;
+            return (<>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div className="rounded-xl bg-card border border-border p-4"><p className="text-xs text-muted" title="เป้ายอดขายรวม">Target</p><p className="text-2xl font-bold">{totalTarget.toLocaleString()}</p><p className="text-xs text-muted">THB</p></div>
+                <div className="rounded-xl bg-card border border-border p-4"><p className="text-xs text-muted" title="ยอดจริง">Actual</p><p className={`text-2xl font-bold ${pct >= 100 ? "text-green-400" : pct >= 70 ? "text-yellow-400" : "text-red-400"}`}>{totalActual.toLocaleString()}</p><div className="mt-2 h-2 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${pct >= 100 ? "bg-green-500" : pct >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} /></div><p className="text-[10px] text-muted mt-1">{pct.toFixed(0)}%</p></div>
+                <div className="rounded-xl bg-card border border-border p-4"><p className="text-xs text-muted" title="เป้ากำไร">Profit Target</p><p className="text-2xl font-bold">{totalProfitTarget.toLocaleString()}</p><p className="text-xs text-muted">THB</p></div>
+                <div className="rounded-xl bg-card border border-border p-4"><p className="text-xs text-muted" title="กำไรจริง">Actual Profit</p><p className={`text-2xl font-bold ${profitPct >= 100 ? "text-green-400" : profitPct >= 70 ? "text-yellow-400" : "text-red-400"}`}>{totalActualProfit.toLocaleString()}</p><p className="text-[10px] text-muted">{profitPct.toFixed(0)}%</p></div>
+              </div>
+
+              {/* Quota table */}
+              {monthQ.length === 0 ? <p className="text-muted text-sm">ยังไม่มีข้อมูลเดือนนี้ กด &quot;+ Set Quota&quot;</p> : (
+                <div className="rounded-xl bg-card border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
+                      <th className="px-4 py-2.5" title="ชื่อเซลล์">Person</th>
+                      <th className="px-4 py-2.5 text-right" title="เป้ายอดขาย">Target</th>
+                      <th className="px-4 py-2.5 text-right" title="ยอดจริง">Actual</th>
+                      <th className="px-4 py-2.5 text-right" title="เหลือ">Remaining</th>
+                      <th className="px-4 py-2.5" title="ความคืบหน้า">Progress</th>
+                      <th className="px-4 py-2.5 text-center" title="ดีลที่ปิดได้">Deals</th>
+                      <th className="px-4 py-2.5 w-12"></th>
+                    </tr></thead>
+                    <tbody>{monthQ.map(q => {
+                      const p = q.quota_target > 0 ? (q.actual_sales / q.quota_target * 100) : 0;
+                      const rem = q.quota_target - q.actual_sales;
+                      return (
+                        <tr key={q.id} className="border-b border-border last:border-0 hover:bg-card-hover">
+                          <td className="px-4 py-2.5 font-medium">{q.user_name} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${q.role === "avenger" ? "bg-purple-900/50 text-purple-400" : "bg-blue-900/50 text-blue-400"}`}>{q.role}</span></td>
+                          <td className="px-4 py-2.5 text-right">{q.quota_target.toLocaleString()}</td>
+                          <td className="px-4 py-2.5 text-right text-green-400">{q.actual_sales.toLocaleString()}</td>
+                          <td className={`px-4 py-2.5 text-right ${rem > 0 ? "text-yellow-400" : "text-green-400"}`}>{rem.toLocaleString()}</td>
+                          <td className="px-4 py-2.5"><div className="flex items-center gap-2"><div className="h-2 w-20 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${p >= 100 ? "bg-green-500" : p >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(p, 100)}%` }} /></div><span className="text-xs text-muted">{p.toFixed(0)}%</span></div></td>
+                          <td className="px-4 py-2.5 text-center">{q.won_deals || 0}</td>
+                          <td className="px-4 py-2.5"><button onClick={async () => { if (!confirm("ลบ?")) return; const { salesQuotas } = await import("@/lib/firestore"); await salesQuotas.remove(q.id!); await load(); }} className="text-xs text-danger hover:underline">ลบ</button></td>
+                        </tr>);
+                    })}</tbody>
+                  </table>
+                </div>
+              )}
+            </>);
+          })()}
         </>)}
 
       </>)}

@@ -442,7 +442,10 @@ export default function PresalePage() {
           <h1 className="text-xl font-bold" title="งานพรีเซลล์ — BOQ / Solution Design / Site Survey">Presale Tasks</h1>
           <p className="text-xs text-muted">งาน BOQ / Solution Design / Site Survey — รับงานจาก Sales และติดตามสถานะ</p>
         </div>
-        <button onClick={() => { if (showForm) { setShowForm(false); setEditId(null); } else openAdd(); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Task"}</button>
+        <div className="flex gap-2">
+          <Link href="/presale/calendar" title="ปฏิทินงาน Presale" className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:bg-card-hover">📅 ปฏิทิน</Link>
+          <button onClick={() => { if (showForm) { setShowForm(false); setEditId(null); } else openAdd(); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Task"}</button>
+        </div>
       </div>
 
       {/* Dashboard */}

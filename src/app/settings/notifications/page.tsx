@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { NotificationChannel, NotificationWorkflow, NotifyChannelType, NotifyTrigger, User } from "@/lib/types";
+import { useCurrentUser } from "@/lib/UserContext";
 
 // === CONSTANTS ===
 const channelTypes: { value: NotifyChannelType; label: string; icon: string; thai: string }[] = [
@@ -61,6 +62,8 @@ export default function NotificationsPage() {
 
   // Test result
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [testSending, setTestSending] = useState(false);
+  const { currentUser } = useCurrentUser();
 
   async function load() {
     const fs = await import("@/lib/firestore");
@@ -130,12 +133,59 @@ export default function NotificationsPage() {
     const fs = await import("@/lib/firestore"); await fs.notificationWorkflows.update(id, { active }); await load();
   }
 
-  // Test notification
-  function testNotification(wf: NotificationWorkflow) {
-    const chNames = wf.channel_ids.map(id => channels.find(c => c.id === id)?.name || id).join(", ");
-    const msg = `[TEST] Workflow: "${wf.name}"\nTrigger: ${wf.trigger}\nChannels: ${chNames || wf.channels.join(", ")}\nRecipients: ${[...wf.recipient_roles, ...wf.recipient_users, ...wf.recipient_emails].join(", ")}\nSubject: ${wf.subject_template}\n\n(จำลองการส่ง — ยังไม่ได้เชื่อมต่อ API จริง)`;
-    setTestResult(msg);
-    setTimeout(() => setTestResult(null), 8000);
+  // Test notification — send real email if channel configured
+  async function testNotification(wf: NotificationWorkflow) {
+    // Find email channel
+    const emailChannel = wf.channel_ids
+      .map(id => channels.find(c => c.id === id))
+      .find(c => c?.type === "email" && c.active)
+      || channels.find(c => c.type === "email" && c.active);
+
+    if (!emailChannel || !emailChannel.smtp_host) {
+      // No email channel — show simulation
+      const chNames = wf.channel_ids.map(id => channels.find(c => c.id === id)?.name || id).join(", ");
+      setTestResult(`[จำลอง] ยังไม่ได้ตั้งค่า Email Channel\n\nWorkflow: "${wf.name}"\nChannels: ${chNames || wf.channels.join(", ")}\nRecipients: ${[...wf.recipient_roles, ...wf.recipient_users, ...wf.recipient_emails].join(", ")}\n\n→ กรุณาสร้าง Email Channel ก่อนใน tab "Channels"`);
+      setTimeout(() => setTestResult(null), 8000);
+      return;
+    }
+
+    // Send real test email
+    setTestSending(true);
+    const sender = currentUser;
+    const testSubject = `[TEST] ${wf.subject_template.replace(/\{[^}]+\}/g, "(ตัวอย่าง)")}`;
+    const testBody = `🧪 ทดสอบแจ้งเตือนจากระบบ KMITSURAT\n\nWorkflow: ${wf.name}\nTrigger: ${wf.trigger}\n${wf.condition ? `Condition: ${wf.condition}\n` : ""}\nส่งโดย: ${sender?.name || "System"} (${sender?.email || ""})\n\n--- Template ---\n${wf.body_template.replace(/\{([^}]+)\}/g, "($1)")}`;
+
+    // Recipients: use workflow emails, or fallback to current user
+    const toEmails = wf.recipient_emails.length > 0 ? wf.recipient_emails : [sender?.email || ""];
+
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          smtp_host: emailChannel.smtp_host,
+          smtp_port: emailChannel.smtp_port,
+          smtp_user: emailChannel.smtp_user,
+          smtp_pass: emailChannel.smtp_pass,
+          from_email: sender?.email || emailChannel.from_email,
+          from_name: sender?.name || emailChannel.from_name || "KMITSURAT System",
+          to: toEmails,
+          subject: testSubject,
+          body: testBody,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult(`✅ ส่งอีเมลสำเร็จ!\n\nจาก: ${sender?.name} (${sender?.email})\nถึง: ${toEmails.join(", ")}\nSubject: ${testSubject}\nMessage ID: ${data.messageId}`);
+      } else {
+        setTestResult(`❌ ส่งไม่สำเร็จ: ${data.error}\n\nตรวจสอบ SMTP settings ใน tab "Channels"`);
+      }
+    } catch (err) {
+      setTestResult(`❌ Error: ${err instanceof Error ? err.message : "Network error"}`);
+    } finally {
+      setTestSending(false);
+      setTimeout(() => setTestResult(null), 10000);
+    }
   }
 
   // Helpers
@@ -291,7 +341,7 @@ export default function NotificationsPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <button onClick={() => testNotification(wf)} title="ทดสอบส่ง" className="text-[10px] bg-blue-800/50 text-blue-400 rounded px-2 py-1 hover:bg-blue-800">🧪 Test</button>
+                    <button onClick={() => testNotification(wf)} disabled={testSending} title="ทดสอบส่งอีเมลจริง" className="text-[10px] bg-blue-800/50 text-blue-400 rounded px-2 py-1 hover:bg-blue-800 disabled:opacity-50">{testSending ? "⏳ Sending..." : "🧪 Test"}</button>
                     <button onClick={() => toggleWf(wf.id!, !wf.active)} title={wf.active ? "ปิด" : "เปิด"} className="text-[10px] bg-card-hover rounded px-2 py-1 hover:bg-border">{wf.active ? "⏸ ปิด" : "▶ เปิด"}</button>
                     <button onClick={() => openEditWf(wf)} className="text-xs text-accent hover:underline">แก้ไข</button>
                     <button onClick={() => deleteWf(wf.id!, wf.name)} className="text-xs text-danger hover:underline">ลบ</button>

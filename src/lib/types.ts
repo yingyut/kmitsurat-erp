@@ -460,7 +460,63 @@ export interface Quotation {
   vat_rate: number; // e.g. 7
   vat_amount: number;
   grand_total: number; // final amount the customer pays
-  status: "draft" | "sent" | "approved" | "rejected" | "expired";
+  status: "draft" | "sent" | "follow_up" | "revised" | "approved" | "rejected" | "expired";
   notes: string;
   created_by: string;
+  // Revision history
+  version: number;                // current version (1, 2, 3...)
+  revisions?: QuotationRevision[];
+  // Workflow tracking
+  sent_date?: string;
+  follow_up_date?: string;
+  po_number?: string;
+  po_date?: string;
+  po_received?: boolean;
+  lost_reason?: string;
+  // Timeline
+  timeline?: QuotationTimelineEntry[];
+  // Post-PO steps
+  post_po_steps?: PostPOStep[];
+  // Team assignments
+  team_assignments?: TeamAssignment[];
+}
+
+export interface QuotationTimelineEntry {
+  action: "created" | "sent" | "follow_up" | "revised" | "approved" | "rejected" | "po_received" | "lost" | "note";
+  date: string;          // ISO date
+  user: string;
+  note: string;
+}
+
+export interface PostPOStep {
+  step: "open_po" | "order_tracking" | "delivery" | "project_kickoff" | "installation" | "handover";
+  title: string;
+  assigned_to: string;
+  assigned_team: string;  // "procurement" | "service" | "presale" | "sale"
+  status: "pending" | "in_progress" | "completed";
+  due_date: string;
+  completed_date?: string;
+  note: string;
+}
+
+export interface TeamAssignment {
+  team: "presale" | "procurement" | "service" | "sale";
+  person: string;
+  role_desc: string;     // e.g. "ตรวจ BOQ", "สั่งของ", "ติดตั้ง"
+}
+
+export interface QuotationRevision {
+  version: number;
+  date: string;           // ISO date
+  user: string;
+  reason: string;
+  items: QuotationItem[];
+  total_cost: number;
+  total_selling: number;
+  total_discount: number;
+  gross_profit: number;
+  gp_percent: number;
+  grand_total: number;
+  vat_amount: number;
+  notes: string;
 }

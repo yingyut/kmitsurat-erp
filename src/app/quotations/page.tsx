@@ -175,6 +175,66 @@ export default function QuotationsPage() {
   }
   async function handleDelete(id: string) { if (!confirm("Delete?")) return; const { quotations } = await import("@/lib/firestore"); await quotations.remove(id); await load(); }
 
+  // Revision state
+  const [revisionOf, setRevisionOf] = useState<Quotation | null>(null);
+  const [viewRevisions, setViewRevisions] = useState<Quotation | null>(null);
+
+  async function handleRevise(q: Quotation) {
+    const reason = prompt("เหตุผลที่แก้ไข เช่น ลูกค้าขอเพิ่มจำนวน, ปรับราคา, เพิ่มรายการ");
+    if (!reason) return;
+    setSaving(true);
+    const { quotations } = await import("@/lib/firestore");
+    try {
+      // Save current version to revisions array
+      const oldRevision = {
+        version: q.version || 1,
+        date: new Date().toISOString(),
+        user: "พี่กรด",
+        reason,
+        items: q.items || [],
+        total_cost: q.total_cost || 0,
+        total_selling: q.total_selling || 0,
+        total_discount: q.total_discount || 0,
+        gross_profit: q.gross_profit || 0,
+        gp_percent: q.gp_percent || 0,
+        grand_total: q.grand_total || q.total_selling || 0,
+        vat_amount: q.vat_amount || 0,
+        notes: q.notes || "",
+      };
+      const revisions = [...(q.revisions || []), oldRevision];
+      const newVersion = (q.version || 1) + 1;
+      // Update quotation with new version + keep revisions
+      await quotations.update(q.id!, { version: newVersion, revisions, status: "draft" });
+      // Pre-fill form with current data for editing
+      setCustId(q.customer_id); setCustName(q.customer_name);
+      setProjId(q.project_id); setProjName(q.project_name);
+      setItems([...(q.items || [])]);
+      setNotes(q.notes || "");
+      setRevisionOf(q);
+      setShowForm(true);
+      await load();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  }
+
+  async function saveRevision() {
+    if (!revisionOf || !custId) return;
+    setSaving(true);
+    const { quotations } = await import("@/lib/firestore");
+    try {
+      await quotations.update(revisionOf.id!, {
+        items, total_cost: totalCost, total_selling: subtotalSelling, total_discount: totalDiscount,
+        gross_profit: grossProfit, gp_percent: gpPercent,
+        vat_mode: vatMode, vat_rate: vatRate, vat_amount: vatAmount, grand_total: grandTotal,
+        notes, status: "revised",
+      });
+      setRevisionOf(null); setShowForm(false);
+      setCustId(""); setCustName(""); setProjId(""); setProjName(""); setItems([{ ...emptyItem }]); setNotes("");
+      await load();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  }
+
   // Picker filtering
   function filterProducts(query: string): Product[] {
     const q = query.toLowerCase().trim();
@@ -495,11 +555,104 @@ export default function QuotationsPage() {
                   : <> · <b className="text-foreground">{q.total_selling.toLocaleString()} THB</b> (ไม่มี VAT)</>
                 }
                 {" · "}GP: <span className="text-green-400">{q.gp_percent.toFixed(1)}%</span>
+                {q.version && q.version > 1 && <> · <span className="text-purple-400">v{q.version}</span> ({(q.revisions || []).length} revision)</>}
               </p>
             </div>
-            <button onClick={() => handleDelete(q.id!)} className="text-xs text-danger hover:underline shrink-0 ml-3">ลบ</button>
+            <div className="flex items-center gap-2 shrink-0 ml-3">
+              <button onClick={() => handleRevise(q)} title="แก้ไข / Revise — เก็บเวอร์ชันเดิมไว้" className="text-xs text-purple-400 hover:underline">Revise</button>
+              {(q.revisions || []).length > 0 && <button onClick={() => setViewRevisions(viewRevisions?.id === q.id ? null : q)} title="ดูประวัติ Revision" className="text-xs text-accent hover:underline">📋 History</button>}
+              <button onClick={() => handleDelete(q.id!)} className="text-xs text-danger hover:underline">ลบ</button>
+            </div>
           </div>
         ))}</div>
+      )}
+
+      {/* Revision History Viewer */}
+      {viewRevisions && (viewRevisions.revisions || []).length > 0 && (
+        <div className="rounded-xl bg-card border border-border p-5 mt-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold" title="ประวัติ Revision">📋 Revision History — {viewRevisions.quotation_number}</h2>
+            <button onClick={() => setViewRevisions(null)} className="text-xs text-muted hover:text-foreground">ปิด ✕</button>
+          </div>
+          <p className="text-xs text-muted mb-3">เวอร์ชันปัจจุบัน: <b className="text-foreground">v{viewRevisions.version || 1}</b> · มี {(viewRevisions.revisions || []).length} revision ก่อนหน้า</p>
+
+          <div className="space-y-3">
+            {[...(viewRevisions.revisions || [])].reverse().map((rev, i) => (
+              <details key={i} className="rounded-lg bg-background border border-border">
+                <summary className="px-4 py-3 cursor-pointer hover:bg-card-hover transition-colors">
+                  <div className="inline-flex items-center gap-3">
+                    <span className="rounded-full bg-purple-900/50 text-purple-400 px-2 py-0.5 text-[10px] font-medium">v{rev.version}</span>
+                    <span className="text-xs">{new Date(rev.date).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" })}</span>
+                    <span className="text-xs text-muted">โดย {rev.user}</span>
+                    <span className="text-xs text-muted">· {rev.reason}</span>
+                    <span className="text-xs font-medium">{rev.grand_total.toLocaleString()} THB</span>
+                    <span className="text-xs text-green-400">GP {rev.gp_percent.toFixed(1)}%</span>
+                  </div>
+                </summary>
+                <div className="px-4 pb-3 border-t border-border pt-3">
+                  {/* Compare with current */}
+                  <div className="grid grid-cols-3 gap-3 mb-3 text-xs">
+                    <div>
+                      <p className="text-muted">มูลค่า</p>
+                      <p className="font-semibold">{rev.grand_total.toLocaleString()} THB</p>
+                      {rev.grand_total !== (viewRevisions.grand_total || viewRevisions.total_selling) && (
+                        <p className={`text-[10px] ${(viewRevisions.grand_total || viewRevisions.total_selling) > rev.grand_total ? "text-green-400" : "text-red-400"}`}>
+                          {(viewRevisions.grand_total || viewRevisions.total_selling) > rev.grand_total ? "▲" : "▼"} ปัจจุบัน: {(viewRevisions.grand_total || viewRevisions.total_selling).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-muted">GP%</p>
+                      <p className="font-semibold text-green-400">{rev.gp_percent.toFixed(1)}%</p>
+                      {Math.abs(rev.gp_percent - viewRevisions.gp_percent) > 0.1 && (
+                        <p className={`text-[10px] ${viewRevisions.gp_percent > rev.gp_percent ? "text-green-400" : "text-red-400"}`}>
+                          ปัจจุบัน: {viewRevisions.gp_percent.toFixed(1)}%
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-muted">รายการ</p>
+                      <p className="font-semibold">{rev.items.length} items</p>
+                    </div>
+                  </div>
+
+                  {/* Items table */}
+                  <table className="w-full text-[10px]">
+                    <thead><tr className="text-muted border-b border-border">
+                      <th className="text-left py-1 px-1">สินค้า</th>
+                      <th className="text-right py-1 px-1">Qty</th>
+                      <th className="text-right py-1 px-1">ราคาขาย</th>
+                      <th className="text-right py-1 px-1">ส่วนลด</th>
+                      <th className="text-right py-1 px-1">รวม</th>
+                    </tr></thead>
+                    <tbody>{rev.items.map((item, j) => (
+                      <tr key={j} className="border-b border-border last:border-0">
+                        <td className="py-1 px-1">{item.product_name || item.product_code}</td>
+                        <td className="text-right py-1 px-1">{item.qty}</td>
+                        <td className="text-right py-1 px-1">{item.selling_price.toLocaleString()}</td>
+                        <td className="text-right py-1 px-1">{item.discount > 0 ? item.discount.toLocaleString() : "-"}</td>
+                        <td className="text-right py-1 px-1">{item.total_selling.toLocaleString()}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+
+                  {rev.notes && <p className="text-xs text-muted mt-2">📝 {rev.notes}</p>}
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Revise mode — change save button */}
+      {revisionOf && showForm && (
+        <div className="fixed bottom-4 right-4 z-50 rounded-xl bg-purple-900/90 border border-purple-700 px-4 py-3 shadow-2xl">
+          <p className="text-xs text-purple-300 mb-2">กำลังแก้ไข {revisionOf.quotation_number} → v{(revisionOf.version || 1) + 1}</p>
+          <div className="flex gap-2">
+            <button onClick={saveRevision} disabled={saving} className="rounded-lg bg-purple-600 text-white px-4 py-1.5 text-xs hover:bg-purple-700 disabled:opacity-50">{saving ? "กำลังบันทึก..." : "✓ บันทึก Revision"}</button>
+            <button onClick={() => { setRevisionOf(null); setShowForm(false); }} className="rounded-lg border border-purple-700 text-purple-300 px-3 py-1.5 text-xs hover:bg-purple-800">ยกเลิก</button>
+          </div>
+        </div>
       )}
     </div>
   );

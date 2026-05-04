@@ -168,6 +168,16 @@ export default function DashboardPage() {
     { name: "Active", value: totalSvc - svcOnTime - svcDelay },
   ].filter(d => d.value > 0);
 
+  // Technician workload
+  const techWorkload = [...new Set(service.map(t => t.technician))].filter(Boolean).map(name => {
+    const mine = service.filter(t => t.technician === name);
+    const open = mine.filter(t => t.status === "open").length;
+    const inProg = mine.filter(t => t.status === "in_progress").length;
+    const done = mine.filter(t => t.status === "resolved" || t.status === "closed").length;
+    const overdue = mine.filter(t => t.service_date && t.service_date < today && t.status !== "resolved" && t.status !== "closed").length;
+    return { name, fullName: name, total: mine.length, open, inProg, done, overdue, shortName: name.split(" ")[0].replace(/[()]/g, "") };
+  }).sort((a, b) => (b.open + b.inProg) - (a.open + a.inProg));
+
   // Projects
   const activeP = projects.filter(p => !["won", "lost"].includes(p.status)).length;
   const pendingP = projects.filter(p => p.status === "lead").length;
@@ -355,13 +365,14 @@ export default function DashboardPage() {
         </div>
 
         {/* SERVICE OVERVIEW */}
-        <div className="rounded-xl bg-card border border-border p-4">
+        <Link href="/service" className="rounded-xl bg-card border border-border p-4 hover:bg-card-hover transition-colors block" title="คลิกเพื่อดูรายละเอียดงานบริการ">
           <h3 className="text-sm font-semibold text-rose-400">Service Operation</h3>
-          <p className="text-[10px] text-muted mb-3">ภาพรวมงาน CM / PM / Install และ SLA</p>
-          <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
+          <p className="text-[10px] text-muted mb-3">ภาพรวมงาน CM / PM / Install และ SLA · คลิกเพื่อดูรายละเอียด</p>
+          <div className="grid grid-cols-5 gap-2 mb-3 text-xs">
             <div className="text-center"><p className="text-lg font-bold">{cmJobs}</p><p className="text-muted">CM</p></div>
             <div className="text-center"><p className="text-lg font-bold">{pmJobs}</p><p className="text-muted">PM</p></div>
             <div className="text-center"><p className="text-lg font-bold">{installJobs}</p><p className="text-muted">Install</p></div>
+            <div className="text-center"><p className={`text-lg font-bold ${svcDelay > 0 ? "text-red-400" : "text-green-400"}`}>{svcDelay}</p><p className="text-muted">ค้าง</p></div>
             <div className="text-center"><p className={`text-lg font-bold ${slaOnTime >= 80 ? "text-green-400" : "text-red-400"}`}>{slaOnTime}%</p><p className="text-muted">SLA</p></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -387,7 +398,7 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             </div>
           </div>
-        </div>
+        </Link>
 
         {/* PROJECT OVERVIEW */}
         <div className="rounded-xl bg-card border border-border p-4">
