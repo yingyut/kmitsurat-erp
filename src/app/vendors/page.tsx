@@ -17,6 +17,54 @@ const empty = {
   vendor_type: "distributor" as VendorType, has_vat: true, withholding_tax_rate: 0,
 };
 
+const SEED: Array<typeof empty> = [
+  {
+    name: "บริษัท ซินเน็ค (ประเทศไทย) จำกัด",
+    contact_name: "คุณวิภา (Sales)",
+    phone: "02-553-8888", email: "sales@synnex.co.th",
+    address: "433 ถ.สุขุมวิท แขวงคลองตันเหนือ กรุงเทพฯ 10110",
+    notes: "Distributor หลัก — Cisco / HP / Aruba / Microsoft", active: true,
+    payment_terms: "เครดิต 30 วัน", tax_id: "0107547000753",
+    vendor_type: "distributor", has_vat: true, withholding_tax_rate: 0,
+  },
+  {
+    name: "บริษัท ทีเคเค คอร์ปอเรชั่น จำกัด",
+    contact_name: "คุณสมศักดิ์",
+    phone: "02-833-3000", email: "info@tkkcorp.com",
+    address: "นิคมอุตสาหกรรมบางพลี สมุทรปราการ",
+    notes: "Distributor — Hikvision / Dahua / Uniview (CCTV/NVR)", active: true,
+    payment_terms: "เครดิต 30 วัน", tax_id: "0107546000324",
+    vendor_type: "distributor", has_vat: true, withholding_tax_rate: 0,
+  },
+  {
+    name: "บริษัท สกายไลน์ คอนสตรัคชั่น จำกัด",
+    contact_name: "คุณธนา (โฟร์แมน)",
+    phone: "081-234-5678", email: "skyline.contract@gmail.com",
+    address: "อ.เมือง สุราษฎร์ธานี",
+    notes: "ผู้รับเหมา — งานเดินสาย / ก่อสร้างห้อง Server / Raised Floor", active: true,
+    payment_terms: "เงินสด 50% วางมัดจำ / 50% หลังส่งงาน", tax_id: "0845561000456",
+    vendor_type: "contractor_company", has_vat: true, withholding_tax_rate: 1,
+  },
+  {
+    name: "ร้านลุงนิด อิเล็กทริค",
+    contact_name: "ลุงนิด",
+    phone: "089-876-5432", email: "",
+    address: "ตลาดน้ำหวาน อ.พุนพิน สุราษฎร์ธานี",
+    notes: "ร้านไฟฟ้าท้องถิ่น ไม่จด VAT — ค่าแรงเดินไฟ / ติดตั้งปลั๊ก / ตู้ MDB", active: true,
+    payment_terms: "เงินสด", tax_id: "",
+    vendor_type: "contractor_personal", has_vat: false, withholding_tax_rate: 3,
+  },
+  {
+    name: "KMIT Service Team",
+    contact_name: "คุณช่างเอก (หัวหน้าทีม)",
+    phone: "077-555-1234", email: "service@kmitsurat.com",
+    address: "สำนักงานใหญ่ KMIT สุราษฎร์ธานี",
+    notes: "ทีมช่างภายใน — ติดตั้ง, Configuration, PM, Site Survey", active: true,
+    payment_terms: "ภายในบริษัท (Cost Center)", tax_id: "",
+    vendor_type: "internal_team", has_vat: false, withholding_tax_rate: 0,
+  },
+];
+
 export default function VendorsPage() {
   const [list, setList] = useState<Vendor[]>([]);
   const [vendorPrices, setVendorPrices] = useState<VendorPrice[]>([]);
@@ -112,6 +160,21 @@ export default function VendorsPage() {
     } catch (e) { console.error(e); } finally { setSaving(false); }
   }
 
+  async function seedVendors() {
+    if (!confirm(`โหลด Vendor ตัวอย่าง ${SEED.length} ราย ?\n\n• Synnex (Distributor — IT)\n• TKK (Distributor — CCTV)\n• Skyline (ผู้รับเหมาบริษัท)\n• ร้านลุงนิด (ผู้รับเหมาบุคคล)\n• KMIT Service Team (ทีมภายใน)`)) return;
+    setSaving(true);
+    const fs = await import("@/lib/firestore");
+    try {
+      const existing = new Set(list.map(v => v.name.toLowerCase()));
+      for (const v of SEED) {
+        if (existing.has(v.name.toLowerCase())) continue;
+        await fs.vendors.add(v as unknown as Record<string, unknown>);
+      }
+      await load();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  }
+
   async function handleDelete(id: string, name: string) {
     const links = productCount(id);
     if (links > 0) {
@@ -132,7 +195,12 @@ export default function VendorsPage() {
           <h1 className="text-xl font-bold" title="ผู้ขาย / Suppliers">Vendors / Suppliers</h1>
           <p className="text-xs text-muted">จัดการข้อมูลผู้ขาย — ใช้ผูกราคาในแต่ละสินค้า เพื่อเทียบราคาและดูประวัติ</p>
         </div>
-        <button onClick={openAdd} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ เพิ่ม Vendor</button>
+        <div className="flex gap-2">
+          {list.length === 0 && (
+            <button onClick={seedVendors} disabled={saving} className="rounded-lg border border-accent text-accent px-4 py-2 text-sm hover:bg-accent/10 disabled:opacity-50">📥 โหลดตัวอย่าง 5 ราย</button>
+          )}
+          <button onClick={openAdd} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ เพิ่ม Vendor</button>
+        </div>
       </div>
 
       {/* Dashboard */}
@@ -256,7 +324,7 @@ export default function VendorsPage() {
       {loading ? <p className="text-muted text-sm">Loading...</p> : sorted.length === 0 ? (
         <div className="rounded-xl bg-card border border-border p-8 text-center">
           <p className="text-muted text-sm mb-2">{list.length === 0 ? "ยังไม่มี Vendor" : "ไม่พบ Vendor ตามตัวกรอง"}</p>
-          {list.length === 0 && <p className="text-[11px] text-muted">กด &quot;+ เพิ่ม Vendor&quot; เพื่อเริ่ม</p>}
+          {list.length === 0 && <p className="text-[11px] text-muted">กด <b className="text-accent">📥 โหลดตัวอย่าง 5 ราย</b> เพื่อเริ่มอย่างเร็ว หรือ <b className="text-accent">+ เพิ่ม Vendor</b> เพื่อสร้างเอง</p>}
         </div>
       ) : (
         <div className="rounded-xl bg-card border border-border overflow-hidden">
