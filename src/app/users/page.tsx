@@ -7,7 +7,47 @@ const roleLabels: Record<string, string> = { admin: "ผู้ดูแลระ
 const roleColor: Record<string, string> = { admin: "bg-cyan-900/50 text-cyan-400", sale: "bg-blue-900/50 text-blue-400", presale: "bg-purple-900/50 text-purple-400", service: "bg-rose-900/50 text-rose-400", avenger: "bg-orange-900/50 text-orange-400" };
 const teamTypes = ["sales", "presale", "service", "avenger", "admin"] as const;
 
-const emptyUser = { name: "", email: "", role: "sale" as User["role"], position: "", department: "", phone: "", bio: "", active: true, sales_code: "" };
+type DisplayPref = NonNullable<User["display_preference"]>;
+const displayPrefLabel: Record<DisplayPref, string> = {
+  nickname: "ชื่อเล่น",
+  first_name: "ชื่อจริง",
+  first_last: "ชื่อ + นามสกุล",
+  full: "ชื่อเล่น (ชื่อจริง นามสกุล)",
+};
+
+function computeDisplayName(form: { first_name?: string; last_name?: string; nickname?: string; display_preference?: DisplayPref }): string {
+  const first = (form.first_name || "").trim();
+  const last = (form.last_name || "").trim();
+  const nick = (form.nickname || "").trim();
+  const pref = form.display_preference || "nickname";
+  if (pref === "first_name") return first || nick || last;
+  if (pref === "first_last") return [first, last].filter(Boolean).join(" ") || nick;
+  if (pref === "full") return nick && (first || last) ? `${nick} (${[first, last].filter(Boolean).join(" ")})` : (nick || [first, last].filter(Boolean).join(" "));
+  return nick || first || last;
+}
+
+const emptyUser = {
+  name: "", first_name: "", last_name: "", nickname: "", display_preference: "nickname" as DisplayPref,
+  email: "", role: "sale" as User["role"], position: "", department: "", phone: "", bio: "", active: true, sales_code: "",
+};
+
+const REAL_TEAM: Array<typeof emptyUser> = [
+  { ...emptyUser, nickname: "พี่จอร์ด",  role: "admin",   position: "CEO",                 display_preference: "nickname" },
+  { ...emptyUser, nickname: "พี่แนน",     role: "admin",   position: "Manager",             display_preference: "nickname" },
+  { ...emptyUser, nickname: "น้องก้อย",  role: "admin",   position: "Office Admin",        display_preference: "nickname" },
+  { ...emptyUser, nickname: "ออย",       role: "sale",    position: "Sales",  sales_code: "OY",  display_preference: "nickname" },
+  { ...emptyUser, nickname: "แนนน้อย",   role: "sale",    position: "Sales",  sales_code: "NN",  display_preference: "nickname" },
+  { ...emptyUser, nickname: "อี๊ฟ",       role: "sale",    position: "Sales",  sales_code: "EVE", display_preference: "nickname" },
+  { ...emptyUser, nickname: "บีบี",       role: "sale",    position: "Sales",  sales_code: "BB",  display_preference: "nickname" },
+  { ...emptyUser, nickname: "จะจ๋า",      role: "sale",    position: "Sales",  sales_code: "JJ",  display_preference: "nickname" },
+  { ...emptyUser, nickname: "พี่กรด",     role: "presale", position: "Pre-sale", display_preference: "nickname" },
+  { ...emptyUser, nickname: "พี่กอร์ฟ",   role: "presale", position: "Pre-sale", display_preference: "nickname" },
+  { ...emptyUser, nickname: "น้องมีน",    role: "presale", position: "Pre-sale", display_preference: "nickname" },
+  { ...emptyUser, nickname: "ปอน",       role: "service", position: "Service Technician",  display_preference: "nickname" },
+  { ...emptyUser, nickname: "ไผ่",        role: "service", position: "Service Technician",  display_preference: "nickname" },
+  { ...emptyUser, nickname: "โก้ด",       role: "service", position: "Service Technician",  display_preference: "nickname" },
+  { ...emptyUser, nickname: "System Admin", role: "admin", position: "ผู้ดูแลระบบ (System Administrator)", display_preference: "nickname" },
+];
 const emptyTeam = { name: "", type: "sales" as Team["type"] };
 
 export default function UsersPage() {
@@ -58,7 +98,12 @@ export default function UsersPage() {
   function openEditUser(user: User) {
     setEditingUserId(user.id!);
     setUserForm({
-      name: user.name, email: user.email, role: user.role,
+      name: user.name,
+      first_name: user.first_name || "",
+      last_name: user.last_name || "",
+      nickname: user.nickname || "",
+      display_preference: user.display_preference || "nickname",
+      email: user.email, role: user.role,
       position: user.position || "", department: user.department || "",
       phone: user.phone || "", bio: user.bio || "", active: user.active,
       sales_code: user.sales_code || "",
@@ -68,16 +113,86 @@ export default function UsersPage() {
   }
 
   async function saveUser() {
-    if (!userForm.name.trim()) return;
+    const computedName = computeDisplayName(userForm).trim();
+    if (!computedName && !userForm.name.trim()) return;
     setSaving(true);
     const fs = await import("@/lib/firestore");
     try {
+      const payload = { ...userForm, name: computedName || userForm.name };
       if (editingUserId) {
-        await fs.users.update(editingUserId, userForm as unknown as Record<string, unknown>);
+        await fs.users.update(editingUserId, payload as unknown as Record<string, unknown>);
       } else {
-        await fs.users.add(userForm as unknown as Record<string, unknown>);
+        await fs.users.add(payload as unknown as Record<string, unknown>);
       }
       setUserForm(emptyUser); setShowUserForm(false); setEditingUserId(null);
+      await load();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  }
+
+  async function cleanupOrphans() {
+    const validNames = new Set(userList.map(u => u.name).filter(Boolean));
+    const ok = (name?: string) => !name || validNames.has(name);
+    const fs = await import("@/lib/firestore");
+    const [activities, quotas, presaleReqs, serviceTickets, projects] = await Promise.all([
+      fs.salesActivities.list(),
+      fs.salesQuotas.list(),
+      fs.presaleRequests.list(),
+      fs.serviceTickets.list(),
+      fs.projects.list(),
+    ]);
+    const orphanActivities = activities.filter(a => !ok(a.assigned_to));
+    const orphanQuotas = quotas.filter(q => !ok(q.user_name));
+    const orphanPresale = presaleReqs.filter(r => !ok(r.assigned_to));
+    const orphanService = serviceTickets.filter(t => !ok(t.technician));
+    const orphanProjects = projects.filter(p => !ok(p.assigned_to));
+    const totalDelete = orphanActivities.length + orphanQuotas.length + orphanPresale.length + orphanService.length;
+    if (totalDelete === 0 && orphanProjects.length === 0) {
+      alert("✓ ไม่พบข้อมูลที่อ้างถึง user เก่า — ระบบสะอาดอยู่แล้ว");
+      return;
+    }
+    const msg = [
+      "พบข้อมูลที่อ้างถึง user ที่ไม่มีอยู่ในระบบแล้ว:",
+      "",
+      `📞 Sales Activities: ${orphanActivities.length} (ลบ)`,
+      `📈 Sales Quotas: ${orphanQuotas.length} (ลบ)`,
+      `📋 Presale Tasks: ${orphanPresale.length} (ลบ)`,
+      `🔧 Service Tickets: ${orphanService.length} (ลบ)`,
+      `📁 Projects: ${orphanProjects.length} (เคลียร์ assigned_to เท่านั้น — ไม่ลบ project)`,
+      "",
+      `รวมลบ ${totalDelete} records + อัปเดต ${orphanProjects.length} projects`,
+      "",
+      "ดำเนินการต่อ?",
+    ].join("\n");
+    if (!confirm(msg)) return;
+    setSaving(true);
+    try {
+      for (const a of orphanActivities) if (a.id) await fs.salesActivities.remove(a.id);
+      for (const q of orphanQuotas) if (q.id) await fs.salesQuotas.remove(q.id);
+      for (const r of orphanPresale) if (r.id) await fs.presaleRequests.remove(r.id);
+      for (const t of orphanService) if (t.id) await fs.serviceTickets.remove(t.id);
+      for (const p of orphanProjects) if (p.id) await fs.projects.update(p.id, { assigned_to: "" });
+      alert(`✓ ล้างข้อมูลเรียบร้อย\n\nลบ ${totalDelete} records + อัปเดต ${orphanProjects.length} projects`);
+      await load();
+    } catch (e) { console.error(e); alert("เกิดข้อผิดพลาด"); }
+    finally { setSaving(false); }
+  }
+
+  async function seedRealTeam() {
+    const msg = `ตั้งทีมจริงตามรายชื่อ — ${REAL_TEAM.length} คน:\n\n• พี่จอร์ด (CEO)\n• พี่แนน (Manager)\n• น้องก้อย (Office Admin)\n• ออย, แนนน้อย, อี๊ฟ, บีบี, จะจ๋า (Sales)\n• พี่กรด, พี่กอร์ฟ, น้องมีน (Pre-sale)\n• ปอน, ไผ่, โก้ด (Service)\n• System Admin\n\n⚠ ระบบจะลบผู้ใช้เดิม ${userList.length} คนทั้งหมดก่อน — ดำเนินการต่อ?`;
+    if (!confirm(msg)) return;
+    setSaving(true);
+    const fs = await import("@/lib/firestore");
+    try {
+      // 1. Remove existing users
+      for (const u of userList) {
+        if (u.id) await fs.users.remove(u.id);
+      }
+      // 2. Add real team
+      for (const t of REAL_TEAM) {
+        const computed = computeDisplayName(t).trim();
+        await fs.users.add({ ...t, name: computed } as unknown as Record<string, unknown>);
+      }
       await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
@@ -149,37 +264,96 @@ export default function UsersPage() {
 
         {/* ========== USERS TAB ========== */}
         {tab === "users" && (<>
-          <div className="flex gap-3 mb-4">
-            <input placeholder="ค้นหาผู้ใช้..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+          <div className="flex gap-3 mb-4 flex-wrap">
+            <input placeholder="ค้นหาผู้ใช้..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <button onClick={seedRealTeam} disabled={saving} title="ลบผู้ใช้เดิม + เพิ่ม 15 คนตามทีมจริง" className="rounded-lg border border-amber-700 text-amber-400 px-3 py-2 text-xs hover:bg-amber-900/20 disabled:opacity-50">📥 ตั้งทีมจริง (ลบเก่า)</button>
+            <button onClick={cleanupOrphans} disabled={saving} title="ล้างข้อมูล activities/quotas/presale/service ที่อ้างถึง user เก่า + เคลียร์ assigned_to ใน projects" className="rounded-lg border border-rose-700 text-rose-400 px-3 py-2 text-xs hover:bg-rose-900/20 disabled:opacity-50">🧹 ล้างข้อมูล user เก่า</button>
             <button onClick={openAddUser} title="เพิ่มผู้ใช้ใหม่" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover shrink-0">+ เพิ่มผู้ใช้</button>
           </div>
 
           {/* User Form (Add/Edit) */}
-          {showUserForm && (
-            <div className="rounded-xl bg-card border border-border p-5 mb-4">
-              <h2 className="text-base font-semibold mb-3">{editingUserId ? "แก้ไขผู้ใช้" : "เพิ่มผู้ใช้ใหม่"}</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-                <input placeholder="ชื่อ-นามสกุล *" value={userForm.name} onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <input placeholder="อีเมล" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <input placeholder="เบอร์โทร" value={userForm.phone} onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <input placeholder="ตำแหน่ง" value={userForm.position} onChange={(e) => setUserForm({ ...userForm, position: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <input placeholder="แผนก" value={userForm.department} onChange={(e) => setUserForm({ ...userForm, department: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <input placeholder="รหัสเซลล์ (Sales Code) เช่น SPLC" maxLength={5} value={userForm.sales_code} onChange={(e) => setUserForm({ ...userForm, sales_code: e.target.value.toUpperCase() })} title="รหัส 3-5 ตัวอักษร ใช้ใน Document Numbering — ตั้งค่าได้ที่ /settings/numbering" className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent uppercase font-mono" />
-                <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value as User["role"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-                  {roles.map((r) => <option key={r} value={r}>{r} - {roleLabels[r]}</option>)}
-                </select>
-                <textarea placeholder="รายละเอียด / Bio" value={userForm.bio} onChange={(e) => setUserForm({ ...userForm, bio: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" checked={userForm.active} onChange={(e) => setUserForm({ ...userForm, active: e.target.checked })} id="active-check" />
-                  <label htmlFor="active-check" className="text-sm">เปิดใช้งาน (Active)</label>
+          {showUserForm && (() => {
+            const previewName = computeDisplayName(userForm);
+            return (
+              <div className="rounded-xl bg-card border border-border p-5 mb-4">
+                <h2 className="text-base font-semibold mb-3">{editingUserId ? "แก้ไขผู้ใช้" : "เพิ่มผู้ใช้ใหม่"}</h2>
+
+                {/* Names section */}
+                <p className="text-xs text-muted uppercase mb-2">ชื่อ</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
+                  <div>
+                    <label className="text-[10px] text-muted">ชื่อจริง</label>
+                    <input placeholder="เช่น สมชาย" value={userForm.first_name} onChange={(e) => setUserForm({ ...userForm, first_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">นามสกุล</label>
+                    <input placeholder="เช่น ใจดี" value={userForm.last_name} onChange={(e) => setUserForm({ ...userForm, last_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">ชื่อเล่น (รวมคำนำหน้าได้ เช่น "พี่จอร์ด" / "น้องก้อย")</label>
+                    <input placeholder="เช่น พี่จอร์ด" value={userForm.nickname} onChange={(e) => setUserForm({ ...userForm, nickname: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                </div>
+
+                {/* Display preference */}
+                <div className="mb-3">
+                  <label className="text-[10px] text-muted">ใช้ชื่อใดแสดงในระบบ?</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
+                    {(Object.keys(displayPrefLabel) as DisplayPref[]).map(p => (
+                      <button key={p} onClick={() => setUserForm({ ...userForm, display_preference: p })} className={`rounded-lg border p-2 text-left text-xs transition-colors ${userForm.display_preference === p ? "border-accent bg-accent/10" : "border-border bg-background hover:bg-card-hover"}`}>
+                        <p className="font-medium">{displayPrefLabel[p]}</p>
+                        <p className="text-[10px] text-muted truncate">{computeDisplayName({ ...userForm, display_preference: p }) || "(ว่าง)"}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] mt-2">
+                    <span className="text-muted">ชื่อที่จะแสดง: </span>
+                    <b className="text-accent">{previewName || "(กรุณากรอกชื่ออย่างน้อย 1 ช่อง)"}</b>
+                  </p>
+                </div>
+
+                {/* Other info */}
+                <p className="text-xs text-muted uppercase mb-2 mt-3">ข้อมูลทั่วไป</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="text-[10px] text-muted">Role</label>
+                    <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value as User["role"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                      {roles.map((r) => <option key={r} value={r}>{r} - {roleLabels[r]}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">ตำแหน่ง</label>
+                    <input placeholder="เช่น CEO / Manager / Sales" value={userForm.position} onChange={(e) => setUserForm({ ...userForm, position: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">แผนก</label>
+                    <input placeholder="แผนก" value={userForm.department} onChange={(e) => setUserForm({ ...userForm, department: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">อีเมล</label>
+                    <input placeholder="email@example.com" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">เบอร์โทร</label>
+                    <input placeholder="08x-xxx-xxxx" value={userForm.phone} onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">รหัสเซลล์ (3-5 ตัว)</label>
+                    <input placeholder="เช่น OY, NN, EVE" maxLength={5} value={userForm.sales_code} onChange={(e) => setUserForm({ ...userForm, sales_code: e.target.value.toUpperCase() })} title="ใช้ใน Document Numbering — ตั้งค่าได้ที่ /settings/numbering" className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent uppercase font-mono mt-1" />
+                  </div>
+                  <textarea placeholder="รายละเอียด / Bio" value={userForm.bio} onChange={(e) => setUserForm({ ...userForm, bio: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" checked={userForm.active} onChange={(e) => setUserForm({ ...userForm, active: e.target.checked })} id="active-check" />
+                    <label htmlFor="active-check" className="text-sm">เปิดใช้งาน (Active)</label>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={saveUser} disabled={saving || !previewName} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : editingUserId ? "บันทึกการแก้ไข" : "บันทึก"}</button>
+                  <button onClick={() => { setShowUserForm(false); setEditingUserId(null); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={saveUser} disabled={saving || !userForm.name.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : editingUserId ? "บันทึกการแก้ไข" : "บันทึก"}</button>
-                <button onClick={() => { setShowUserForm(false); setEditingUserId(null); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* User Detail Panel */}
           {selectedUser && (

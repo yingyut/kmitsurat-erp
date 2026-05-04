@@ -3,7 +3,11 @@
 export interface User {
   id?: string;
   tenant_id: string;
-  name: string;
+  name: string;                 // canonical display name (computed from preference on save)
+  first_name?: string;          // ชื่อจริง
+  last_name?: string;           // นามสกุล
+  nickname?: string;            // ชื่อเล่น (รวมคำนำหน้า เช่น "พี่จอร์ด" หรือ "น้องก้อย")
+  display_preference?: "nickname" | "first_name" | "first_last" | "full"; // ชื่อใดที่จะใช้แสดง
   email: string;
   role: "admin" | "sale" | "presale" | "service" | "avenger";
   team_id?: string;
