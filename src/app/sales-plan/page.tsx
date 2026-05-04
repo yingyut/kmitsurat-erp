@@ -4,6 +4,11 @@ import type { SalesQuota } from "@/lib/types";
 
 const currentMonth = new Date().toISOString().slice(0, 7); // "2026-05"
 
+type Tier = "all" | "above" | "ontrack" | "behind";
+const tierLabel: Record<string, string> = { above: "เกินเป้า", ontrack: "ใกล้เป้า", behind: "ห่างไกล" };
+const pctOf = (q: SalesQuota) => q.quota_target > 0 ? (q.actual_sales / q.quota_target * 100) : 0;
+const tierOf = (pct: number): Exclude<Tier, "all"> => pct >= 100 ? "above" : pct >= 70 ? "ontrack" : "behind";
+
 export default function SalesPlanPage() {
   const [quotas, setQuotas] = useState<SalesQuota[]>([]);
   const [loading, setLoading] = useState(true);
@@ -11,6 +16,7 @@ export default function SalesPlanPage() {
   const [viewMode, setViewMode] = useState<"admin" | "sale">("admin");
   const [selectedUser, setSelectedUser] = useState("");
   const [month, setMonth] = useState(currentMonth);
+  const [tierFilter, setTierFilter] = useState<Tier>("all");
 
   // Form
   const [showForm, setShowForm] = useState(false);
@@ -29,17 +35,32 @@ export default function SalesPlanPage() {
   useEffect(() => { setMounted(true); load(); }, []);
 
   // Filter by month and user
-  const filtered = quotas.filter((q) => {
+  const monthFiltered = quotas.filter((q) => {
     const matchMonth = q.month === month;
     const matchUser = viewMode === "admin" ? true : q.user_name === selectedUser;
     return matchMonth && matchUser;
   });
 
-  // Summary totals
-  const totalTarget = filtered.reduce((s, q) => s + q.quota_target, 0);
-  const totalActual = filtered.reduce((s, q) => s + q.actual_sales, 0);
+  // Apply tier filter for table display
+  const filtered = monthFiltered.filter(q => tierFilter === "all" || tierOf(pctOf(q)) === tierFilter);
+
+  // Summary totals (use monthFiltered — tier filter doesn't affect totals)
+  const totalTarget = monthFiltered.reduce((s, q) => s + q.quota_target, 0);
+  const totalActual = monthFiltered.reduce((s, q) => s + q.actual_sales, 0);
   const totalRemaining = totalTarget - totalActual;
   const totalPercent = totalTarget > 0 ? (totalActual / totalTarget * 100) : 0;
+
+  // Top performers + tier counts
+  const topPerformers = [...monthFiltered]
+    .map(q => ({ q, pct: pctOf(q) }))
+    .sort((a, b) => b.pct - a.pct)
+    .slice(0, 3);
+  const tierCounts = monthFiltered.reduce((acc, q) => {
+    const t = tierOf(pctOf(q));
+    acc[t] = (acc[t] || 0) + 1;
+    return acc;
+  }, { above: 0, ontrack: 0, behind: 0 } as Record<string, number>);
+  const totalWonDeals = monthFiltered.reduce((s, q) => s + (q.won_deals || 0), 0);
 
   // Unique users for filter
   const allUsers = [...new Set(quotas.map((q) => q.user_name))];
@@ -70,8 +91,11 @@ export default function SalesPlanPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-xl font-bold">Sales Plan / Quota</h1>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-xl font-bold" title="แผนยอดขาย / โควต้า">Sales Plan / Quota</h1>
+          <p className="text-xs text-muted">ตั้งเป้ายอดขายรายเดือน ติดตาม Achievement และ Top Performer</p>
+        </div>
         <div className="flex gap-2">
           <button onClick={() => setViewMode(viewMode === "admin" ? "sale" : "admin")}
             className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">
@@ -98,7 +122,7 @@ export default function SalesPlanPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
         <div className="rounded-xl bg-card border border-border p-4">
           <p className="text-xs text-muted">Target</p>
           <p className="text-2xl font-bold">{totalTarget.toLocaleString()}</p>
@@ -121,7 +145,70 @@ export default function SalesPlanPage() {
             <div className={`h-full rounded-full ${totalPercent >= 100 ? "bg-green-500" : totalPercent >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(totalPercent, 100)}%` }} />
           </div>
         </div>
+        <div className="rounded-xl bg-card border border-border p-4">
+          <p className="text-xs text-muted">Won Deals (รวม)</p>
+          <p className="text-2xl font-bold text-green-400">{totalWonDeals}</p>
+          <p className="text-xs text-muted">{monthFiltered.length} sales</p>
+        </div>
       </div>
+
+      {/* Top performers + Tier filter */}
+      {monthFiltered.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
+          {/* Top performers */}
+          <div className="lg:col-span-2 rounded-xl bg-card border border-border p-4">
+            <h3 className="text-sm font-semibold mb-2">🏆 Top Performers — {month}</h3>
+            {topPerformers.length === 0 || topPerformers[0].pct === 0 ? <p className="text-xs text-muted">ยังไม่มียอดขายในเดือนนี้</p> : (
+              <div className="space-y-2">
+                {topPerformers.map((tp, i) => {
+                  const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉";
+                  const pctColor = tp.pct >= 100 ? "text-green-400" : tp.pct >= 70 ? "text-yellow-400" : "text-red-400";
+                  return (
+                    <div key={tp.q.id} className="flex items-center gap-3">
+                      <span className="text-lg">{medal}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium truncate">{tp.q.user_name} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${tp.q.role === "avenger" ? "bg-purple-900/50 text-purple-400" : "bg-blue-900/50 text-blue-400"}`}>{tp.q.role}</span></p>
+                          <p className={`text-sm font-bold shrink-0 ${pctColor}`}>{tp.pct.toFixed(1)}%</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 rounded-full bg-background overflow-hidden">
+                            <div className={`h-full rounded-full ${tp.pct >= 100 ? "bg-green-500" : tp.pct >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(tp.pct, 100)}%` }} />
+                          </div>
+                          <p className="text-[10px] text-muted shrink-0">{tp.q.actual_sales.toLocaleString()} / {tp.q.quota_target.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Tier filter chips */}
+          <div className="rounded-xl bg-card border border-border p-4">
+            <h3 className="text-sm font-semibold mb-2">📊 กรองตามผลงาน</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setTierFilter("all")} className={`rounded-lg border p-2 text-left transition-colors ${tierFilter === "all" ? "border-accent bg-accent/10" : "border-border bg-background hover:bg-card-hover"}`}>
+                <p className="text-base font-bold">{monthFiltered.length}</p>
+                <p className="text-[10px] text-muted">ทั้งหมด</p>
+              </button>
+              <button onClick={() => setTierFilter("above")} className={`rounded-lg border p-2 text-left transition-colors ${tierFilter === "above" ? "border-accent bg-accent/10" : "border-border bg-background hover:bg-card-hover"}`} title="≥ 100%">
+                <p className="text-base font-bold text-green-400">{tierCounts.above}</p>
+                <p className="text-[10px] text-muted">เกินเป้า ≥100%</p>
+              </button>
+              <button onClick={() => setTierFilter("ontrack")} className={`rounded-lg border p-2 text-left transition-colors ${tierFilter === "ontrack" ? "border-accent bg-accent/10" : "border-border bg-background hover:bg-card-hover"}`} title="70-99%">
+                <p className="text-base font-bold text-yellow-400">{tierCounts.ontrack}</p>
+                <p className="text-[10px] text-muted">ใกล้เป้า 70-99%</p>
+              </button>
+              <button onClick={() => setTierFilter("behind")} className={`rounded-lg border p-2 text-left transition-colors ${tierFilter === "behind" ? "border-accent bg-accent/10" : "border-border bg-background hover:bg-card-hover"}`} title="< 70%">
+                <p className="text-base font-bold text-red-400">{tierCounts.behind}</p>
+                <p className="text-[10px] text-muted">ห่างไกล &lt;70%</p>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add quota form */}
       {showForm && (
@@ -151,9 +238,16 @@ export default function SalesPlanPage() {
         </div>
       )}
 
+      {/* Result count */}
+      {monthFiltered.length > 0 && (
+        <p className="text-xs text-muted mb-2">{filtered.length} รายการ {tierFilter !== "all" && <span className="text-accent">· {tierLabel[tierFilter]}</span>}</p>
+      )}
+
       {/* Sales plan table */}
-      {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? (
-        <p className="text-muted text-sm">No quota data for {month}. Click &quot;+ Set Quota&quot; to add.</p>
+      {loading ? <p className="text-muted text-sm">Loading...</p> : monthFiltered.length === 0 ? (
+        <p className="text-muted text-sm">ยังไม่มีข้อมูล quota เดือน {month} — กด &quot;+ Set Quota&quot; เพื่อเพิ่ม</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-muted text-sm">ไม่พบรายการตามตัวกรอง</p>
       ) : (
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <table className="w-full text-sm">

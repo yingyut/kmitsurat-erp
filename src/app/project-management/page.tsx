@@ -345,7 +345,7 @@ export default function ProjectManagementPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold" title="บริหารโปรเจกต์ / Action Plan">Project Management</h1>
+          <h1 className="text-xl font-bold" title="Project Execution / ดำเนินโปรเจค">Project Execution</h1>
           <p className="text-xs text-muted">วาง Action Plan ติดตามสถานะ และ Monitor ความคืบหน้าแต่ละโปรเจค</p>
         </div>
         <button onClick={openAdd} disabled={!selectedProject} title="เพิ่ม Action ใหม่" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">+ เพิ่ม Action</button>

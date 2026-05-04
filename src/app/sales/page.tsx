@@ -4,13 +4,12 @@ import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest } f
 
 const actTypes = ["phone_call","visit","quotation_created","quotation_sent","follow_up","meeting","customer_update"] as const;
 const typeLabels: Record<string, string> = { phone_call: "Phone Call", visit: "Visit", quotation_created: "QT Created", quotation_sent: "QT Sent", follow_up: "Follow-up", meeting: "Meeting", customer_update: "Update" };
-const stages = ["lead","opportunity","proposal","negotiation","won","lost"] as const;
 
 const today = new Date().toISOString().slice(0, 10);
 const currentMonth = new Date().toISOString().slice(0, 7);
 
 export default function SalesPage() {
-  const [tab, setTab] = useState<"dashboard" | "pipeline" | "activities" | "requests" | "plan">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "activities" | "requests">("dashboard");
   const [activities, setActivities] = useState<SalesActivity[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -22,14 +21,11 @@ export default function SalesPage() {
 
   // Filters
   const [search, setSearch] = useState("");
-  const [stageFilter, setStageFilter] = useState("all");
 
   // Forms
   const [showActForm, setShowActForm] = useState(false);
-  const [showPlanForm, setShowPlanForm] = useState(false);
   const [showReqForm, setShowReqForm] = useState(false);
   const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", project_id: "", project_name: "", assigned_to: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "" });
-  const [planForm, setPlanForm] = useState({ user_name: "", role: "sale" as "sale"|"avenger", month: currentMonth, quota_target: 0, actual_sales: 0, won_deals: 0, total_activities: 0 });
   const [reqForm, setReqForm] = useState({ request_from: "", request_to_team: "presale" as JobRequest["request_to_team"], request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium" as JobRequest["priority"], status: "pending" as JobRequest["status"], assigned_to: "", reject_reason: "", accept_note: "" });
   const [saving, setSaving] = useState(false);
 
@@ -62,21 +58,8 @@ export default function SalesPage() {
   const weekStr = weekStart.toISOString().slice(0, 10);
   const weekActivities = activities.filter((a) => (a.next_follow_up || "") >= weekStr).length;
 
-  // Pipeline filter
-  const filteredProjects = projects.filter((p) => {
-    const matchSearch = search ? (p.name.toLowerCase().includes(search.toLowerCase()) || p.customer_name.toLowerCase().includes(search.toLowerCase())) : true;
-    const matchStage = stageFilter === "all" ? true : p.status === stageFilter;
-    return matchSearch && matchStage;
-  });
-
   // Filtered activities
   const filteredActivities = search ? activities.filter((a) => a.description.toLowerCase().includes(search.toLowerCase()) || a.customer_name.toLowerCase().includes(search.toLowerCase())) : activities;
-
-  const stageColor = (s: string) => {
-    if (s === "won") return "bg-green-900/50 text-green-400";
-    if (s === "lost") return "bg-red-900/50 text-red-400";
-    return "bg-blue-900/50 text-blue-400";
-  };
 
   function selectCust(id: string) { const c = customers.find((x) => x.id === id); setActForm({ ...actForm, customer_id: id, customer_name: c?.company_name || "" }); }
   function selectProj(id: string) { const p = projects.find((x) => x.id === id); setActForm({ ...actForm, project_id: id, project_name: p?.name || "" }); }
@@ -86,20 +69,6 @@ export default function SalesPage() {
     const { salesActivities } = await import("@/lib/firestore");
     try { await salesActivities.add(actForm as unknown as Record<string, unknown>); setActForm({ type: "phone_call", customer_id: "", customer_name: "", project_id: "", project_name: "", assigned_to: "", description: "", status: "new", next_follow_up: "" }); setShowActForm(false); await load(); }
     catch (e) { console.error(e); } finally { setSaving(false); }
-  }
-
-  async function savePlan() {
-    if (!planForm.user_name.trim() || planForm.quota_target <= 0) return; setSaving(true);
-    const { salesQuotas } = await import("@/lib/firestore");
-    const remaining = planForm.quota_target - planForm.actual_sales;
-    const percent = planForm.quota_target > 0 ? (planForm.actual_sales / planForm.quota_target * 100) : 0;
-    try { await salesQuotas.add({ ...planForm, remaining, percent } as unknown as Record<string, unknown>); setPlanForm({ user_name: "", role: "sale", month: currentMonth, quota_target: 0, actual_sales: 0, won_deals: 0, total_activities: 0 }); setShowPlanForm(false); await load(); }
-    catch (e) { console.error(e); } finally { setSaving(false); }
-  }
-
-  async function updateProjectStatus(id: string, status: string) {
-    const { projects: ps } = await import("@/lib/firestore");
-    await ps.update(id, { status }); await load();
   }
 
   async function updateActivityStatus(id: string, status: string) {
@@ -112,29 +81,26 @@ export default function SalesPage() {
     const { salesActivities: sa } = await import("@/lib/firestore"); await sa.remove(id); await load();
   }
 
-  async function deleteQuota(id: string) {
-    if (!confirm("Delete?")) return;
-    const { salesQuotas: sq } = await import("@/lib/firestore"); await sq.remove(id); await load();
-  }
-
   if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
 
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold" title="งานขาย - บริหารจัดการงานขายทั้งหมด">Sales</h1>
+        <div>
+          <h1 className="text-xl font-bold" title="กิจกรรมงานขาย — บันทึก follow-up และส่ง Job Request">Sales Activities</h1>
+          <p className="text-xs text-muted">บันทึกการโทร/เยี่ยมลูกค้า และส่ง Job Request ไปทีม Presale/Service</p>
+        </div>
         <div className="flex gap-2">
           {tab === "activities" && <button onClick={() => setShowActForm(!showActForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showActForm ? "Cancel" : "+ New Activity"}</button>}
           {tab === "requests" && <button onClick={() => setShowReqForm(!showReqForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showReqForm ? "Cancel" : "+ Job Request"}</button>}
-          {tab === "plan" && <button onClick={() => setShowPlanForm(!showPlanForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showPlanForm ? "Cancel" : "+ Set Quota"}</button>}
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-border">
-        {(["dashboard","pipeline","activities","requests","plan"] as const).map((t) => {
-          const labels: Record<string, string> = { dashboard: "Dashboard", pipeline: "Pipeline", activities: "Activities", requests: "Requests", plan: "Plan / Quota" };
-          const thaiTitles: Record<string, string> = { dashboard: "แดชบอร์ดภาพรวม", pipeline: "ท่อขาย / ดีลทั้งหมด", activities: "บันทึกกิจกรรมขาย", requests: "ขอความช่วยเหลือจากทีมอื่น", plan: "แผนงาน / โควต้าเป้าขาย" };
+        {(["dashboard","activities","requests"] as const).map((t) => {
+          const labels: Record<string, string> = { dashboard: "Dashboard", activities: "Activities", requests: "Requests" };
+          const thaiTitles: Record<string, string> = { dashboard: "แดชบอร์ดภาพรวมทีมขาย", activities: "บันทึกกิจกรรมขาย", requests: "ขอความช่วยเหลือจากทีมอื่น" };
           const reqCount = t === "requests" ? jobReqs.filter(r => r.status === "pending").length : 0;
           return (
           <button key={t} onClick={() => setTab(t)} title={thaiTitles[t]} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
@@ -203,40 +169,6 @@ export default function SalesPage() {
               <div className="text-center"><p className="text-2xl font-bold">{activities.length}</p><p className="text-xs text-muted">Total</p></div>
             </div>
           </div>
-        </>)}
-
-        {/* ===== PIPELINE TAB ===== */}
-        {tab === "pipeline" && (<>
-          <div className="flex gap-3 mb-4">
-            <input placeholder="Search deals..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-              <option value="all">All Stages</option>
-              {stages.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          {filteredProjects.length === 0 ? <p className="text-muted text-sm">No deals found.</p> : (
-            <div className="rounded-xl bg-card border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
-                  <th className="px-4 py-2.5">Project</th><th className="px-4 py-2.5">Customer</th><th className="px-4 py-2.5 text-right">Value</th><th className="px-4 py-2.5">Stage</th><th className="px-4 py-2.5">Assigned</th><th className="px-4 py-2.5 w-32">Action</th>
-                </tr></thead>
-                <tbody>{filteredProjects.map((p) => (
-                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-card-hover">
-                    <td className="px-4 py-2.5 font-medium">{p.name}</td>
-                    <td className="px-4 py-2.5 text-muted">{p.customer_name}</td>
-                    <td className="px-4 py-2.5 text-right">{(p.value || 0).toLocaleString()}</td>
-                    <td className="px-4 py-2.5">
-                      <select value={p.status} onChange={(e) => updateProjectStatus(p.id!, e.target.value)} className={`rounded-full px-2 py-0.5 text-xs font-medium border-0 cursor-pointer focus:outline-none ${stageColor(p.status)}`}>
-                        {stages.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 py-2.5 text-muted">{p.assigned_to || "-"}</td>
-                    <td className="px-4 py-2.5"><button onClick={() => setTab("activities")} className="text-xs text-accent hover:underline">View</button></td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
-          )}
         </>)}
 
         {/* ===== ACTIVITIES TAB ===== */}
@@ -333,46 +265,6 @@ export default function SalesPage() {
               );
             })}
           </div>
-        </>)}
-
-        {/* ===== PLAN / QUOTA TAB ===== */}
-        {tab === "plan" && (<>
-          {showPlanForm && (
-            <div className="rounded-xl bg-card border border-border p-5 mb-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                <input placeholder="Sales Person *" value={planForm.user_name} onChange={(e) => setPlanForm({ ...planForm, user_name: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <select value={planForm.role} onChange={(e) => setPlanForm({ ...planForm, role: e.target.value as "sale"|"avenger" })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="sale">Sale</option><option value="avenger">Avenger</option></select>
-                <input type="month" value={planForm.month} onChange={(e) => setPlanForm({ ...planForm, month: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <input type="number" placeholder="Target (THB) *" value={planForm.quota_target || ""} onChange={(e) => setPlanForm({ ...planForm, quota_target: Number(e.target.value) })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <input type="number" placeholder="Actual Sales" value={planForm.actual_sales || ""} onChange={(e) => setPlanForm({ ...planForm, actual_sales: Number(e.target.value) })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                <input type="number" placeholder="Won Deals" value={planForm.won_deals || ""} onChange={(e) => setPlanForm({ ...planForm, won_deals: Number(e.target.value) })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-              </div>
-              <button onClick={savePlan} disabled={saving || !planForm.user_name.trim() || planForm.quota_target <= 0} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
-            </div>
-          )}
-          {quotas.length === 0 ? <p className="text-muted text-sm">No quotas set. Click &quot;+ Set Quota&quot;.</p> : (
-            <div className="rounded-xl bg-card border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
-                  <th className="px-4 py-2.5">Person</th><th className="px-4 py-2.5">Month</th><th className="px-4 py-2.5 text-right">Target</th><th className="px-4 py-2.5 text-right">Actual</th><th className="px-4 py-2.5 text-right">Remaining</th><th className="px-4 py-2.5">Progress</th><th className="px-4 py-2.5 w-12"></th>
-                </tr></thead>
-                <tbody>{quotas.map((q) => {
-                  const pct = q.quota_target > 0 ? (q.actual_sales / q.quota_target * 100) : 0;
-                  const rem = q.quota_target - q.actual_sales;
-                  return (
-                    <tr key={q.id} className="border-b border-border last:border-0 hover:bg-card-hover">
-                      <td className="px-4 py-2.5 font-medium">{q.user_name} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${q.role === "avenger" ? "bg-purple-900/50 text-purple-400" : "bg-blue-900/50 text-blue-400"}`}>{q.role}</span></td>
-                      <td className="px-4 py-2.5 text-muted">{q.month}</td>
-                      <td className="px-4 py-2.5 text-right">{q.quota_target.toLocaleString()}</td>
-                      <td className="px-4 py-2.5 text-right text-green-400">{q.actual_sales.toLocaleString()}</td>
-                      <td className={`px-4 py-2.5 text-right ${rem > 0 ? "text-yellow-400" : "text-green-400"}`}>{rem.toLocaleString()}</td>
-                      <td className="px-4 py-2.5"><div className="flex items-center gap-2"><div className="h-2 w-20 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${pct >= 100 ? "bg-green-500" : pct >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} /></div><span className="text-xs text-muted">{pct.toFixed(0)}%</span></div></td>
-                      <td className="px-4 py-2.5"><button onClick={() => deleteQuota(q.id!)} className="text-xs text-danger hover:underline">Del</button></td>
-                    </tr>);
-                })}</tbody>
-              </table>
-            </div>
-          )}
         </>)}
 
       </>)}

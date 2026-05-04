@@ -40,6 +40,21 @@ export default function ProjectsPage() {
   const reEngageAlerts = list.filter(p => p.re_engage && p.re_engage_date && p.re_engage_date <= today && p.status === "lost");
   const reminderAlerts = list.filter(p => p.reminder_date && p.reminder_date <= today && !p.reminder_sent);
 
+  // Dashboard stats
+  const isClosed = (s: string) => s === "won" || s === "lost";
+  const stats = {
+    total: list.length,
+    totalValue: list.reduce((s, p) => s + (p.value || 0), 0),
+    active: list.filter(p => !isClosed(p.status)).length,
+    activeValue: list.filter(p => !isClosed(p.status)).reduce((s, p) => s + (p.value || 0), 0),
+    won: list.filter(p => p.status === "won").length,
+    wonValue: list.filter(p => p.status === "won").reduce((s, p) => s + (p.value || 0), 0),
+    lost: list.filter(p => p.status === "lost").length,
+    lostValue: list.filter(p => p.status === "lost").reduce((s, p) => s + (p.value || 0), 0),
+  };
+  const closedCount = stats.won + stats.lost;
+  const winRate = closedCount > 0 ? Math.round((stats.won / closedCount) * 100) : 0;
+
   async function load() {
     const fs = await import("@/lib/firestore");
     try {
@@ -108,8 +123,8 @@ export default function ProjectsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold" title="โปรเจกต์ / โอกาสขาย">Projects / Opportunities</h1>
-          <p className="text-xs text-muted">จัดการโปรเจค ติดตามสถานะ วางแผน Re-engage</p>
+          <h1 className="text-xl font-bold" title="Sales Pipeline / โอกาสขาย">Sales Pipeline</h1>
+          <p className="text-xs text-muted">โอกาสขาย / ดีล — ติดตามสถานะ Lead → Won/Lost วางแผน Re-engage</p>
         </div>
         <button onClick={openAdd} title="เพิ่มโปรเจคใหม่" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ โปรเจคใหม่</button>
       </div>
@@ -142,6 +157,51 @@ export default function ProjectsPage() {
         </div>
       )}
 
+      {/* Dashboard */}
+      {!loading && list.length > 0 && (
+        <div className="space-y-3 mb-4">
+          {/* Overall metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="rounded-lg bg-card border border-border p-3">
+              <p className="text-[10px] text-muted">ดีลทั้งหมด</p>
+              <p className="text-lg font-bold">{stats.total}</p>
+              <p className="text-[10px] text-muted">{(stats.totalValue / 1000).toLocaleString()}K THB</p>
+            </div>
+            <div className="rounded-lg bg-card border border-border p-3">
+              <p className="text-[10px] text-muted" title="ดีลที่ยังไม่ปิด (Lead/Opportunity/Proposal/Negotiation)">Pipeline (Active)</p>
+              <p className="text-lg font-bold text-blue-400">{stats.active}</p>
+              <p className="text-[10px] text-muted">{(stats.activeValue / 1000).toLocaleString()}K THB</p>
+            </div>
+            <div className="rounded-lg bg-card border border-border p-3">
+              <p className="text-[10px] text-muted">Won</p>
+              <p className="text-lg font-bold text-green-400">{stats.won}</p>
+              <p className="text-[10px] text-muted">{(stats.wonValue / 1000).toLocaleString()}K THB</p>
+            </div>
+            <div className="rounded-lg bg-card border border-border p-3">
+              <p className="text-[10px] text-muted" title="อัตราชนะ = Won / (Won + Lost)">Win Rate</p>
+              <p className="text-lg font-bold">{winRate}%</p>
+              <p className="text-[10px] text-muted">{stats.won}/{closedCount} closed</p>
+            </div>
+          </div>
+
+          {/* Pipeline by status — clickable filter */}
+          <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
+            {statuses.map(s => {
+              const count = list.filter(p => p.status === s).length;
+              const value = list.filter(p => p.status === s).reduce((sum, p) => sum + (p.value || 0), 0);
+              return (
+                <button key={s} onClick={() => setStatusFilter(statusFilter === s ? "all" : s)}
+                  className={`rounded-lg border p-3 text-center transition-colors ${statusFilter === s ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
+                  <p className="text-lg font-bold">{count}</p>
+                  <p className="text-[10px] text-muted">{statusLabels[s]}</p>
+                  <p className="text-[10px] text-muted">{(value / 1000).toFixed(0)}K</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex gap-2 mb-4 flex-wrap">
         <input placeholder="ค้นหาโปรเจค..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
@@ -149,6 +209,7 @@ export default function ProjectsPage() {
           <option value="all">ทุกสถานะ</option>
           {statuses.map(s => <option key={s} value={s}>{statusLabels[s]}</option>)}
         </select>
+        <p className="text-xs text-muted self-center ml-1">{filtered.length} รายการ</p>
       </div>
 
       {/* Form */}
@@ -318,22 +379,6 @@ export default function ProjectsPage() {
       )}
 
       {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
-
-      {/* Pipeline summary */}
-      <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
-        {statuses.map(s => {
-          const count = list.filter(p => p.status === s).length;
-          const value = list.filter(p => p.status === s).reduce((sum, p) => sum + (p.value || 0), 0);
-          return (
-            <button key={s} onClick={() => setStatusFilter(statusFilter === s ? "all" : s)}
-              className={`rounded-lg border p-3 text-center transition-colors ${statusFilter === s ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
-              <p className="text-lg font-bold">{count}</p>
-              <p className="text-[10px] text-muted">{statusLabels[s]}</p>
-              <p className="text-[10px] text-muted">{(value / 1000).toFixed(0)}K</p>
-            </button>
-          );
-        })}
-      </div>
 
       {/* Project list */}
       {filtered.length === 0 ? <p className="text-muted text-sm">ไม่พบโปรเจค</p> : (

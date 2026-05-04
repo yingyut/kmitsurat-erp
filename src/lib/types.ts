@@ -155,7 +155,7 @@ export interface ServiceTicket {
 export interface Product {
   id?: string;
   tenant_id: string;
-  code: string;
+  code: string; // optional in practice — services may not have a code
   name: string;
   brand: string;
   category: string;
@@ -163,6 +163,7 @@ export interface Product {
   cost_price: number;
   selling_price: number;
   active: boolean;
+  type?: "product" | "service"; // default "product"
 }
 
 export interface QuotationItem {
@@ -203,10 +204,15 @@ export interface Quotation {
   project_name: string;
   items: QuotationItem[];
   total_cost: number;
-  total_selling: number;
+  total_selling: number; // sum of items (subtotal before VAT or incl VAT depending on vat_mode)
   total_discount: number;
   gross_profit: number;
   gp_percent: number;
+  // VAT
+  vat_mode: "none" | "exclusive" | "inclusive"; // exclusive = +VAT on top, inclusive = VAT already included
+  vat_rate: number; // e.g. 7
+  vat_amount: number;
+  grand_total: number; // final amount the customer pays
   status: "draft" | "sent" | "approved" | "rejected" | "expired";
   notes: string;
   created_by: string;
