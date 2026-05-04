@@ -62,6 +62,7 @@ export default function ContractsPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | ContractType>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | ContractStatus | "expiring_30" | "expiring_60" | "expiring_90">("all");
+  const [groupBy, setGroupBy] = useState<"flat" | "project">("flat");
 
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -138,6 +139,38 @@ export default function ContractsPage() {
     .filter(c => c._effectiveStatus === "active" && c._days !== null && c._days <= (c.reminder_days_before || 30) && c._days >= 0)
     .sort((a, b) => (a._days ?? 0) - (b._days ?? 0));
 
+  // Group filtered contracts by project (for grouped view)
+  const groupedContracts = useMemo(() => {
+    const groups = new Map<string, { key: string; projectName: string; customerId: string; customerName: string; contracts: typeof filtered }>();
+    filtered.forEach(c => {
+      const key = c.project_id ? `proj_${c.project_id}` : `cust_${c.customer_id}_no_project`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          projectName: c.project_name || "",
+          customerId: c.customer_id,
+          customerName: c.customer_name,
+          contracts: [],
+        });
+      }
+      groups.get(key)!.contracts.push(c);
+    });
+    const arr = [...groups.values()].map(g => {
+      const totalValue = g.contracts.reduce((s, c) => s + (c.contract_value || 0), 0);
+      const activeContracts = g.contracts.filter(c => c._effectiveStatus === "active");
+      const validDays = activeContracts.map(c => c._days).filter((d): d is number => d !== null);
+      const nextExpiry = validDays.length > 0 ? Math.min(...validDays) : null;
+      const activeCount = activeContracts.length;
+      return { ...g, totalValue, nextExpiry, activeCount };
+    });
+    arr.sort((a, b) => {
+      const av = a.nextExpiry === null ? Infinity : a.nextExpiry;
+      const bv = b.nextExpiry === null ? Infinity : b.nextExpiry;
+      return av - bv;
+    });
+    return arr;
+  }, [filtered]);
+
   function openAdd() { setEditId(null); setForm(emptyForm); setShowForm(true); }
   function openEdit(c: ServiceContract) {
     setEditId(c.id!);
@@ -183,6 +216,23 @@ export default function ContractsPage() {
     const fs = await import("@/lib/firestore");
     await fs.serviceContracts.remove(id);
     await load();
+  }
+
+  async function markReminded(c: ServiceContract) {
+    const today = new Date().toISOString().slice(0, 10);
+    const fs = await import("@/lib/firestore");
+    await fs.serviceContracts.update(c.id!, {
+      last_reminded_at: today,
+      reminder_count: (c.reminder_count || 0) + 1,
+      reminder_sent: true,
+    });
+    await load();
+  }
+
+  // Helper: how many days since last reminder
+  function daysSinceReminded(c: ServiceContract): number | null {
+    if (!c.last_reminded_at) return null;
+    return -1 * (daysUntil(c.last_reminded_at) ?? 0);
   }
 
   if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
@@ -257,14 +307,22 @@ export default function ContractsPage() {
               <div className="space-y-1.5">
                 {renewalAlerts.slice(0, 8).map(c => {
                   const meta = typeMeta[c.type];
+                  const remindedDays = daysSinceReminded(c);
+                  const recentlyReminded = remindedDays !== null && remindedDays <= 7;
                   return (
-                    <div key={c.id} className="flex items-center gap-2 text-xs py-1 border-b border-red-800/30 last:border-0">
+                    <div key={c.id} className={`flex items-center gap-2 text-xs py-1 border-b border-red-800/30 last:border-0 ${recentlyReminded ? "opacity-50" : ""}`}>
                       <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${meta.color}`}>{meta.icon}</span>
                       <span className="font-medium truncate flex-1">{c.title}</span>
                       <Link href={`/customers/${c.customer_id}`} className="text-muted hover:text-accent shrink-0">{c.customer_name}</Link>
                       <span className="text-muted shrink-0">หมด {c.end_date}</span>
                       <span className={`shrink-0 font-bold ${c._days! <= 7 ? "text-red-400" : c._days! <= 30 ? "text-amber-400" : "text-yellow-400"}`}>เหลือ {c._days} วัน</span>
                       {c.contract_value ? <span className="text-green-400 shrink-0 w-20 text-right">{c.contract_value.toLocaleString()}</span> : null}
+                      {c.last_reminded_at && (
+                        <span className="shrink-0 text-[10px] text-blue-400" title={`เตือน ${c.reminder_count || 1} ครั้ง · ล่าสุด ${c.last_reminded_at}`}>
+                          📤 {remindedDays === 0 ? "วันนี้" : `${remindedDays}d`}{(c.reminder_count || 0) > 1 ? ` · ${c.reminder_count}x` : ""}
+                        </span>
+                      )}
+                      <button onClick={() => markReminded(c)} title="บันทึกว่าได้ติดต่อลูกค้าแล้ว" className="text-[10px] text-blue-400 hover:underline shrink-0">📤 เตือนแล้ว</button>
                       <button onClick={() => openEdit(c)} className="text-[10px] text-accent hover:underline shrink-0">แก้ไข</button>
                     </div>
                   );
@@ -397,19 +455,72 @@ export default function ContractsPage() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <input placeholder="ค้นหาหัวข้อ / ลูกค้า..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+      {/* Search + view toggle */}
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <input placeholder="ค้นหาหัวข้อ / ลูกค้า..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+        <div className="flex gap-1 text-xs">
+          <button onClick={() => setGroupBy("flat")} className={`rounded-md px-2.5 py-1 ${groupBy === "flat" ? "bg-accent text-white" : "border border-border text-muted hover:bg-card-hover"}`}>📋 Flat</button>
+          <button onClick={() => setGroupBy("project")} className={`rounded-md px-2.5 py-1 ${groupBy === "project" ? "bg-accent text-white" : "border border-border text-muted hover:bg-card-hover"}`}>📁 จัดกลุ่มตามโปรเจค</button>
+        </div>
         <p className="text-xs text-muted shrink-0">{filtered.length} รายการ</p>
       </div>
 
-      {/* Table */}
+      {/* Grouped by project view */}
+      {!loading && groupBy === "project" && filtered.length > 0 && (
+        <div className="space-y-3">
+          {groupedContracts.map(g => (
+            <div key={g.key} className="rounded-xl bg-card border border-border overflow-hidden">
+              <div className="px-4 py-3 border-b border-border bg-background/50 flex items-center justify-between gap-2 flex-wrap">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">📁 {g.projectName || <span className="italic text-muted">ไม่ผูกโปรเจค</span>}</p>
+                  <p className="text-[10px] text-muted"><Link href={`/customers/${g.customerId}`} className="hover:text-accent">{g.customerName}</Link> · {g.contracts.length} สัญญา ({g.activeCount} active) · มูลค่ารวม {g.totalValue.toLocaleString()} THB</p>
+                </div>
+                {g.nextExpiry !== null && (
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${g.nextExpiry < 0 ? "bg-red-900/50 text-red-400" : g.nextExpiry <= 30 ? "bg-amber-900/50 text-amber-400" : g.nextExpiry <= 90 ? "bg-yellow-900/50 text-yellow-400" : "bg-green-900/50 text-green-400"}`}>
+                    ถัดไปหมดอายุ: {g.nextExpiry < 0 ? `เลย ${Math.abs(g.nextExpiry)}d` : `อีก ${g.nextExpiry}d`}
+                  </span>
+                )}
+              </div>
+              <table className="w-full text-sm">
+                <tbody>{g.contracts.map(c => {
+                  const meta = typeMeta[c.type];
+                  const sm = statusMeta[c._effectiveStatus];
+                  const dayColor = c._tier === "expired" ? "text-red-500 font-bold" : c._tier === "urgent" ? "text-red-400 font-semibold" : c._tier === "soon" ? "text-amber-400" : c._tier === "later" ? "text-yellow-400" : "text-muted";
+                  return (
+                    <tr key={c.id} className="border-b border-border last:border-0 hover:bg-card-hover">
+                      <td className="px-4 py-2 w-32"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.color}`}>{meta.icon} {meta.thai}</span></td>
+                      <td className="px-4 py-2">
+                        <p className="font-medium text-sm">{c.title}</p>
+                        {c.type === "service_contract" && (
+                          <p className="text-[10px] text-muted">{c.service_level}{c.visits_per_year ? ` · PM ${c.visits_per_year}/ปี` : ""}{c.response_time_hours ? ` · Response ${c.response_time_hours}h` : ""}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-muted text-xs whitespace-nowrap">{c.start_date} → {c.end_date}</td>
+                      <td className={`px-4 py-2 text-center text-xs ${dayColor} w-20`}>{c._days === null ? "—" : c._days < 0 ? `เลย ${Math.abs(c._days)}d` : `${c._days}d`}</td>
+                      <td className="px-4 py-2 text-right w-24">{c.contract_value ? c.contract_value.toLocaleString() : "-"}</td>
+                      <td className="px-4 py-2 w-20"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sm.color}`}>{sm.label}</span></td>
+                      <td className="px-4 py-2 w-20">
+                        <div className="flex gap-1.5">
+                          <button onClick={() => openEdit(c)} className="text-[10px] text-accent hover:underline">แก้ไข</button>
+                          <button onClick={() => handleDelete(c.id!, c.title)} className="text-[10px] text-danger hover:underline">ลบ</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Flat table */}
       {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? (
         <div className="rounded-xl bg-card border border-border p-8 text-center">
           <p className="text-muted text-sm mb-2">{list.length === 0 ? "ยังไม่มีสัญญา" : "ไม่พบสัญญาตามตัวกรอง"}</p>
           {list.length === 0 && <p className="text-[11px] text-muted">กด <b className="text-accent">+ เพิ่มสัญญา</b> เพื่อเริ่ม</p>}
         </div>
-      ) : (
+      ) : groupBy === "flat" ? (
         <div className="rounded-xl bg-card border border-border overflow-hidden">
           <table className="w-full text-sm">
             <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
@@ -467,7 +578,7 @@ export default function ContractsPage() {
             })}</tbody>
           </table>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

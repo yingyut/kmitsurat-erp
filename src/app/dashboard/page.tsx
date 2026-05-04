@@ -83,6 +83,39 @@ export default function DashboardPage() {
     return d !== null && d < 0;
   });
   const contractRenewalValue = expiringContracts.reduce((s, c) => s + (c.contract_value || 0), 0);
+  // Active contracts (auto-include expired in display only)
+  const activeContracts = contracts.filter(c => c.status === "active");
+  const totalContractValue = activeContracts.reduce((s, c) => s + (c.contract_value || 0), 0);
+  const contractsByType = {
+    product_warranty: activeContracts.filter(c => c.type === "product_warranty").length,
+    installation_warranty: activeContracts.filter(c => c.type === "installation_warranty").length,
+    service_contract: activeContracts.filter(c => c.type === "service_contract").length,
+  };
+  const expiryBuckets = (() => {
+    const a = activeContracts.map(c => ({ c, d: dayDiff(c.end_date) })).filter(x => x.d !== null);
+    return {
+      bucket30: a.filter(x => x.d! >= 0 && x.d! <= 30).length,
+      bucket60: a.filter(x => x.d! > 30 && x.d! <= 60).length,
+      bucket90: a.filter(x => x.d! > 60 && x.d! <= 90).length,
+      safe: a.filter(x => x.d! > 90).length,
+    };
+  })();
+  const topExpiring = activeContracts
+    .map(c => ({ c, d: dayDiff(c.end_date) }))
+    .filter(x => x.d !== null && x.d >= 0)
+    .sort((a, b) => a.d! - b.d!)
+    .slice(0, 5);
+  const contractTypePie = [
+    { name: "Product", value: contractsByType.product_warranty, fill: C.blue },
+    { name: "Install", value: contractsByType.installation_warranty, fill: C.purple },
+    { name: "MA", value: contractsByType.service_contract, fill: C.green },
+  ].filter(x => x.value > 0);
+  const contractExpiryData = [
+    { name: "≤30d", value: expiryBuckets.bucket30, fill: C.rose },
+    { name: "31-60", value: expiryBuckets.bucket60, fill: C.amber },
+    { name: "61-90", value: expiryBuckets.bucket90, fill: "#facc15" },
+    { name: ">90d", value: expiryBuckets.safe, fill: C.green },
+  ];
 
   // Sales
   const funnelData = [
@@ -379,6 +412,86 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* CONTRACTS OVERVIEW (full-width row) */}
+      {activeContracts.length > 0 && (
+        <div className="rounded-xl bg-card border border-border p-4 mb-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-emerald-400">🛡️ Contracts Overview</h3>
+              <p className="text-[10px] text-muted">รับประกัน + สัญญา MA — ใช้วาง renewal plan</p>
+            </div>
+            <Link href="/contracts" className="text-[10px] text-accent hover:underline">จัดการสัญญาทั้งหมด →</Link>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg bg-background border border-border p-3">
+                <p className="text-[10px] text-muted">Active</p>
+                <p className="text-xl font-bold text-emerald-400">{activeContracts.length}</p>
+              </div>
+              <div className="rounded-lg bg-background border border-border p-3">
+                <p className="text-[10px] text-muted">มูลค่ารวม</p>
+                <p className="text-xl font-bold">{(totalContractValue / 1000000).toFixed(2)}M</p>
+                <p className="text-[10px] text-muted">THB</p>
+              </div>
+              <div className="rounded-lg bg-red-900/10 border border-red-800/40 p-3">
+                <p className="text-[10px] text-muted">≤30 วัน 🔴</p>
+                <p className="text-xl font-bold text-red-400">{expiryBuckets.bucket30}</p>
+              </div>
+              <div className="rounded-lg bg-background border border-border p-3">
+                <p className="text-[10px] text-muted">หมดอายุแล้ว</p>
+                <p className="text-xl font-bold text-gray-400">{expiredContracts.length}</p>
+              </div>
+            </div>
+
+            {/* Type pie */}
+            <div>
+              <p className="text-[10px] text-muted mb-1">By Type</p>
+              <ResponsiveContainer width="100%" height={140}>
+                <PieChart>
+                  <Pie data={contractTypePie.length > 0 ? contractTypePie : [{ name: "None", value: 1, fill: "#475569" }]} cx="50%" cy="50%" innerRadius={30} outerRadius={55} dataKey="value" label={(e) => e.name}>
+                    {(contractTypePie.length > 0 ? contractTypePie : [{ name: "None", value: 1, fill: "#475569" }]).map((d, i) => <Cell key={i} fill={d.fill} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Expiry timeline bar */}
+            <div>
+              <p className="text-[10px] text-muted mb-1">Expiry Timeline</p>
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart data={contractExpiryData} margin={{ left: 0, right: 5 }}>
+                  <XAxis dataKey="name" tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <YAxis hide />
+                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 11 }} />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>{contractExpiryData.map((d, i) => <Cell key={i} fill={d.fill} />)}</Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Top expiring list */}
+            <div>
+              <p className="text-[10px] text-muted mb-1">ใกล้หมดอายุ Top 5</p>
+              {topExpiring.length === 0 ? <p className="text-xs text-muted">ไม่มีสัญญาใกล้หมด</p> : (
+                <div className="space-y-1">
+                  {topExpiring.map(({ c, d }) => (
+                    <Link key={c.id} href="/contracts" className="block text-[11px] py-0.5 border-b border-border last:border-0 hover:text-accent">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="truncate flex-1">{c.title}</span>
+                        <span className={`shrink-0 font-semibold ${d! <= 7 ? "text-red-400" : d! <= 30 ? "text-amber-400" : d! <= 90 ? "text-yellow-400" : "text-muted"}`}>{d}d</span>
+                      </div>
+                      <p className="text-[9px] text-muted truncate">{c.customer_name}</p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════ LAYER 3: DETAIL ═══════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">

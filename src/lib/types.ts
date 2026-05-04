@@ -241,6 +241,8 @@ export interface ServiceContract {
   // Reminder
   reminder_days_before?: number; // default 30
   reminder_sent?: boolean;
+  last_reminded_at?: string;     // ISO date when reminder was last marked sent
+  reminder_count?: number;        // how many times reminded
   notes?: string;
 }
 

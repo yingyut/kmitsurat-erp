@@ -1,7 +1,20 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { Project, Customer, User, ProjectType } from "@/lib/types";
+import type { Project, Customer, User, ProjectType, ServiceContract } from "@/lib/types";
 import Link from "next/link";
+
+const contractTypeMeta: Record<string, { label: string; icon: string; color: string }> = {
+  product_warranty:      { label: "รับประกันสินค้า",     icon: "🛡️", color: "bg-blue-900/50 text-blue-400" },
+  installation_warranty: { label: "รับประกันงานติดตั้ง", icon: "🔧", color: "bg-purple-900/50 text-purple-400" },
+  service_contract:      { label: "สัญญา MA",            icon: "📋", color: "bg-green-900/50 text-green-400" },
+};
+function daysUntilDate(date?: string): number | null {
+  if (!date) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const t = new Date(date);
+  if (isNaN(t.getTime())) return null;
+  return Math.floor((t.getTime() - today.getTime()) / 86400000);
+}
 
 const statuses = ["lead", "opportunity", "proposal", "negotiation", "won", "lost"] as const;
 const statusLabels: Record<string, string> = { lead: "Lead", opportunity: "Opportunity", proposal: "Proposal", negotiation: "Negotiation", won: "Won", lost: "Lost" };
@@ -21,6 +34,7 @@ export default function ProjectsPage() {
   const [custs, setCusts] = useState<Customer[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [pTypes, setPTypes] = useState<ProjectType[]>([]);
+  const [contracts, setContracts] = useState<ServiceContract[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState("");
@@ -58,10 +72,18 @@ export default function ProjectsPage() {
   async function load() {
     const fs = await import("@/lib/firestore");
     try {
-      const [p, c, u, pt] = await Promise.all([fs.projects.list(), fs.customers.list(), fs.users.list(), fs.projectTypes.list()]);
-      setList(p); setCusts(c); setUsers(u.filter(x => x.active)); setPTypes(pt);
+      const [p, c, u, pt, ct] = await Promise.all([fs.projects.list(), fs.customers.list(), fs.users.list(), fs.projectTypes.list(), fs.serviceContracts.list()]);
+      setList(p); setCusts(c); setUsers(u.filter(x => x.active)); setPTypes(pt); setContracts(ct);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  }
+
+  // Helpers for project ↔ contracts
+  function contractsForProject(projectId: string): ServiceContract[] {
+    return contracts.filter(c => c.project_id === projectId);
+  }
+  function contractCountForProject(projectId: string): number {
+    return contractsForProject(projectId).length;
   }
 
   useEffect(() => { setMounted(true); load(); }, []);
@@ -374,6 +396,45 @@ export default function ProjectsPage() {
                 {detail.reminder_note && <p className="text-xs text-muted mt-1">หมายเหตุ: {detail.reminder_note}</p>}
               </div>
             )}
+
+            {/* Contracts attached to this project */}
+            {(() => {
+              const projContracts = contractsForProject(detail.id!);
+              const activeContracts = projContracts.filter(c => c.status === "active");
+              const totalContractValue = activeContracts.reduce((s, c) => s + (c.contract_value || 0), 0);
+              return (
+                <div className="col-span-full rounded-lg bg-emerald-900/10 border border-emerald-800/30 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-emerald-400 font-semibold">🛡️ สัญญา / รับประกัน ({projContracts.length}{projContracts.length > 0 && ` · active ${activeContracts.length}`})</p>
+                    <Link href="/contracts" className="text-[10px] text-accent hover:underline">+ เพิ่มสัญญาใหม่ →</Link>
+                  </div>
+                  {projContracts.length === 0 ? (
+                    <p className="text-xs text-muted">ยังไม่มีสัญญา/รับประกันสำหรับโปรเจคนี้ — <Link href="/contracts" className="text-accent hover:underline">เพิ่มเลย</Link></p>
+                  ) : (
+                    <>
+                      {totalContractValue > 0 && <p className="text-[10px] text-muted mb-1">มูลค่ารวม Active: <b className="text-emerald-400">{totalContractValue.toLocaleString()} THB</b></p>}
+                      <div className="space-y-1">
+                        {projContracts.map(c => {
+                          const meta = contractTypeMeta[c.type];
+                          const days = daysUntilDate(c.end_date);
+                          const dayColor = days === null ? "text-muted" : days < 0 ? "text-red-400 font-semibold" : days <= 30 ? "text-red-400" : days <= 90 ? "text-amber-400" : "text-green-400";
+                          return (
+                            <div key={c.id} className="flex items-center gap-2 text-xs py-1 border-b border-emerald-800/30 last:border-0">
+                              <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${meta.color}`}>{meta.icon} {meta.label}</span>
+                              <span className="font-medium flex-1 truncate">{c.title}</span>
+                              {c.type === "service_contract" && c.service_level && <span className="text-[10px] text-muted shrink-0">{c.service_level}</span>}
+                              <span className="text-muted shrink-0 text-[10px]">{c.start_date} → {c.end_date}</span>
+                              <span className={`shrink-0 text-[10px] ${dayColor}`}>{days === null ? "—" : days < 0 ? `เลย ${Math.abs(days)}d` : `${days}d`}</span>
+                              {c.contract_value ? <span className="text-emerald-400 shrink-0 w-20 text-right text-[10px]">{c.contract_value.toLocaleString()}</span> : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -392,6 +453,7 @@ export default function ProjectsPage() {
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[p.status]}`}>{statusLabels[p.status]}</span>
                     {p.re_engage && <span className="shrink-0 rounded-full bg-amber-900/50 px-2 py-0.5 text-[10px] text-amber-400" title={`Re-engage: ${p.re_engage_date}`}>📌 Re-engage</span>}
                     {p.reminder_date && p.reminder_type !== "none" && !p.reminder_sent && <span className="shrink-0 rounded-full bg-blue-900/50 px-2 py-0.5 text-[10px] text-blue-400" title={`Reminder: ${p.reminder_date}`}>🔔</span>}
+                    {contractCountForProject(p.id!) > 0 && <span className="shrink-0 rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] text-emerald-400" title={`${contractCountForProject(p.id!)} สัญญา/รับประกัน`}>🛡️ {contractCountForProject(p.id!)}</span>}
                   </div>
                   <p className="text-xs text-muted">{p.customer_name} · {p.type} · {(p.value || 0).toLocaleString()} THB{p.assigned_to && ` · ${p.assigned_to}`}</p>
                   {p.win_loss_reason && <p className="text-xs mt-1 text-muted italic">{p.status === "won" ? "✓" : "✗"} {p.win_loss_reason.slice(0, 60)}{p.win_loss_reason.length > 60 ? "..." : ""}</p>}
