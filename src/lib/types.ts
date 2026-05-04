@@ -18,6 +18,8 @@ export interface User {
   avatar?: string;
   bio?: string;
   sales_code?: string; // 3-4 letter code for document numbering (e.g. "SPLC")
+  login_username?: string; // English login name (e.g. "yingyut")
+  password?: string; // stored plain text for now (P@ssw0rd default)
 }
 
 export interface Team {

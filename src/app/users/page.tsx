@@ -28,7 +28,7 @@ function computeDisplayName(form: { first_name?: string; last_name?: string; nic
 
 const emptyUser = {
   name: "", first_name: "", last_name: "", nickname: "", display_preference: "nickname" as DisplayPref,
-  email: "", role: "sale" as User["role"], position: "", department: "", phone: "", bio: "", active: true, sales_code: "",
+  email: "", role: "sale" as User["role"], position: "", department: "", phone: "", bio: "", active: true, sales_code: "", login_username: "",
 };
 
 const REAL_TEAM: Array<typeof emptyUser> = [
@@ -106,7 +106,7 @@ export default function UsersPage() {
       email: user.email, role: user.role,
       position: user.position || "", department: user.department || "",
       phone: user.phone || "", bio: user.bio || "", active: user.active,
-      sales_code: user.sales_code || "",
+      sales_code: user.sales_code || "", login_username: user.login_username || "",
     });
     setShowUserForm(true);
     setSelectedUser(null);
@@ -338,8 +338,12 @@ export default function UsersPage() {
                     <input placeholder="08x-xxx-xxxx" value={userForm.phone} onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
                   </div>
                   <div>
+                    <label className="text-[10px] text-muted">Login Username (ภาษาอังกฤษ)</label>
+                    <input placeholder="เช่น yingyut, suppaluck" value={userForm.login_username} onChange={(e) => setUserForm({ ...userForm, login_username: e.target.value.toLowerCase().replace(/[^a-z0-9._]/g, "") })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent lowercase font-mono mt-1" />
+                  </div>
+                  <div>
                     <label className="text-[10px] text-muted">รหัสเซลล์ (3-5 ตัว)</label>
-                    <input placeholder="เช่น OY, NN, EVE" maxLength={5} value={userForm.sales_code} onChange={(e) => setUserForm({ ...userForm, sales_code: e.target.value.toUpperCase() })} title="ใช้ใน Document Numbering — ตั้งค่าได้ที่ /settings/numbering" className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent uppercase font-mono mt-1" />
+                    <input placeholder="เช่น OY, NN, EVE" maxLength={5} value={userForm.sales_code} onChange={(e) => setUserForm({ ...userForm, sales_code: e.target.value.toUpperCase() })} title="ใช้ใน Document Numbering" className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent uppercase font-mono mt-1" />
                   </div>
                   <textarea placeholder="รายละเอียด / Bio" value={userForm.bio} onChange={(e) => setUserForm({ ...userForm, bio: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
                   <div className="flex items-center gap-2">
@@ -412,6 +416,7 @@ export default function UsersPage() {
                       <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                         <div className="flex gap-2">
                           <button onClick={() => openEditUser(u)} title="แก้ไขข้อมูล" className="text-xs text-accent hover:underline">แก้ไข</button>
+                          <button onClick={async () => { if (!confirm(`รีเซ็ตรหัสผ่าน ${u.name} เป็น P@ssw0rd ?`)) return; const fs = await import("@/lib/firestore"); await fs.users.update(u.id!, { password: "P@ssw0rd" }); alert(`✅ รีเซ็ตรหัสผ่าน ${u.nickname || u.name} เป็น P@ssw0rd แล้ว`); }} title="รีเซ็ตรหัสผ่าน" className="text-xs text-warning hover:underline">🔑 Reset</button>
                           <button onClick={() => deleteUser(u.id!, u.name)} title="ลบผู้ใช้" className="text-xs text-danger hover:underline">ลบ</button>
                         </div>
                       </td>
