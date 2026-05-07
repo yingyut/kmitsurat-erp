@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCurrentUser } from "@/lib/UserContext";
+import { useRouter } from "next/navigation";
 
 type NavItem = { href: string; label: string; thai: string; icon: string };
 type Section = { title?: string; subtitle?: string; items: NavItem[] };
@@ -55,6 +56,7 @@ const sections: Section[] = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
   const { currentUser, logout, hasAccess } = useCurrentUser();
 
@@ -90,13 +92,13 @@ export default function Sidebar() {
       </nav>
       <div className="border-t border-border px-3 py-2.5">
         {currentUser && (
-          <div className="flex items-center gap-2 mb-1.5">
+          <button onClick={() => router.push("/profile")} className="flex items-center gap-2 mb-1.5 w-full rounded-lg hover:bg-card-hover px-1 py-1 transition-colors text-left" title="ดูโปรไฟล์ / เปลี่ยนรหัสผ่าน">
             <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center text-xs font-bold text-accent shrink-0">{(currentUser.nickname || currentUser.name || "?").charAt(0)}</div>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-medium truncate">{currentUser.nickname || currentUser.name}</p>
-              <p className="text-[9px] text-muted truncate">{currentUser.role} · {currentUser.email}</p>
+              <p className="text-[9px] text-muted truncate">{currentUser.role} · {currentUser.email || "คลิกเพื่อดูโปรไฟล์"}</p>
             </div>
-          </div>
+          </button>
         )}
         <button onClick={logout} className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-[10px] text-muted hover:text-danger hover:border-danger/30 transition-colors">🚪 ออกจากระบบ</button>
       </div>

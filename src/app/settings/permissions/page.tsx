@@ -30,6 +30,7 @@ export default function PermissionsPage() {
   const [perms, setPerms] = useState<Record<string, string[]>>(defaultPermissions);
   const [mounted, setMounted] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [selectedRole, setSelectedRole] = useState("sale");
 
   useEffect(() => {
     setMounted(true);
@@ -74,59 +75,53 @@ export default function PermissionsPage() {
         </div>
       </div>
 
+      {/* Role Dropdown Selector */}
+      <div className="flex items-center gap-3 mb-4">
+        <label className="text-xs text-muted whitespace-nowrap">เลือก Role:</label>
+        <select
+          value={selectedRole}
+          onChange={e => setSelectedRole(e.target.value)}
+          className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"
+        >
+          {roles.filter(r => r !== "admin").map(r => (
+            <option key={r} value={r}>{r} — {roleLabels[r]}</option>
+          ))}
+        </select>
+        <span className="text-xs text-muted">
+          ({(perms[selectedRole] || []).length} / {allModules.length} modules)
+        </span>
+      </div>
+
+      {/* Module Toggle List */}
       <div className="rounded-xl bg-card border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="px-4 py-3 text-left text-xs text-muted font-medium w-48">Module</th>
-                {roles.map(r => (
-                  <th key={r} className="px-3 py-3 text-center text-xs font-medium min-w-[100px]">
-                    <span className={`rounded-full px-2 py-0.5 ${r === "admin" ? "bg-cyan-900/50 text-cyan-400" : r === "sale" ? "bg-blue-900/50 text-blue-400" : r === "presale" ? "bg-purple-900/50 text-purple-400" : r === "service" ? "bg-rose-900/50 text-rose-400" : "bg-orange-900/50 text-orange-400"}`}>{r}</span>
-                    <p className="text-[9px] text-muted mt-1 font-normal">{roleLabels[r]?.split("(")[1]?.replace(")", "") || ""}</p>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {allModules.map(m => (
-                <tr key={m.id} className="border-b border-border last:border-0 hover:bg-card-hover">
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{m.icon}</span>
-                      <div>
-                        <p className="text-sm font-medium">{m.label}</p>
-                        <p className="text-[10px] text-muted">{m.thai}</p>
-                      </div>
-                    </div>
-                  </td>
-                  {roles.map(r => {
-                    const checked = r === "admin" || (perms[r] || []).includes(m.id);
-                    return (
-                      <td key={r} className="px-3 py-2.5 text-center">
-                        {r === "admin" ? (
-                          <span className="text-green-400 text-sm">✓</span>
-                        ) : (
-                          <button onClick={() => toggle(r, m.id)}
-                            className={`w-8 h-8 rounded-lg transition-all ${checked ? "bg-accent/20 text-accent border border-accent/30" : "bg-background border border-border text-muted/30 hover:border-accent/20"}`}>
-                            {checked ? "✓" : "—"}
-                          </button>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {allModules.map((m, i) => {
+          const checked = (perms[selectedRole] || []).includes(m.id);
+          return (
+            <div key={m.id} className={`flex items-center justify-between px-4 py-3 ${i < allModules.length - 1 ? "border-b border-border" : ""} hover:bg-card-hover transition-colors`}>
+              <div className="flex items-center gap-3">
+                <span className="text-base">{m.icon}</span>
+                <div>
+                  <p className="text-sm font-medium">{m.label}</p>
+                  <p className="text-[10px] text-muted">{m.thai}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => toggle(selectedRole, m.id)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${checked ? "bg-accent" : "bg-border"}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? "translate-x-6" : "translate-x-1"}`} />
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       <div className="mt-4 rounded-xl bg-card border border-border p-4">
-        <h3 className="text-sm font-semibold mb-2">สรุปสิทธิ์ปัจจุบัน</h3>
+        <h3 className="text-sm font-semibold mb-2">สรุปสิทธิ์ทุก Role</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {roles.filter(r => r !== "admin").map(r => (
-            <div key={r} className="rounded-lg bg-background border border-border p-3">
+            <button key={r} onClick={() => setSelectedRole(r)}
+              className={`rounded-lg border p-3 text-left transition-colors ${selectedRole === r ? "border-accent bg-accent/10" : "bg-background border-border hover:bg-card-hover"}`}>
               <p className="text-xs font-medium mb-1">{roleLabels[r]}</p>
               <p className="text-[10px] text-muted">{(perms[r] || []).length} / {allModules.length} modules</p>
               <div className="flex flex-wrap gap-1 mt-1.5">
@@ -135,7 +130,7 @@ export default function PermissionsPage() {
                   return <span key={m} className="rounded bg-accent/10 text-accent px-1.5 py-0.5 text-[9px]">{mod?.icon} {mod?.label || m}</span>;
                 })}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
