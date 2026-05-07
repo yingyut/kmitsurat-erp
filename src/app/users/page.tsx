@@ -40,13 +40,14 @@ const REAL_TEAM: Array<typeof emptyUser> = [
   { ...emptyUser, nickname: "อี๊ฟ",       role: "sale",    position: "Sales",  sales_code: "EVE", display_preference: "nickname" },
   { ...emptyUser, nickname: "บีบี",       role: "sale",    position: "Sales",  sales_code: "BB",  display_preference: "nickname" },
   { ...emptyUser, nickname: "จะจ๋า",      role: "sale",    position: "Sales",  sales_code: "JJ",  display_preference: "nickname" },
-  { ...emptyUser, nickname: "พี่กรด",     role: "presale", position: "Pre-sale", display_preference: "nickname" },
+  { ...emptyUser, nickname: "พี่กรด",     role: "admin",   position: "Pre-sale", display_preference: "nickname" },
   { ...emptyUser, nickname: "พี่กอร์ฟ",   role: "presale", position: "Pre-sale", display_preference: "nickname" },
   { ...emptyUser, nickname: "น้องมีน",    role: "presale", position: "Pre-sale", display_preference: "nickname" },
   { ...emptyUser, nickname: "ปอน",       role: "service", position: "Service Technician",  display_preference: "nickname" },
   { ...emptyUser, nickname: "ไผ่",        role: "service", position: "Service Technician",  display_preference: "nickname" },
   { ...emptyUser, nickname: "โก้ด",       role: "service", position: "Service Technician",  display_preference: "nickname" },
   { ...emptyUser, nickname: "System Admin", role: "admin", position: "ผู้ดูแลระบบ (System Administrator)", display_preference: "nickname" },
+  { ...emptyUser, nickname: "administrator", role: "admin", position: "ผู้ดูแลระบบสูงสุด", login_username: "administrator", display_preference: "nickname" },
 ];
 const emptyTeam = { name: "", type: "sales" as Team["type"] };
 
