@@ -51,6 +51,13 @@ const settingsLinks = [
     desc: "เลือกธีมสีที่ชอบ: Midnight (ม่วงเข้ม), Obsidian (เทาอุ่น), Snow (ขาวสะอาด), Cyberpunk (นีออน)",
     icon: "🎨",
   },
+  {
+    href: "/settings/import-export",
+    title: "Import / Backup",
+    thai: "นำเข้าข้อมูล / สำรองข้อมูล",
+    desc: "Import ข้อมูลจาก Excel/CSV สำหรับ Customers, Products, Vendors, Projects และ Backup/Restore ฐานข้อมูลทั้งหมด",
+    icon: "💾",
+  },
 ];
 
 export default function SettingsPage() {
