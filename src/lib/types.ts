@@ -260,6 +260,11 @@ export interface SalesActivity {
   expected_outcome?: string;
   // Conversion tracking
   converted_to_project_id?: string;
+  // Prospect / customer type
+  customer_type?: "existing" | "prospect";   // prospect = ยังไม่เป็นลูกค้า ไม่มี cuscode
+  contact_person?: string;                   // ติดต่อใคร (ชื่อ / ตำแหน่ง)
+  next_action_type?: string;                 // ประเภทของ next action
+  next_action_by?: string;                   // next action โดยใคร
 }
 
 export interface BomItem {

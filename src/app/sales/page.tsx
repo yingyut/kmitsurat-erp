@@ -39,7 +39,7 @@ export default function SalesPage() {
   const [timeFilter, setTimeFilter] = useState<"all"|"today"|"week"|"overdue">("all");
 
   // Activity/Plan form
-  const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", project_id: "", project_name: "", assigned_to: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "" });
+  const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing" | "prospect", project_id: "", project_name: "", assigned_to: "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "" });
 
   // Request form
   const [reqForm, setReqForm] = useState({ request_from: "", request_to_team: "presale" as JobRequest["request_to_team"], request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium" as JobRequest["priority"], status: "pending" as JobRequest["status"], assigned_to: "", reject_reason: "", accept_note: "" });
@@ -112,7 +112,7 @@ export default function SalesPage() {
     catch (e) { console.error(e); } finally { setSaving(false); }
   }
 
-  function resetActForm() { setActForm({ type: "phone_call", customer_id: "", customer_name: "", project_id: "", project_name: "", assigned_to: "", description: "", status: "new", next_follow_up: "", result: "", next_action: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "" }); }
+  function resetActForm() { setActForm({ type: "phone_call", customer_id: "", customer_name: "", customer_type: "existing", project_id: "", project_name: "", assigned_to: "", contact_person: "", description: "", status: "new", next_follow_up: "", result: "", next_action: "", next_action_type: "", next_action_by: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "" }); }
 
   async function updateActivity(id: string, data: Record<string, unknown>) {
     const { salesActivities } = await import("@/lib/firestore");
@@ -346,7 +346,19 @@ export default function SalesPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
               <div><label className="text-[10px] text-muted">วันที่วางแผน</label><input type="date" value={actForm.plan_date || today} onChange={e => setActForm({ ...actForm, plan_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
               <div><label className="text-[10px] text-muted">ประเภท</label><select value={actForm.type} onChange={e => setActForm({ ...actForm, type: e.target.value as SalesActivity["type"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">{actTypes.map(t => <option key={t} value={t}>{typeLabels[t]}</option>)}</select></div>
-              <div><label className="text-[10px] text-muted">ลูกค้า (ไม่บังคับ)</label><select value={actForm.customer_id} onChange={e => selectCust(e.target.value, "act")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— ยังไม่ระบุ —</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-muted">ลูกค้า (ไม่บังคับ)</label>
+                  <div className="flex rounded overflow-hidden border border-border text-[9px]">
+                    <button type="button" onClick={() => setActForm({...actForm, customer_type:"existing", customer_id:"", customer_name:""})} className={`px-2 py-0.5 ${actForm.customer_type !== "prospect" ? "bg-accent text-white" : "text-muted hover:bg-card-hover"}`}>ในระบบ</button>
+                    <button type="button" onClick={() => setActForm({...actForm, customer_type:"prospect", customer_id:""})} className={`px-2 py-0.5 ${actForm.customer_type === "prospect" ? "bg-orange-600 text-white" : "text-muted hover:bg-card-hover"}`}>Prospect</button>
+                  </div>
+                </div>
+                {actForm.customer_type === "prospect"
+                  ? <input placeholder="ชื่อบริษัท / องค์กร (ยังไม่มีในระบบ)" value={actForm.customer_name} onChange={e => setActForm({...actForm, customer_name: e.target.value})} className="w-full rounded-lg bg-background border border-orange-800/50 px-3 py-2 text-sm focus:outline-none focus:border-orange-500 mt-1" />
+                  : <select value={actForm.customer_id} onChange={e => selectCust(e.target.value, "act")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— ยังไม่ระบุ —</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select>
+                }
+              </div>
               <div><label className="text-[10px] text-muted">ผู้รับผิดชอบ</label><select value={actForm.assigned_to} onChange={e => setActForm({ ...actForm, assigned_to: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— เลือก —</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
               <div className="col-span-full"><label className="text-[10px] text-muted">ผลที่คาดหวัง / สิ่งที่จะทำ *</label><textarea placeholder="เช่น โทรนัดเข้าพบ, เยี่ยมลูกค้าเสนอ WiFi, ติดตามใบเสนอราคา" value={actForm.expected_outcome} onChange={e => setActForm({ ...actForm, expected_outcome: e.target.value, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-16 resize-y" /></div>
             </div>
@@ -364,7 +376,13 @@ export default function SalesPage() {
             <div key={a.id} className="rounded-xl bg-card border border-border p-3 flex items-start justify-between">
               <div className="flex-1">
                 <p className="text-sm">{a.expected_outcome || a.description}</p>
-                <p className="text-xs text-muted mt-0.5"><span className="rounded bg-card-hover px-1.5 py-0.5">{typeLabels[a.type]}</span> · {a.plan_date || "—"}{a.customer_name && ` · ${a.customer_name}`}{a.assigned_to && ` · ${a.assigned_to}`}</p>
+                <p className="text-xs text-muted mt-0.5 flex flex-wrap gap-1.5 items-center">
+                  <span className="rounded bg-card-hover px-1.5 py-0.5">{typeLabels[a.type]}</span>
+                  <span>· {a.plan_date || "—"}</span>
+                  {a.customer_type === "prospect" && <span className="rounded bg-orange-900/40 text-orange-400 px-1.5 py-0.5">🔍 Prospect</span>}
+                  {a.customer_name && <span>{a.customer_name}</span>}
+                  {a.assigned_to && <span>· {a.assigned_to}</span>}
+                </p>
               </div>
               <div className="flex gap-1.5 shrink-0 ml-2">
                 <button onClick={() => convertPlanToActivity(a)} title="ทำแล้ว → สร้าง Activity" className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ ทำแล้ว</button>
@@ -484,14 +502,54 @@ export default function SalesPage() {
             <h2 className="text-base font-semibold mb-3">บันทึกกิจกรรม</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
               <div><label className="text-[10px] text-muted">ประเภท</label><select value={actForm.type} onChange={e => setActForm({ ...actForm, type: e.target.value as SalesActivity["type"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">{actTypes.map(t => <option key={t} value={t}>{typeLabels[t]}</option>)}</select></div>
-              <div><label className="text-[10px] text-muted">ลูกค้า</label><select value={actForm.customer_id} onChange={e => selectCust(e.target.value, "act")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
-              <div><label className="text-[10px] text-muted">โปรเจค</label><select value={actForm.project_id} onChange={e => selectProj(e.target.value, "act")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-              <div><label className="text-[10px] text-muted">ผู้รับผิดชอบ</label><select value={actForm.assigned_to} onChange={e => setActForm({ ...actForm, assigned_to: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
+
+              {/* ── Customer field with Prospect toggle ── */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-muted">ลูกค้า</label>
+                  <div className="flex rounded overflow-hidden border border-border text-[9px]">
+                    <button type="button" onClick={() => setActForm({...actForm, customer_type:"existing", customer_id:"", customer_name:""})} className={`px-2 py-0.5 ${actForm.customer_type !== "prospect" ? "bg-accent text-white" : "text-muted hover:bg-card-hover"}`}>ในระบบ</button>
+                    <button type="button" onClick={() => setActForm({...actForm, customer_type:"prospect", customer_id:""})} className={`px-2 py-0.5 ${actForm.customer_type === "prospect" ? "bg-orange-600 text-white" : "text-muted hover:bg-card-hover"}`}>🔍 Prospect</button>
+                  </div>
+                </div>
+                {actForm.customer_type === "prospect"
+                  ? <input placeholder="ชื่อบริษัท / องค์กร (ยังไม่มีในระบบ)" value={actForm.customer_name} onChange={e => setActForm({...actForm, customer_name: e.target.value})} className="w-full rounded-lg bg-background border border-orange-800/50 px-3 py-2 text-sm focus:outline-none focus:border-orange-500 mt-1" />
+                  : <select value={actForm.customer_id} onChange={e => selectCust(e.target.value, "act")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select>
+                }
+              </div>
+
+              {/* ── Project field ── */}
+              <div>
+                <label className="text-[10px] text-muted">โปรเจค {actForm.customer_type === "prospect" && <span className="text-orange-400/70">(พิมพ์ได้เลย)</span>}</label>
+                {actForm.customer_type === "prospect"
+                  ? <input placeholder="ชื่อโครงการ / ดีล (ถ้ามี)" value={actForm.project_name} onChange={e => setActForm({...actForm, project_name: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  : <select value={actForm.project_id} onChange={e => selectProj(e.target.value, "act")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                }
+              </div>
+
+              <div><label className="text-[10px] text-muted">ผู้รับผิดชอบ</label><select value={actForm.assigned_to} onChange={e => setActForm({ ...actForm, assigned_to: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{users.filter(u => u.role === "sale" || u.role === "avenger" || isNewRole(u.role ?? "")).map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">ติดต่อใคร</label><input placeholder="ชื่อ / ตำแหน่งผู้ติดต่อ" value={actForm.contact_person || ""} onChange={e => setActForm({ ...actForm, contact_person: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
               <div><label className="text-[10px] text-muted">ผลลัพธ์</label><select value={actForm.result || ""} onChange={e => setActForm({ ...actForm, result: e.target.value as SalesActivity["result"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— เลือก —</option><option value="success">สำเร็จ</option><option value="interested">สนใจ</option><option value="no_answer">ไม่รับสาย</option><option value="rejected">ปฏิเสธ</option><option value="pending">รอผล</option></select></div>
               <div><label className="text-[10px] text-muted">Next Follow-up</label><input type="date" value={actForm.next_follow_up} onChange={e => setActForm({ ...actForm, next_follow_up: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
               <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียด *</label><textarea placeholder="สิ่งที่ทำ / ผลการพูดคุย" value={actForm.description} onChange={e => setActForm({ ...actForm, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-16 resize-y" /></div>
-              <div><label className="text-[10px] text-muted">Next Action</label><input placeholder="สิ่งที่ต้องทำต่อ" value={actForm.next_action || ""} onChange={e => setActForm({ ...actForm, next_action: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+
+              {/* ── Next Action section ── */}
+              <div>
+                <label className="text-[10px] text-muted">ประเภท Next Action</label>
+                <select value={actForm.next_action_type || ""} onChange={e => setActForm({ ...actForm, next_action_type: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                  <option value="">— เลือก —</option>
+                  <option value="เข้าพบ">🤝 เข้าพบ</option>
+                  <option value="พรีเซนต์ Company Profile">📊 พรีเซนต์ Company Profile</option>
+                  <option value="นำเสนอ Solution">💡 นำเสนอ Solution</option>
+                  <option value="โทรติดตาม">📞 โทรติดตาม</option>
+                  <option value="ส่งใบเสนอราคา">📄 ส่งใบเสนอราคา</option>
+                  <option value="Demo / ทดสอบ">🖥 Demo / ทดสอบ</option>
+                  <option value="อื่นๆ">อื่นๆ</option>
+                </select>
+              </div>
+              <div><label className="text-[10px] text-muted">Next Action รายละเอียด</label><input placeholder="สิ่งที่ต้องทำต่อ" value={actForm.next_action || ""} onChange={e => setActForm({ ...actForm, next_action: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
               <div><label className="text-[10px] text-muted">Next Action Date</label><input type="date" value={actForm.next_action_date || ""} onChange={e => setActForm({ ...actForm, next_action_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              <div><label className="text-[10px] text-muted">Next Action โดยใคร</label><select value={actForm.next_action_by || ""} onChange={e => setActForm({ ...actForm, next_action_by: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— เลือก —</option>{users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
             </div>
             <div className="flex gap-2">
               <button onClick={() => saveActivity(false)} disabled={saving || !actForm.description.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึก"}</button>
@@ -520,10 +578,17 @@ export default function SalesPage() {
                     <p className="text-sm">{a.description}</p>
                     <div className="flex flex-wrap gap-1.5 mt-1 text-[10px]">
                       <span className="rounded bg-card-hover px-1.5 py-0.5">{typeLabels[a.type]}</span>
+                      {a.customer_type === "prospect"
+                        ? <span className="rounded bg-orange-900/40 text-orange-400 px-1.5 py-0.5">🔍 Prospect</span>
+                        : null
+                      }
                       {a.customer_name && <span className="text-muted">{a.customer_name}</span>}
+                      {a.contact_person && <span className="text-muted">· 👤 {a.contact_person}</span>}
                       {a.result && <span className={resultColor[a.result] || "text-muted"}>{resultLabels[a.result]}</span>}
                       {a.next_follow_up && <span className={isOverdue ? "text-red-400" : "text-muted"}>{isOverdue ? "⚠ " : ""}Follow: {a.next_follow_up}</span>}
-                      {a.next_action && <span className="text-blue-400">Next: {a.next_action}</span>}
+                      {a.next_action_type && <span className="text-blue-300">→ {a.next_action_type}</span>}
+                      {a.next_action && <span className="text-blue-400">{a.next_action}</span>}
+                      {a.next_action_by && <span className="text-muted">โดย {a.next_action_by}</span>}
                       {a.converted_to_project_id && <span className="text-green-400">→ Pipeline</span>}
                     </div>
                   </div>
