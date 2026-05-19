@@ -1,5 +1,6 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useCurrentUser } from "@/lib/UserContext";
 
 // ── types ─────────────────────────────────────────────────────
 type Row = Record<string, unknown>;
@@ -234,8 +235,17 @@ const REPORTS: ReportDef[] = [
 
 // ── page ──────────────────────────────────────────────────────
 export default function ReportsPage() {
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canView = hasPermission("view_reports");
+  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canView) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   const handleExport = useCallback(
     async (reportKey: string, format: "csv" | "excel" | "pdf") => {
