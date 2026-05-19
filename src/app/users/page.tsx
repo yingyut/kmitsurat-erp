@@ -608,7 +608,10 @@ export default function UsersPage() {
               </div>
 
               <div className="px-5 py-4 border-t border-border flex items-center justify-between shrink-0">
-                <p className="text-xs text-muted">สิทธิ์พิเศษ: <span className="text-accent font-medium">{permOverrides.filter(p => !rolePerms.has(p)).length} รายการ</span></p>
+                <div>
+                  <p className="text-xs text-muted">สิทธิ์พิเศษ: <span className="text-accent font-medium">{permOverrides.filter(p => !rolePerms.has(p)).length} รายการ</span></p>
+                  <p className="text-[10px] text-muted/60 mt-0.5">* มีผลเมื่อ user refresh หน้าหรือ login ใหม่</p>
+                </div>
                 <div className="flex gap-2">
                   <button onClick={() => setPermOverrideUser(null)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
                   <button onClick={savePermOverride} disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : "บันทึกสิทธิ์"}</button>
