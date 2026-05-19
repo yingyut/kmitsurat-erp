@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { presaleTools, toolBoqItems, presaleCatalog } from "@/lib/firestore";
+import { presaleTools, toolBoqItems, presaleCatalog, presalePresets } from "@/lib/firestore";
 import type {
   ProjectTool, CCTVDesignData, CCTVCamera, CCTVRecorder, CCTVInfraItem,
-  CCTVLaborItem, ToolBOQItem, PresaleCatalogItem, CatalogItemType,
+  CCTVLaborItem, ToolBOQItem, PresaleCatalogItem, CatalogItemType, PresalePreset,
 } from "@/lib/firestore";
 import { calcBOQSummary, BOQ_CATEGORY_LABEL } from "@/lib/boqMerge";
 import { useCurrentUser } from "@/lib/UserContext";
@@ -276,6 +276,194 @@ function SaveToCatalogModal({
   );
 }
 
+// ─── SavePresetModal ───────────────────────────────────────────────────────────
+
+function SavePresetModal({
+  isOpen, designData, createdBy, onSave, onClose,
+}: {
+  isOpen: boolean;
+  designData: CCTVDesignData;
+  createdBy: string;
+  onSave: (name: string, description: string, tags: string[]) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [tagsInput, setTagsInput] = useState("");
+
+  useEffect(() => {
+    if (isOpen) { setName(""); setDescription(""); setTagsInput(""); }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const totalCams = designData.cameras.reduce((s, c) => s + c.qty, 0);
+  const totalSell = [
+    ...designData.cameras.map((c) => c.qty * (c.selling_price ?? 0)),
+    ...designData.recorders.map((r) => r.qty * (r.selling_price ?? 0)),
+    ...designData.infrastructure.map((i) => i.qty * (i.selling_price ?? 0)),
+    ...designData.labor.map((l) => l.qty * l.selling_price),
+  ].reduce((s, v) => s + v, 0);
+  const itemCount = designData.cameras.length + designData.recorders.length + designData.infrastructure.length + designData.labor.length;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-2xl border border-border/50 p-6 w-full max-w-md space-y-4">
+        <div>
+          <h3 className="font-bold text-base">บันทึกเป็น Preset</h3>
+          <p className="text-xs text-muted/60 mt-0.5">บันทึกชุดรายการสินค้านี้เพื่อนำไปใช้ซ้ำในโปรเจกต์อื่น</p>
+        </div>
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl px-4 py-3 flex gap-6">
+          <div className="text-center">
+            <p className="text-xl font-bold text-blue-300">{totalCams}</p>
+            <p className="text-[11px] text-muted/60">กล้อง</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xl font-bold text-green-400">฿{totalSell.toLocaleString()}</p>
+            <p className="text-[11px] text-muted/60">ราคาขายรวม</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xl font-bold">{itemCount}</p>
+            <p className="text-[11px] text-muted/60">รายการ</p>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-muted/60 block mb-1">ชื่อ Preset *</label>
+          <input
+            autoFocus
+            className="w-full px-3 py-2 bg-muted/10 border border-border/50 rounded-lg text-sm"
+            placeholder="เช่น ชุด CCTV สำนักงาน 8 กล้อง Standard"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted/60 block mb-1">คำอธิบาย (ไม่บังคับ)</label>
+          <textarea
+            className="w-full px-3 py-2 bg-muted/10 border border-border/50 rounded-lg text-sm resize-none"
+            rows={2}
+            placeholder="ใช้สำหรับ..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted/60 block mb-1">แท็ก (คั่นด้วยจุลภาค)</label>
+          <input
+            className="w-full px-3 py-2 bg-muted/10 border border-border/50 rounded-lg text-sm"
+            placeholder="เช่น สำนักงาน, ขนาดเล็ก, Hikvision"
+            value={tagsInput}
+            onChange={(e) => setTagsInput(e.target.value)}
+          />
+        </div>
+        <p className="text-[11px] text-muted/50">ผู้สร้าง: {createdBy}</p>
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose} className="flex-1 px-4 py-2 border border-border/50 rounded-lg text-sm hover:bg-muted/10">ยกเลิก</button>
+          <button
+            disabled={!name.trim()}
+            onClick={() => onSave(name.trim(), description.trim(), tagsInput.split(",").map((t) => t.trim()).filter(Boolean))}
+            className="flex-1 px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            บันทึก Preset
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LoadPresetModal ───────────────────────────────────────────────────────────
+
+function LoadPresetModal({
+  isOpen, presets, currentUser, onLoad, onDelete, onClose,
+}: {
+  isOpen: boolean;
+  presets: PresalePreset[];
+  currentUser: { name?: string; role?: string } | null;
+  onLoad: (preset: PresalePreset) => void;
+  onDelete: (preset: PresalePreset) => void;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState("");
+
+  if (!isOpen) return null;
+
+  const filtered = presets.filter(
+    (p) =>
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.description ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (p.tags ?? []).some((t) => t.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const canDelete = (p: PresalePreset) =>
+    currentUser?.role === "admin" || p.created_by === currentUser?.name;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-2xl border border-border/50 p-6 w-full max-w-2xl space-y-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="font-bold text-base">โหลด Preset</h3>
+            <p className="text-xs text-muted/60 mt-0.5">เลือก Preset เพื่อโหลดชุดรายการมาใช้งาน</p>
+          </div>
+          <button onClick={onClose} className="text-muted/60 hover:text-foreground px-1">✕</button>
+        </div>
+        <input
+          className="w-full px-3 py-2 bg-muted/10 border border-border/50 rounded-lg text-sm"
+          placeholder="ค้นหา Preset..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {filtered.length === 0 ? (
+          <div className="text-center py-10 text-muted/60">
+            <p className="text-3xl mb-2">📦</p>
+            <p className="text-sm">{presets.length === 0 ? "ยังไม่มี Preset — กด \"บันทึก Preset\" เพื่อสร้างอันแรก" : "ไม่พบ Preset ที่ตรงกัน"}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
+            {filtered.map((p) => {
+              const data = p.design_data as CCTVDesignData;
+              const totalCams = p.summary_cameras ?? (data?.cameras?.reduce((s, c) => s + c.qty, 0) ?? 0);
+              return (
+                <div key={p.id} className="bg-muted/5 border border-border/30 rounded-xl p-4 flex flex-col gap-2 hover:border-accent/30 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm leading-tight truncate">{p.name}</p>
+                      {p.description && <p className="text-xs text-muted/60 mt-0.5 line-clamp-2">{p.description}</p>}
+                    </div>
+                    {canDelete(p) && (
+                      <button onClick={() => onDelete(p)} className="text-red-400/60 hover:text-red-400 text-xs shrink-0" title="ลบ Preset">🗑️</button>
+                    )}
+                  </div>
+                  <div className="flex gap-3 text-xs text-muted/60">
+                    <span>📷 {totalCams} ตัว</span>
+                    {p.summary_total_selling != null && <span className="text-green-400">฿{p.summary_total_selling.toLocaleString()}</span>}
+                    {p.summary_item_count != null && <span>{p.summary_item_count} รายการ</span>}
+                  </div>
+                  {p.tags && p.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {p.tags.map((t) => (
+                        <span key={t} className="px-1.5 py-0.5 bg-accent/10 text-accent/70 rounded text-[10px]">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mt-auto pt-1">
+                    <span className="text-[10px] text-muted/40">โดย {p.created_by}</span>
+                    <button onClick={() => onLoad(p)} className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:opacity-90">
+                      โหลด
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="text-[11px] text-muted/40">* การโหลด Preset จะแทนที่ข้อมูลปัจจุบัน กรุณาบันทึกงานก่อนหากต้องการเก็บไว้</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── main page ─────────────────────────────────────────────────────────────────
 type DesignerTab = "cameras" | "equipment" | "labor" | "boq" | "catalog";
 
@@ -306,15 +494,21 @@ export default function ToolPage() {
     open: boolean; itemType: CatalogItemType; initial: Partial<CatalogFormData>; editItem?: PresaleCatalogItem;
   }>({ open: false, itemType: "cctv_camera", initial: {} });
 
+  // Preset state
+  const [presets, setPresets] = useState<PresalePreset[]>([]);
+  const [savePresetModal, setSavePresetModal] = useState(false);
+  const [loadPresetModal, setLoadPresetModal] = useState(false);
+
   const canModifyCatalog = useCallback((item: PresaleCatalogItem) =>
     currentUser?.role === "admin" || item.created_by === currentUser?.name,
   [currentUser]);
 
   const loadAll = useCallback(async () => {
-    const [t, boq, cat] = await Promise.all([
+    const [t, boq, cat, pres] = await Promise.all([
       presaleTools.get(toolId),
       toolBoqItems.listWhere("tool_id", toolId),
       presaleCatalog.list(),
+      presalePresets.listWhere("tool_type", "cctv_designer"),
     ]);
     setTool(t);
     if (t?.design_data) {
@@ -332,6 +526,7 @@ export default function ToolPage() {
     }
     setBoqPreview(boq.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
     setCatalog(cat);
+    setPresets(pres);
     setLoading(false);
   }, [toolId]);
 
@@ -453,6 +648,51 @@ export default function ToolPage() {
     setCatalog((prev) => prev.filter((i) => i.id !== item.id));
   };
 
+  // Preset handlers
+  const handleSavePreset = async (name: string, description: string, tags: string[]) => {
+    const designData = getDesignData();
+    const totalCams = designData.cameras.reduce((s, c) => s + c.qty, 0);
+    const totalSell = [
+      ...designData.cameras.map((c) => c.qty * (c.selling_price ?? 0)),
+      ...designData.recorders.map((r) => r.qty * (r.selling_price ?? 0)),
+      ...designData.infrastructure.map((i) => i.qty * (i.selling_price ?? 0)),
+      ...designData.labor.map((l) => l.qty * l.selling_price),
+    ].reduce((s, v) => s + v, 0);
+    const itemCount = designData.cameras.length + designData.recorders.length + designData.infrastructure.length + designData.labor.length;
+
+    await presalePresets.add({
+      name,
+      description: description || undefined,
+      tool_type: "cctv_designer",
+      design_data: designData as unknown as Record<string, unknown>,
+      summary_cameras: totalCams,
+      summary_total_selling: Math.round(totalSell),
+      summary_item_count: itemCount,
+      tags: tags.length > 0 ? tags : undefined,
+      created_by: currentUser?.name ?? "",
+    } as Record<string, unknown>);
+
+    const updated = await presalePresets.listWhere("tool_type", "cctv_designer");
+    setPresets(updated);
+    setSavePresetModal(false);
+  };
+
+  const handleLoadPreset = (preset: PresalePreset) => {
+    if (!confirm(`โหลด Preset "${preset.name}"?\nข้อมูลปัจจุบันจะถูกแทนที่`)) return;
+    const data = preset.design_data as CCTVDesignData;
+    setCameras((data.cameras ?? []).map((c) => ({ ...c, id: uid() })));
+    setRecorders((data.recorders ?? []).map((r) => ({ ...r, id: uid() })));
+    setInfra((data.infrastructure ?? []).map((i) => ({ ...i, id: uid() })));
+    setLabor((data.labor ?? []).map((l) => ({ ...l, id: uid() })));
+    setLoadPresetModal(false);
+  };
+
+  const handleDeletePreset = async (preset: PresalePreset) => {
+    if (!confirm(`ลบ Preset "${preset.name}"?`)) return;
+    if (preset.id) await presalePresets.remove(preset.id);
+    setPresets((prev) => prev.filter((p) => p.id !== preset.id));
+  };
+
   // Row updaters
   const updCam = (id: string, p: Partial<CCTVCamera>) => setCameras((prev) => prev.map((c) => c.id === id ? { ...c, ...p } : c));
   const updRec = (id: string, p: Partial<CCTVRecorder>) => setRecorders((prev) => prev.map((r) => r.id === id ? { ...r, ...p } : r));
@@ -503,7 +743,13 @@ export default function ToolPage() {
           </div>
           <p className="text-sm text-muted/60 mt-0.5">CCTV Designer · กล้องทั้งหมด {totalCameras} ตัว · คลังสินค้า {catalog.length} รายการ</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
+          <button onClick={() => setLoadPresetModal(true)} className="px-3 py-2 border border-border/50 rounded-lg text-sm hover:bg-muted/10 text-muted/70">
+            📥 โหลด Preset
+          </button>
+          <button onClick={() => setSavePresetModal(true)} className="px-3 py-2 border border-border/50 rounded-lg text-sm hover:bg-muted/10 text-muted/70">
+            📋 บันทึก Preset
+          </button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 border border-border/50 rounded-lg text-sm hover:bg-muted/10 disabled:opacity-50">
             {saving ? "กำลังบันทึก..." : "💾 บันทึก"}
           </button>
@@ -997,6 +1243,23 @@ export default function ToolPage() {
         createdBy={currentUser?.name ?? ""}
         onSave={handleSaveCatalogItem}
         onClose={() => setSaveCatalogModal({ open: false, itemType: "cctv_camera", initial: {} })}
+      />
+
+      {/* Preset Modals */}
+      <SavePresetModal
+        isOpen={savePresetModal}
+        designData={getDesignData()}
+        createdBy={currentUser?.name ?? ""}
+        onSave={handleSavePreset}
+        onClose={() => setSavePresetModal(false)}
+      />
+      <LoadPresetModal
+        isOpen={loadPresetModal}
+        presets={presets}
+        currentUser={currentUser}
+        onLoad={handleLoadPreset}
+        onDelete={handleDeletePreset}
+        onClose={() => setLoadPresetModal(false)}
       />
     </div>
   );

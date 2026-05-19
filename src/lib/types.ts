@@ -707,6 +707,24 @@ export interface CCTVDesignData {
   design_notes?: string;
 }
 
+// Presale Preset Templates (saved design bundles for reuse)
+export interface PresalePreset {
+  id?: string;
+  tenant_id: string;
+  name: string;
+  description?: string;
+  tool_type: PresaleToolType;
+  design_data: CCTVDesignData | Record<string, unknown>;
+  // Computed summary for display
+  summary_cameras?: number;
+  summary_total_selling?: number;
+  summary_item_count?: number;
+  tags?: string[];
+  created_by: string;
+  created_at?: unknown;
+  updated_at?: string;
+}
+
 // Presale Product Catalog (reusable across tools)
 export type CatalogItemType = "cctv_camera" | "cctv_recorder" | "cctv_infra" | "cctv_labor";
 

@@ -9,7 +9,7 @@ import type {
   User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow,
-  PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem,
+  PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem, PresalePreset,
 } from "./types";
 
 // Re-export types
@@ -21,6 +21,7 @@ export type {
   PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem,
   PresaleToolType, PresaleToolStatus, PresaleProjectStatus, BOQCategory,
   CCTVDesignData, CCTVCamera, CCTVRecorder, CCTVInfraItem, CCTVLaborItem, CatalogItemType,
+  PresalePreset,
 } from "./types";
 
 // ============================================================
@@ -130,3 +131,4 @@ export const presaleTools = svc<ProjectTool>("presale_tools");
 export const toolBoqItems = svc<ToolBOQItem>("presale_tool_boq_items");
 export const projectBoqItems = svc<ProjectBOQItem>("presale_project_boq_items");
 export const presaleCatalog = svc<PresaleCatalogItem>("presale_catalog");
+export const presalePresets = svc<PresalePreset>("presale_presets");
