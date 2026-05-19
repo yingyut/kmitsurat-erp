@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import type { ServiceContract, Customer, Project } from "@/lib/types";
 import { generateNumber } from "@/lib/numbering";
+import { useCurrentUser } from "@/lib/UserContext";
 
 type ContractType = ServiceContract["type"];
 type ContractStatus = ServiceContract["status"];
@@ -121,6 +122,10 @@ function dateOffset(days: number): string {
 }
 
 export default function ContractsPage() {
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_contracts");
+  const canView = hasPermission("view_contracts") || canManage;
+
   const [list, setList] = useState<ServiceContract[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -311,9 +316,11 @@ export default function ContractsPage() {
       const payload = { ...form, group_id };
       if (editId) {
         await fs.serviceContracts.update(editId, payload as unknown as Record<string, unknown>);
+        await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "contracts", action: "update", resource_id: editId, resource_name: form.title, details: `แก้ไขสัญญา: ${form.title} (${form.customer_name})` });
       } else {
         const contract_number = (await generateNumber("contract")) || "";
-        await fs.serviceContracts.add({ ...payload, contract_number } as unknown as Record<string, unknown>);
+        const ref = await fs.serviceContracts.add({ ...payload, contract_number } as unknown as Record<string, unknown>);
+        await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "contracts", action: "create", resource_id: (ref as { id?: string }).id, resource_name: form.title, details: `เพิ่มสัญญา: ${form.title} (${form.customer_name})` });
       }
       setForm(emptyForm); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); }
@@ -324,6 +331,7 @@ export default function ContractsPage() {
     if (!confirm(`ลบสัญญา "${title}" ?`)) return;
     const fs = await import("@/lib/firestore");
     await fs.serviceContracts.remove(id);
+    await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "contracts", action: "delete", resource_id: id, resource_name: title, details: `ลบสัญญา: ${title}` });
     await load();
   }
 
@@ -394,7 +402,9 @@ export default function ContractsPage() {
     return -1 * (daysUntil(c.last_reminded_at) ?? 0);
   }
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canView) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">
@@ -404,10 +414,15 @@ export default function ContractsPage() {
           <p className="text-xs text-muted">รับประกันสินค้า · งานติดตั้ง · MA — ติดตามวันหมดอายุเพื่อ renewal</p>
         </div>
         <div className="flex gap-2">
-          {list.length === 0 && (
+          <button onClick={() => { setLoading(true); load(); }} disabled={loading} className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
+            {loading ? "..." : "↺ Refresh"}
+          </button>
+          {canManage && list.length === 0 && (
             <button onClick={seedSamples} disabled={saving} className="rounded-lg border border-accent text-accent px-4 py-2 text-sm hover:bg-accent/10 disabled:opacity-50">📥 โหลดตัวอย่าง</button>
           )}
-          <button onClick={openAdd} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ เพิ่มสัญญา</button>
+          {canManage && (
+            <button onClick={openAdd} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ เพิ่มสัญญา</button>
+          )}
         </div>
       </div>
 
@@ -487,7 +502,7 @@ export default function ContractsPage() {
                         </span>
                       )}
                       <button onClick={() => markReminded(c)} title="บันทึกว่าได้ติดต่อลูกค้าแล้ว" className="text-[10px] text-blue-400 hover:underline shrink-0">📤 เตือนแล้ว</button>
-                      <button onClick={() => openEdit(c)} className="text-[10px] text-accent hover:underline shrink-0">แก้ไข</button>
+                      {canManage && <button onClick={() => openEdit(c)} className="text-[10px] text-accent hover:underline shrink-0">แก้ไข</button>}
                     </div>
                   );
                 })}
@@ -499,7 +514,7 @@ export default function ContractsPage() {
       )}
 
       {/* Form */}
-      {showForm && (
+      {showForm && canManage && (
         <div className="rounded-xl bg-card border border-border p-5 mb-4">
           <h2 className="text-base font-semibold mb-3">{editId ? "แก้ไขสัญญา" : "เพิ่มสัญญาใหม่"}</h2>
 
@@ -671,10 +686,12 @@ export default function ContractsPage() {
                       <td className="px-4 py-2 text-right w-24">{c.contract_value ? c.contract_value.toLocaleString() : "-"}</td>
                       <td className="px-4 py-2 w-20"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sm.color}`}>{sm.label}</span></td>
                       <td className="px-4 py-2 w-20">
-                        <div className="flex gap-1.5">
-                          <button onClick={() => openEdit(c)} className="text-[10px] text-accent hover:underline">แก้ไข</button>
-                          <button onClick={() => handleDelete(c.id!, c.title)} className="text-[10px] text-danger hover:underline">ลบ</button>
-                        </div>
+                        {canManage && (
+                          <div className="flex gap-1.5">
+                            <button onClick={() => openEdit(c)} className="text-[10px] text-accent hover:underline">แก้ไข</button>
+                            <button onClick={() => handleDelete(c.id!, c.title)} className="text-[10px] text-danger hover:underline">ลบ</button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -721,10 +738,12 @@ export default function ContractsPage() {
                       <td className="px-4 py-2 text-right w-24">{c.contract_value ? c.contract_value.toLocaleString() : "-"}</td>
                       <td className="px-4 py-2 w-20"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sm.color}`}>{sm.label}</span></td>
                       <td className="px-4 py-2 w-20">
-                        <div className="flex gap-1.5">
-                          <button onClick={() => openEdit(c)} className="text-[10px] text-accent hover:underline">แก้ไข</button>
-                          <button onClick={() => handleDelete(c.id!, c.title)} className="text-[10px] text-danger hover:underline">ลบ</button>
-                        </div>
+                        {canManage && (
+                          <div className="flex gap-1.5">
+                            <button onClick={() => openEdit(c)} className="text-[10px] text-accent hover:underline">แก้ไข</button>
+                            <button onClick={() => handleDelete(c.id!, c.title)} className="text-[10px] text-danger hover:underline">ลบ</button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -790,10 +809,12 @@ export default function ContractsPage() {
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sm.color}`}>{sm.label}</span>
                   </td>
                   <td className="px-4 py-2.5">
-                    <div className="flex gap-2">
-                      <button onClick={() => openEdit(c)} className="text-xs text-accent hover:underline">แก้ไข</button>
-                      <button onClick={() => handleDelete(c.id!, c.title)} className="text-xs text-danger hover:underline">ลบ</button>
-                    </div>
+                    {canManage && (
+                      <div className="flex gap-2">
+                        <button onClick={() => openEdit(c)} className="text-xs text-accent hover:underline">แก้ไข</button>
+                        <button onClick={() => handleDelete(c.id!, c.title)} className="text-xs text-danger hover:underline">ลบ</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );
