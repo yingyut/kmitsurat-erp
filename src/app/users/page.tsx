@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { User, Team } from "@/lib/types";
 import { ALL_PERMISSIONS, PERMISSION_META, PERM_CATEGORIES, ROLE_PERMISSIONS, isNewRole, type Permission } from "@/lib/rbac";
+import { useCurrentUser } from "@/lib/UserContext";
 
 const roles = [
   "admin", "sale", "presale", "service", "avenger",
@@ -75,6 +76,9 @@ const REAL_TEAM: Array<typeof emptyUser> = [
 const emptyTeam = { name: "", type: "sales" as Team["type"] };
 
 export default function UsersPage() {
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_users");
+
   const [userList, setUserList] = useState<User[]>([]);
   const [teamList, setTeamList] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +126,7 @@ export default function UsersPage() {
     const cleanOverrides = permOverrides.filter(p => !rolePermsNow.has(p));
     try {
       await fs.users.update(permOverrideUser.id!, { permissions_override: cleanOverrides });
+      await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "users", action: "update", resource_id: permOverrideUser.id, resource_name: permOverrideUser.name, details: `แก้ไขสิทธิ์พิเศษ: ${permOverrideUser.name} (${cleanOverrides.length} permissions)` });
       setPermOverrideUser(null);
       await load();
     } catch (e) {
@@ -180,8 +185,10 @@ export default function UsersPage() {
       const payload = { ...userForm, name: computedName || userForm.name };
       if (editingUserId) {
         await fs.users.update(editingUserId, payload as unknown as Record<string, unknown>);
+        await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "users", action: "update", resource_id: editingUserId, resource_name: computedName || userForm.name, details: `แก้ไขข้อมูลผู้ใช้: ${computedName || userForm.name} (${userForm.role})` });
       } else {
-        await fs.users.add(payload as unknown as Record<string, unknown>);
+        const ref = await fs.users.add(payload as unknown as Record<string, unknown>);
+        await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "users", action: "create", resource_id: (ref as { id?: string }).id, resource_name: computedName || userForm.name, details: `เพิ่มผู้ใช้ใหม่: ${computedName || userForm.name} (${userForm.role})` });
       }
       setUserForm(emptyUser); setShowUserForm(false); setEditingUserId(null);
       await load();
@@ -261,6 +268,7 @@ export default function UsersPage() {
     if (!confirm(`ลบผู้ใช้ "${name}" ?`)) return;
     const fs = await import("@/lib/firestore");
     await fs.users.remove(id);
+    await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "users", action: "delete", resource_id: id, resource_name: name, details: `ลบผู้ใช้: ${name}` });
     if (selectedUser?.id === id) setSelectedUser(null);
     await load();
   }
@@ -298,7 +306,9 @@ export default function UsersPage() {
     await fs.teams.remove(id); await load();
   }
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canManage) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">
@@ -307,6 +317,9 @@ export default function UsersPage() {
           <h1 className="text-xl font-bold" title="จัดการผู้ใช้และทีม">Users / Teams</h1>
           <p className="text-xs text-muted">จัดการผู้ใช้งานและทีมในระบบ</p>
         </div>
+        <button onClick={() => { setLoading(true); load(); }} disabled={loading} className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
+          {loading ? "..." : "↺ Refresh"}
+        </button>
       </div>
 
       {/* Tabs */}
