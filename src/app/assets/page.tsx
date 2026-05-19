@@ -49,6 +49,141 @@ async function exportAssetsToExcel(rows: Asset[], filename = "assets") {
   XLSX.writeFile(wb, `${filename}_${today}.xlsx`);
 }
 
+// ─── Import helpers ──────────────────────────────────────────────────────────
+
+type ImportRow = {
+  km_number: string; serial_number: string; device_model: string;
+  brand: string; category: string;
+  customer_name: string; customer_id: string;
+  project_name: string; location: string; technician: string;
+  install_date: string; warranty_start: string; warranty_end: string;
+  sla_level: string; contract_number: string; status: string; notes: string;
+  pm_interval_months?: number; pm_last_date: string; pm_next_date: string;
+  pm_assigned_to: string; pm_notes: string;
+  _row: number; _errors: string[]; _warn: string[];
+};
+
+const IMPORT_COL_MAP: Record<string, string> = {
+  km_number: "km_number", serial_number: "serial_number",
+  device_model: "device_model", brand: "brand", category: "category",
+  customer_name: "customer_name", project_name: "project_name",
+  location: "location", technician: "technician",
+  install_date: "install_date", warranty_start: "warranty_start",
+  warranty_end: "warranty_end", sla_level: "sla_level", sla: "sla_level",
+  contract_number: "contract_number", status: "status", notes: "notes",
+  pm_interval_months: "pm_interval_months",
+  pm_last_date: "pm_last_date", pm_next_date: "pm_next_date",
+  pm_technician: "pm_assigned_to", pm_assigned_to: "pm_assigned_to", pm_notes: "pm_notes",
+  // Thai export headers (after normalize: lowercase + spaces→_)
+  "รุ่นอุปกรณ์": "device_model", "ยี่ห้อ": "brand", "ประเภท": "category",
+  "ลูกค้า": "customer_name", "โปรเจกต์": "project_name", "สถานที่": "location",
+  "ช่างติดตั้ง": "technician", "วันที่ติดตั้ง": "install_date",
+  "ประกันเริ่ม": "warranty_start", "ประกันหมด": "warranty_end",
+  "เลขสัญญา_ma": "contract_number", "สถานะ": "status", "หมายเหตุ": "notes",
+  "ความถี่_pm": "pm_interval_months",
+  "pm_ล่าสุด": "pm_last_date", "pm_ถัดไป": "pm_next_date",
+  "ช่าง_pm": "pm_assigned_to", "หมายเหตุ_pm": "pm_notes",
+};
+
+const STATUS_IMPORT: Record<string, string> = {
+  "ใช้งาน": "active", active: "active",
+  "ไม่ใช้งาน": "inactive", inactive: "inactive",
+  "ซ่อมบำรุง": "maintenance", maintenance: "maintenance",
+  "ปลดระวาง": "decommissioned", decommissioned: "decommissioned",
+};
+
+function parsePMInterval(val: unknown): number | undefined {
+  if (!val && val !== 0) return undefined;
+  const s = String(val).trim();
+  if (s === "1" || s === "รายเดือน") return 1;
+  if (s === "3" || s.includes("3 เดือน")) return 3;
+  if (s === "6" || s.includes("6 เดือน")) return 6;
+  if (s === "12" || s === "รายปี" || s.includes("12 เดือน")) return 12;
+  const n = parseInt(s); return isNaN(n) ? undefined : n;
+}
+
+async function downloadImportTemplate() {
+  const XLSX = await import("xlsx");
+  const headers = [
+    "KM Number", "Serial Number", "Device Model", "Brand", "Category",
+    "Customer Name", "Project Name", "Location", "Technician",
+    "Install Date (YYYY-MM-DD)", "Warranty Start (YYYY-MM-DD)", "Warranty End (YYYY-MM-DD)",
+    "SLA Level", "Contract Number", "Status (active/inactive/maintenance/decommissioned)",
+    "Notes", "PM Interval Months (1/3/6/12)",
+    "PM Last Date (YYYY-MM-DD)", "PM Next Date (YYYY-MM-DD)", "PM Technician", "PM Notes",
+  ];
+  const sample = [
+    "KM-2024-0001", "SN123456789", "Cisco C9200L-24P", "Cisco", "Switch",
+    "บริษัท ABC จำกัด", "โปรเจกต์ LAN 2024", "ห้อง Server ชั้น 5", "สมชาย ช่าง",
+    "2024-01-15", "2024-01-15", "2027-01-14", "NBD", "MA-2024-001", "active",
+    "ติดตั้งพร้อมระบบ LAN", "6", "2024-07-01", "2025-01-01", "สมชาย ช่าง", "PM ทุก 6 เดือน",
+  ];
+  const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
+  ws["!cols"] = headers.map(() => ({ wch: 20 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Assets Template");
+  XLSX.writeFile(wb, "assets_import_template.xlsx");
+}
+
+async function parseAssetFile(file: File, customerList: Customer[]): Promise<ImportRow[]> {
+  const XLSX = await import("xlsx");
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(new Uint8Array(data), { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+
+  const rows: Record<string, unknown>[] = raw.map(row => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      const norm = k.trim().split(" (")[0].trim().toLowerCase().replace(/ /g, "_");
+      const field = IMPORT_COL_MAP[norm] ?? IMPORT_COL_MAP[k.trim()];
+      if (field) out[field] = v;
+    }
+    return out;
+  });
+
+  return rows.map((row, i) => {
+    const errors: string[] = [];
+    const warn: string[] = [];
+    const serial = String(row.serial_number ?? "").trim();
+    const model = String(row.device_model ?? "").trim();
+    if (!serial) errors.push("ไม่มี Serial Number");
+    if (!model) errors.push("ไม่มี Device Model");
+
+    const custName = String(row.customer_name ?? "").trim();
+    const matchedCust = custName
+      ? customerList.find(c => c.company_name?.toLowerCase() === custName.toLowerCase())
+      : undefined;
+    if (custName && !matchedCust) warn.push(`ไม่พบลูกค้า "${custName}" ในระบบ`);
+
+    const rawSt = String(row.status ?? "").trim().toLowerCase();
+    const status = STATUS_IMPORT[rawSt] ?? STATUS_IMPORT[String(row.status ?? "").trim()] ?? "active";
+
+    return {
+      km_number: String(row.km_number ?? "").trim(),
+      serial_number: serial, device_model: model,
+      brand: String(row.brand ?? "").trim(),
+      category: String(row.category ?? "").trim() || "Other",
+      customer_name: custName, customer_id: matchedCust?.id ?? "",
+      project_name: String(row.project_name ?? "").trim(),
+      location: String(row.location ?? "").trim(),
+      technician: String(row.technician ?? "").trim(),
+      install_date: String(row.install_date ?? "").trim(),
+      warranty_start: String(row.warranty_start ?? "").trim(),
+      warranty_end: String(row.warranty_end ?? "").trim(),
+      sla_level: String(row.sla_level ?? "").trim(),
+      contract_number: String(row.contract_number ?? "").trim(),
+      status, notes: String(row.notes ?? "").trim(),
+      pm_interval_months: parsePMInterval(row.pm_interval_months),
+      pm_last_date: String(row.pm_last_date ?? "").trim(),
+      pm_next_date: String(row.pm_next_date ?? "").trim(),
+      pm_assigned_to: String(row.pm_assigned_to ?? "").trim(),
+      pm_notes: String(row.pm_notes ?? "").trim(),
+      _row: i + 2, _errors: errors, _warn: warn,
+    };
+  });
+}
+
 const CATEGORIES = ["Switch", "AP", "Router", "Firewall", "Camera", "NVR/DVR", "Server", "UPS", "Workstation", "Printer", "Other"];
 const STATUS_LABEL: Record<string, string> = {
   active: "ใช้งาน", inactive: "ไม่ใช้งาน", maintenance: "ซ่อมบำรุง", decommissioned: "ปลดระวาง",
@@ -127,6 +262,13 @@ export default function AssetsPage() {
   const [editAsset, setEditAsset] = useState<Asset | null>(null);
   const [form, setForm] = useState<typeof EMPTY>({ ...EMPTY });
   const [saving, setSaving] = useState(false);
+
+  // Import
+  const [showImport, setShowImport] = useState(false);
+  const [importPreview, setImportPreview] = useState<ImportRow[]>([]);
+  const [importParsing, setImportParsing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ added: number; failed: number } | null>(null);
 
   const canManage = hasPermission("manage_assets");
   const canView = hasPermission("view_assets") || canManage;
@@ -272,6 +414,55 @@ export default function AssetsPage() {
     setAssets(prev => prev.filter(x => x.id !== a.id));
   }
 
+  async function handleImportFile(file: File) {
+    setImportParsing(true);
+    setImportResult(null);
+    setImportPreview([]);
+    const rows = await parseAssetFile(file, customers);
+    setImportPreview(rows);
+    setImportParsing(false);
+  }
+
+  async function doImport() {
+    const validRows = importPreview.filter(r => r._errors.length === 0);
+    if (!validRows.length) return;
+    setImporting(true);
+    try {
+      const fb = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+      const today = new Date().toISOString().slice(0, 10);
+      let added = 0; let failed = 0;
+      for (let i = 0; i < validRows.length; i += 400) {
+        const chunk = validRows.slice(i, i + 400);
+        const batch = fb.writeBatch(db);
+        for (const row of chunk) {
+          try {
+            const kmNum = row.km_number || generateKmNumber(assets.length + added + 1);
+            const ref = fb.doc(fb.collection(db, "assets"));
+            const { _row, _errors, _warn, ...data } = row;
+            void _row; void _errors; void _warn;
+            batch.set(ref, { ...data, km_number: kmNum, tenant_id: "kmitsurat", created_at: today, updated_at: today });
+            added++;
+          } catch { failed++; }
+        }
+        await batch.commit();
+      }
+      const fs = await import("@/lib/firestore");
+      await fs.logActivity({
+        user_name: user.name, user_role: user.role,
+        module: "assets", action: "import",
+        resource_name: "import_excel",
+        details: `Import Asset Excel: เพิ่ม ${added} รายการ (ข้าม ${importPreview.length - validRows.length} error)`,
+      });
+      setImportResult({ added, failed });
+      setLoading(true);
+      await load();
+    } catch (e) {
+      console.error(e);
+      alert("❌ Import ไม่สำเร็จ กรุณาลองใหม่");
+    } finally { setImporting(false); }
+  }
+
   const cust = customers.find(c => c.id === form.customer_id);
 
   return (
@@ -297,9 +488,18 @@ export default function AssetsPage() {
             📥 Export Excel
           </button>
           {canManage && (
-            <button onClick={openCreate} className="rounded-lg bg-accent px-4 py-2 text-xs font-medium text-white hover:bg-accent/80">
-              + เพิ่มอุปกรณ์
-            </button>
+            <>
+              <button
+                onClick={() => { setShowImport(true); setImportPreview([]); setImportResult(null); }}
+                className="rounded-lg border border-blue-700/50 px-3 py-2 text-xs text-blue-400 hover:bg-blue-900/20"
+                title="Import Asset จากไฟล์ Excel"
+              >
+                📤 Import Excel
+              </button>
+              <button onClick={openCreate} className="rounded-lg bg-accent px-4 py-2 text-xs font-medium text-white hover:bg-accent/80">
+                + เพิ่มอุปกรณ์
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -607,6 +807,134 @@ export default function AssetsPage() {
               <button onClick={save} disabled={saving} className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent/80 disabled:opacity-50">
                 {saving ? "กำลังบันทึก..." : "บันทึก"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-card border border-border shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="font-semibold">📤 Import Asset จาก Excel</h2>
+              <button onClick={() => { setShowImport(false); setImportPreview([]); setImportResult(null); }} className="text-muted hover:text-foreground text-xl leading-none">✕</button>
+            </div>
+            <div className="overflow-y-auto px-6 py-4 flex flex-col gap-4">
+              {/* Template */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
+                <span className="text-lg">📋</span>
+                <div className="flex-1">
+                  <p className="text-xs font-medium">ดาวน์โหลด Template ก่อน</p>
+                  <p className="text-[10px] text-muted">ต้องกรอก Serial Number และ Device Model — ช่อง Customer Name ต้องตรงกับชื่อในระบบเพื่อ link อัตโนมัติ</p>
+                </div>
+                <button onClick={downloadImportTemplate} className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-card-hover whitespace-nowrap">
+                  📥 Template.xlsx
+                </button>
+              </div>
+
+              {/* File picker */}
+              <div>
+                <label className="text-xs text-muted mb-1.5 block">เลือกไฟล์ (.xlsx, .xls, .csv)</label>
+                <input
+                  type="file" accept=".xlsx,.xls,.csv"
+                  onChange={async e => { const f = e.target.files?.[0]; if (f) await handleImportFile(f); }}
+                  className="w-full text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-accent/20 file:text-accent hover:file:bg-accent/30 cursor-pointer"
+                />
+                {importParsing && <p className="text-xs text-muted mt-1 animate-pulse">กำลังอ่านไฟล์...</p>}
+              </div>
+
+              {/* Preview */}
+              {importPreview.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium">พบ {importPreview.length} รายการ</p>
+                    {importPreview.filter(r => r._errors.length > 0).length > 0 && (
+                      <span className="rounded-full px-2.5 py-0.5 text-[10px] bg-red-900/50 text-red-400">
+                        ❌ {importPreview.filter(r => r._errors.length > 0).length} รายการมีข้อผิดพลาด (จะถูกข้าม)
+                      </span>
+                    )}
+                    {importPreview.filter(r => r._warn.length > 0 && r._errors.length === 0).length > 0 && (
+                      <span className="rounded-full px-2.5 py-0.5 text-[10px] bg-yellow-900/50 text-yellow-400">
+                        ⚠ {importPreview.filter(r => r._warn.length > 0 && r._errors.length === 0).length} คำเตือน
+                      </span>
+                    )}
+                    <span className="rounded-full px-2.5 py-0.5 text-[10px] bg-green-900/50 text-green-400">
+                      ✓ {importPreview.filter(r => r._errors.length === 0).length} พร้อมนำเข้า
+                    </span>
+                  </div>
+
+                  <div className="rounded-lg border border-border overflow-hidden">
+                    <div className="overflow-x-auto max-h-60">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-card/80 border-b border-border text-left text-muted uppercase sticky top-0">
+                            <th className="px-3 py-2">#</th>
+                            <th className="px-3 py-2">Serial</th>
+                            <th className="px-3 py-2">Device Model</th>
+                            <th className="px-3 py-2">ลูกค้า</th>
+                            <th className="px-3 py-2">สถานะ</th>
+                            <th className="px-3 py-2">หมายเหตุ / ข้อผิดพลาด</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importPreview.slice(0, 100).map((r, i) => (
+                            <tr key={i} className={`border-b border-border last:border-0 ${r._errors.length > 0 ? "bg-red-900/10" : r._warn.length > 0 ? "bg-yellow-900/5" : ""}`}>
+                              <td className="px-3 py-1.5 text-muted">{r._row}</td>
+                              <td className="px-3 py-1.5 font-mono">{r.serial_number || <span className="text-danger">—</span>}</td>
+                              <td className="px-3 py-1.5">{r.device_model || <span className="text-danger">—</span>}</td>
+                              <td className="px-3 py-1.5 text-muted max-w-[120px] truncate">
+                                {r.customer_name || "—"}
+                                {r.customer_id && <span className="ml-1 text-green-400">✓</span>}
+                              </td>
+                              <td className="px-3 py-1.5">
+                                {r._errors.length > 0
+                                  ? <span className="text-danger text-[10px]">❌ ข้าม</span>
+                                  : <span className="text-green-400 text-[10px]">✓ นำเข้า</span>}
+                              </td>
+                              <td className="px-3 py-1.5 max-w-[200px]">
+                                {r._errors.map((e, j) => <p key={j} className="text-danger">{e}</p>)}
+                                {r._warn.map((w, j) => <p key={j} className="text-yellow-400">{w}</p>)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {importPreview.length > 100 && (
+                      <p className="text-xs text-muted px-3 py-2 border-t border-border">... และอีก {importPreview.length - 100} รายการ</p>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Result */}
+              {importResult && (
+                <div className="rounded-lg bg-green-900/20 border border-green-800/50 p-4">
+                  <p className="text-sm font-semibold text-green-400">✅ Import สำเร็จ!</p>
+                  <p className="text-xs text-muted mt-1">เพิ่มอุปกรณ์แล้ว <span className="text-foreground font-medium">{importResult.added}</span> รายการ{importResult.failed > 0 ? ` · ล้มเหลว ${importResult.failed} รายการ` : ""}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-border flex items-center justify-between gap-3">
+              <p className="text-xs text-muted">
+                {importResult ? `นำเข้าสำเร็จ ${importResult.added} รายการ`
+                  : importPreview.filter(r => r._errors.length === 0).length > 0
+                  ? `จะนำเข้า ${importPreview.filter(r => r._errors.length === 0).length} รายการ`
+                  : importPreview.length > 0 ? "ไม่มีรายการที่นำเข้าได้"
+                  : "เลือกไฟล์เพื่อดูตัวอย่าง"}
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => { setShowImport(false); setImportPreview([]); setImportResult(null); }} className="rounded-lg border border-border px-4 py-2 text-xs text-muted hover:bg-card-hover">
+                  {importResult ? "ปิด" : "ยกเลิก"}
+                </button>
+                {!importResult && importPreview.filter(r => r._errors.length === 0).length > 0 && (
+                  <button onClick={doImport} disabled={importing} className="rounded-lg bg-accent px-4 py-2 text-xs font-medium text-white hover:bg-accent/80 disabled:opacity-50">
+                    {importing ? "กำลังนำเข้า..." : `✅ นำเข้า ${importPreview.filter(r => r._errors.length === 0).length} รายการ`}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
