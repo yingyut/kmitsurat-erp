@@ -4,6 +4,13 @@ import { useCurrentUser } from "@/lib/UserContext";
 
 const settingsLinks = [
   {
+    href: "/settings/company",
+    title: "Company & Fiscal Year",
+    thai: "ข้อมูลบริษัท / ปีงบประมาณ",
+    desc: "ชื่อบริษัท ที่อยู่ เลขภาษี, กำหนดไตรมาส Q1-Q4, สกุลเงิน, VAT — ส่งผลต่อ Dashboard และเอกสาร",
+    icon: "🏢",
+  },
+  {
     href: "/settings/project-types",
     title: "Project Types",
     thai: "ประเภทงาน / โปรเจค",

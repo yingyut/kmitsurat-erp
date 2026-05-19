@@ -11,12 +11,33 @@ import {
 const C = { blue: "#3b82f6", purple: "#8b5cf6", rose: "#f43f5e", green: "#22c55e", amber: "#f59e0b", cyan: "#06b6d4", indigo: "#6366f1", orange: "#f97316" };
 const PIE_COLORS = [C.blue, C.amber, C.green, C.rose];
 
-type Filter = "today" | "week" | "month" | "year";
+type Filter = "today" | "week" | "month" | "q1" | "q2" | "q3" | "q4" | "year" | "custom";
+
+// Compute the date range [from, to] for a given quarter (1-4) given the fiscal year start month (1=Jan)
+function quarterRange(qNum: 1 | 2 | 3 | 4, fyStart: number): { from: string; to: string } {
+  const now = new Date();
+  const todayMonth = now.getMonth() + 1;
+  const todayYear = now.getFullYear();
+  // Fiscal year start year: if fyStart is still ahead this month, FY started last year
+  const fyYear = fyStart <= todayMonth ? todayYear : todayYear - 1;
+  const qStartMonth = ((fyStart - 1 + (qNum - 1) * 3) % 12) + 1;
+  const qStartYear = fyYear + Math.floor((fyStart - 1 + (qNum - 1) * 3) / 12);
+  const qEndMonth = ((qStartMonth - 1 + 2) % 12) + 1;
+  const qEndYear = qEndMonth < qStartMonth ? qStartYear + 1 : qStartYear;
+  const lastDay = new Date(qEndYear, qEndMonth, 0).getDate();
+  return {
+    from: `${qStartYear}-${String(qStartMonth).padStart(2, "0")}-01`,
+    to: `${qEndYear}-${String(qEndMonth).padStart(2, "0")}-${lastDay}`,
+  };
+}
 
 export default function DashboardPage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("month");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [fyStartMonth, setFyStartMonth] = useState(1);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
@@ -33,13 +54,15 @@ export default function DashboardPage() {
     setLoading(true);
     try {
       const fs = await import("@/lib/firestore");
-      const [p, s, pr, sv, q, qt, ct, at, u] = await Promise.all([
+      const [p, s, pr, sv, q, qt, ct, at, u, cs] = await Promise.all([
         fs.projects.list(), fs.salesActivities.list(), fs.presaleRequests.list(),
         fs.serviceTickets.list(), fs.salesQuotas.list(), fs.quotations.list(),
         fs.serviceContracts.list(), fs.assets.list(), fs.users.list(),
+        fs.companySettings.list(),
       ]);
       setProjects(p); setSales(s); setPresale(pr); setService(sv); setQuotas(q); setQuots(qt); setContracts(ct); setAssets(at);
       setUsers(u.filter(x => x.active));
+      if (cs.length > 0 && cs[0].fiscal_year_start_month) setFyStartMonth(cs[0].fiscal_year_start_month);
       setLastUpdated(new Date());
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -61,26 +84,65 @@ export default function DashboardPage() {
 
   // === CALCULATIONS ===
   const today = new Date().toISOString().slice(0, 10);
-  const target = quotas.reduce((s, q) => s + (q.quota_target || 0), 0);
-  const actual = quotas.reduce((s, q) => s + (q.actual_sales || 0), 0);
-  // Revenue = actual sales from quotas (same source as TARGET VS ACTUAL) so both cards are consistent
+  const thisYear = today.slice(0, 4);
+  const thisMonth = today.slice(0, 7);
+  const weekAgo = (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10); })();
+  const qRanges = {
+    q1: quarterRange(1, fyStartMonth), q2: quarterRange(2, fyStartMonth),
+    q3: quarterRange(3, fyStartMonth), q4: quarterRange(4, fyStartMonth),
+  };
+  const activeRange = filter === "custom" ? { from: dateFrom, to: dateTo }
+    : (["q1", "q2", "q3", "q4"].includes(filter) ? qRanges[filter as "q1" | "q2" | "q3" | "q4"] : null);
+  const filterLabel = filter === "today" ? "วันนี้" : filter === "week" ? "7 วัน" : filter === "month" ? "เดือนนี้"
+    : filter === "q1" ? `Q1 (${qRanges.q1.from.slice(0, 7)}→${qRanges.q1.to.slice(0, 7)})`
+    : filter === "q2" ? `Q2 (${qRanges.q2.from.slice(0, 7)}→${qRanges.q2.to.slice(0, 7)})`
+    : filter === "q3" ? `Q3 (${qRanges.q3.from.slice(0, 7)}→${qRanges.q3.to.slice(0, 7)})`
+    : filter === "q4" ? `Q4 (${qRanges.q4.from.slice(0, 7)}→${qRanges.q4.to.slice(0, 7)})`
+    : filter === "custom" ? (dateFrom && dateTo ? `${dateFrom} → ${dateTo}` : "กำหนดเอง")
+    : "ปีนี้";
+
+  function inRange(date?: string): boolean {
+    if (!date) return false;
+    if (filter === "today") return date === today;
+    if (filter === "week") return date >= weekAgo && date <= today;
+    if (filter === "month") return date.startsWith(thisMonth);
+    if (filter === "year") return date.startsWith(thisYear);
+    if (activeRange) return date >= activeRange.from && date <= activeRange.to;
+    return false;
+  }
+
+  // Filtered slices — quotas by month/year; activities, presale, service by their date fields
+  const filtQuotas = (() => {
+    if (filter === "year") return quotas.filter(q => q.month?.startsWith(thisYear));
+    if (filter === "month") return quotas.filter(q => q.month === thisMonth);
+    if (activeRange) return quotas.filter(q => q.month && q.month >= activeRange.from.slice(0, 7) && q.month <= activeRange.to.slice(0, 7));
+    return quotas.filter(q => q.month === thisMonth);
+  })();
+  const filtSales = sales.filter(a => inRange(a.next_follow_up));
+  const filtPresale = presale.filter(r => inRange(r.due_date));
+  const filtService = service.filter(t => inRange(t.service_date));
+
+  const target = filtQuotas.reduce((s, q) => s + (q.quota_target || 0), 0);
+  const actual = filtQuotas.reduce((s, q) => s + (q.actual_sales || 0), 0);
+  // Revenue = actual sales from quotas (same source as TARGET VS ACTUAL)
   const revenue = actual;
   const targetPct = target > 0 ? (actual / target * 100) : 0;
   const pipeline = projects.filter(p => !["won", "lost"].includes(p.status)).reduce((s, p) => s + (p.value || 0), 0);
+  // Overdue always uses unfiltered data — shows all pending items regardless of period
   const overdueJobs = sales.filter(a => a.next_follow_up && a.next_follow_up < today && a.status !== "done").length
     + presale.filter(r => r.due_date && r.due_date < today && r.status !== "completed").length
     + service.filter(t => t.service_date && t.service_date < today && !["resolved", "closed"].includes(t.status)).length;
-  const totalSvc = service.length;
-  const slaOnTime = totalSvc > 0 ? Math.round(service.filter(t => ["resolved", "closed"].includes(t.status)).length / totalSvc * 100) : 100;
-  const forecast = actual + pipeline * 0.3; // weighted forecast
+  const totalSvc = filtService.length;
+  const slaOnTime = totalSvc > 0 ? Math.round(filtService.filter(t => ["resolved", "closed"].includes(t.status)).length / totalSvc * 100) : 100;
+  const forecast = actual + pipeline * 0.3;
 
   // === PROFIT (เป้าหมายหลักของบริษัท) ===
-  const profitTarget = quotas.reduce((s, q) => s + (q.profit_target || 0), 0);
-  const actualProfit = quotas.reduce((s, q) => s + (q.actual_profit || 0), 0);
+  const profitTarget = filtQuotas.reduce((s, q) => s + (q.profit_target || 0), 0);
+  const actualProfit = filtQuotas.reduce((s, q) => s + (q.actual_profit || 0), 0);
   const profitPct = profitTarget > 0 ? (actualProfit / profitTarget * 100) : 0;
   const profitRemaining = profitTarget - actualProfit;
   const gpPct = actual > 0 ? (actualProfit / actual * 100) : 0;
-  // Estimated profit from approved quotations (auto-source for "potential")
+  // Approved/pipeline profit from quotations — not date-filtered (snapshot of current QT status)
   const approvedQuotProfit = quots.filter(q => q.status === "approved").reduce((s, q) => s + (q.gross_profit || 0), 0);
   const pipelineQuotProfit = quots.filter(q => q.status === "draft" || q.status === "sent").reduce((s, q) => s + (q.gross_profit || 0), 0);
 
@@ -163,41 +225,41 @@ export default function DashboardPage() {
 
   const activeNames = new Set(users.map(u => u.name));
   const isActive = (name: string) => activeNames.size === 0 || activeNames.has(name);
-  const activityByPerson = [...new Set(sales.map(a => a.assigned_to))].filter(Boolean)
+  const activityByPerson = [...new Set(filtSales.map(a => a.assigned_to))].filter(Boolean)
     .filter(isActive)
     .map(name => ({
       name: name.split(" ")[0],
-      count: sales.filter(a => a.assigned_to === name).length,
+      count: filtSales.filter(a => a.assigned_to === name).length,
     }));
 
-  const todayCalls = sales.filter(a => a.type === "phone_call").length;
-  const todayMeetings = sales.filter(a => a.type === "meeting" || a.type === "visit").length;
-  const todayFollowups = sales.filter(a => a.type === "follow_up").length;
+  const todayCalls = filtSales.filter(a => a.type === "phone_call").length;
+  const todayMeetings = filtSales.filter(a => a.type === "meeting" || a.type === "visit").length;
+  const todayFollowups = filtSales.filter(a => a.type === "follow_up").length;
 
   // Presale
-  const prNew = presale.filter(r => r.status === "pending").length;
-  const prProg = presale.filter(r => r.status === "in_progress").length;
-  const prDone = presale.filter(r => r.status === "completed").length;
+  const prNew = filtPresale.filter(r => r.status === "pending").length;
+  const prProg = filtPresale.filter(r => r.status === "in_progress").length;
+  const prDone = filtPresale.filter(r => r.status === "completed").length;
   const prByType = [
-    { name: "BOQ", value: presale.filter(r => r.type === "boq").length },
-    { name: "Design", value: presale.filter(r => r.type === "solution_design").length },
-    { name: "Proposal", value: presale.filter(r => r.type === "technical_proposal").length },
-    { name: "Survey", value: presale.filter(r => r.type === "site_survey").length },
+    { name: "BOQ", value: filtPresale.filter(r => r.type === "boq").length },
+    { name: "Design", value: filtPresale.filter(r => r.type === "solution_design").length },
+    { name: "Proposal", value: filtPresale.filter(r => r.type === "technical_proposal").length },
+    { name: "Survey", value: filtPresale.filter(r => r.type === "site_survey").length },
   ].filter(d => d.value > 0);
 
-  const prWorkload = [...new Set(presale.map(r => r.assigned_to))].filter(Boolean).filter(isActive).map(name => ({
+  const prWorkload = [...new Set(filtPresale.map(r => r.assigned_to))].filter(Boolean).filter(isActive).map(name => ({
     name: name.split(" ")[0],
-    pending: presale.filter(r => r.assigned_to === name && r.status === "pending").length,
-    progress: presale.filter(r => r.assigned_to === name && r.status === "in_progress").length,
-    done: presale.filter(r => r.assigned_to === name && r.status === "completed").length,
+    pending: filtPresale.filter(r => r.assigned_to === name && r.status === "pending").length,
+    progress: filtPresale.filter(r => r.assigned_to === name && r.status === "in_progress").length,
+    done: filtPresale.filter(r => r.assigned_to === name && r.status === "completed").length,
   }));
 
   // Service
-  const cmJobs = service.filter(t => ["repair", "after_sales"].includes(t.type)).length;
-  const pmJobs = service.filter(t => t.type === "pm_service").length;
-  const installJobs = service.filter(t => t.type === "installation").length;
-  const svcOnTime = service.filter(t => ["resolved", "closed"].includes(t.status)).length;
-  const svcDelay = service.filter(t => t.service_date && t.service_date < today && !["resolved", "closed"].includes(t.status)).length;
+  const cmJobs = filtService.filter(t => ["repair", "after_sales"].includes(t.type)).length;
+  const pmJobs = filtService.filter(t => t.type === "pm_service").length;
+  const installJobs = filtService.filter(t => t.type === "installation").length;
+  const svcOnTime = filtService.filter(t => ["resolved", "closed"].includes(t.status)).length;
+  const svcDelay = filtService.filter(t => t.service_date && t.service_date < today && !["resolved", "closed"].includes(t.status)).length;
   const svcPie = [
     { name: "On-time", value: svcOnTime },
     { name: "Delay", value: svcDelay },
@@ -205,8 +267,8 @@ export default function DashboardPage() {
   ].filter(d => d.value > 0);
 
   // Technician workload
-  const techWorkload = [...new Set(service.map(t => t.technician))].filter(Boolean).map(name => {
-    const mine = service.filter(t => t.technician === name);
+  const techWorkload = [...new Set(filtService.map(t => t.technician))].filter(Boolean).map(name => {
+    const mine = filtService.filter(t => t.technician === name);
     const open = mine.filter(t => t.status === "open").length;
     const inProg = mine.filter(t => t.status === "in_progress").length;
     const done = mine.filter(t => t.status === "resolved" || t.status === "closed").length;
@@ -221,11 +283,11 @@ export default function DashboardPage() {
   const projValue = projects.reduce((s, p) => s + (p.value || 0), 0);
 
   // Team Performance
-  const allNames = [...new Set([...sales.map(a => a.assigned_to), ...presale.map(r => r.assigned_to), ...service.map(t => t.technician)])].filter(Boolean).filter(isActive);
+  const allNames = [...new Set([...filtSales.map(a => a.assigned_to), ...filtPresale.map(r => r.assigned_to), ...filtService.map(t => t.technician)])].filter(Boolean).filter(isActive);
   const teamPerf = allNames.map(name => {
-    const sA = sales.filter(a => a.assigned_to === name);
-    const pA = presale.filter(r => r.assigned_to === name);
-    const tA = service.filter(t => t.technician === name);
+    const sA = filtSales.filter(a => a.assigned_to === name);
+    const pA = filtPresale.filter(r => r.assigned_to === name);
+    const tA = filtService.filter(t => t.technician === name);
     const total = sA.length + pA.length + tA.length;
     const done = sA.filter(a => a.status === "done").length + pA.filter(r => r.status === "completed").length + tA.filter(t => ["resolved", "closed"].includes(t.status)).length;
     const late = sA.filter(a => a.next_follow_up && a.next_follow_up < today && a.status !== "done").length;
@@ -271,12 +333,12 @@ export default function DashboardPage() {
   return (
     <div className="p-5 max-w-[1400px]">
       {/* HEADER */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
           <h1 className="text-xl font-bold" title="แดชบอร์ดผู้บริหาร">Executive Dashboard</h1>
           <p className="text-xs text-muted">ภาพรวมการทำงาน KMITSURAT — ตัดสินใจเร็วขึ้น</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {lastUpdated && !loading && (
             <span className="text-[10px] text-muted hidden sm:inline">
               อัปเดต {lastUpdated.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
@@ -285,34 +347,57 @@ export default function DashboardPage() {
           <button onClick={load} disabled={loading} title="โหลดข้อมูลใหม่" className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
             {loading ? "..." : "↺ Refresh"}
           </button>
-          <div className="flex gap-1.5">
+          <div className="flex gap-1 flex-wrap">
             {(["today", "week", "month", "year"] as Filter[]).map(f => (
-              <button key={f} onClick={() => setFilter(f)} title={f === "today" ? "วันนี้" : f === "week" ? "สัปดาห์นี้" : f === "month" ? "เดือนนี้" : "ปีนี้"}
-                className={`px-3 py-1.5 rounded-lg text-xs ${filter === f ? "bg-accent text-white" : "bg-card border border-border text-muted hover:bg-card-hover"}`}>
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+              <button key={f} onClick={() => setFilter(f)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs ${filter === f ? "bg-accent text-white" : "bg-card border border-border text-muted hover:bg-card-hover"}`}>
+                {f === "today" ? "วันนี้" : f === "week" ? "สัปดาห์" : f === "month" ? "เดือน" : "ปี"}
               </button>
             ))}
+            <span className="text-muted text-xs self-center px-0.5">|</span>
+            {(["q1", "q2", "q3", "q4"] as Filter[]).map(f => (
+              <button key={f} onClick={() => setFilter(f)} title={`${f.toUpperCase()} · ${qRanges[f as "q1"|"q2"|"q3"|"q4"].from.slice(0,7)} → ${qRanges[f as "q1"|"q2"|"q3"|"q4"].to.slice(0,7)}`}
+                className={`px-2.5 py-1.5 rounded-lg text-xs ${filter === f ? "bg-purple-600 text-white" : "bg-card border border-border text-muted hover:bg-card-hover"}`}>
+                {f.toUpperCase()}
+              </button>
+            ))}
+            <button onClick={() => setFilter("custom")}
+              className={`px-2.5 py-1.5 rounded-lg text-xs ${filter === "custom" ? "bg-cyan-700 text-white" : "bg-card border border-border text-muted hover:bg-card-hover"}`}>
+              กำหนดเอง
+            </button>
           </div>
         </div>
       </div>
+      {filter === "custom" && (
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <label className="text-xs text-muted">จาก</label>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            className="rounded-lg bg-card border border-border px-2 py-1 text-xs" />
+          <label className="text-xs text-muted">ถึง</label>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            className="rounded-lg bg-card border border-border px-2 py-1 text-xs" />
+          {dateFrom && dateTo && <span className="text-[10px] text-accent">{dateFrom} → {dateTo}</span>}
+        </div>
+      )}
 
       {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
 
       {/* ═══════════════ LAYER 1: DECISION ═══════════════ */}
       {/* Row 1: Revenue / Operations */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-3">
-        <KPI label="Total Revenue" thai="รายได้รวม" value={`${(revenue / 1000000).toFixed(1)}M`} sub="THB" color="green" href="/sales" />
-        <Link href="/sales" className="rounded-xl bg-card border border-border p-4 hover:border-accent/40 hover:bg-card-hover transition-colors group cursor-pointer block" title="ยอดขายเทียบเป้า">
+        <KPI label="Total Revenue" thai="รายได้รวม" value={`${(revenue / 1000000).toFixed(1)}M`} sub="THB" color="green" href="/sales" source={`Quota.actual_sales · ${filterLabel}`} />
+        <Link href="/sales" className="rounded-xl bg-card border border-border p-4 hover:border-accent/40 hover:bg-card-hover transition-colors group cursor-pointer block" title={`ยอดขายเทียบเป้า · SalesQuota.quota_target vs actual_sales · ${filterLabel}`}>
           <p className="text-[10px] text-muted uppercase">Target vs Actual</p>
           <p className="text-[10px] text-muted">ยอดเทียบเป้า</p>
           <p className={`text-2xl font-bold mt-1 ${targetPct >= 80 ? "text-green-400" : targetPct >= 50 ? "text-yellow-400" : "text-red-400"}`}>{targetPct.toFixed(0)}%</p>
           <div className="mt-2 h-2 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${targetPct >= 80 ? "bg-green-500" : targetPct >= 50 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(targetPct, 100)}%` }} /></div>
           <p className="text-[10px] text-muted mt-1">{actual.toLocaleString()} / {target.toLocaleString()}</p>
+          <p className="text-[9px] text-muted/50 mt-0.5 truncate">📌 SalesQuota · {filterLabel}</p>
         </Link>
-        <KPI label="Pipeline Value" thai="มูลค่าดีลรอปิด" value={`${(pipeline / 1000000).toFixed(1)}M`} sub="THB" color="blue" href="/projects" />
-        <KPI label="Overdue Jobs" thai="งานล่าช้า" value={String(overdueJobs)} sub={overdueJobs > 0 ? "ต้องแก้ด่วน!" : "ปกติ"} color={overdueJobs > 0 ? "red" : "green"} href="/sales" />
-        <KPI label="SLA On-time" thai="อัตราปิดงานตาม SLA" value={`${slaOnTime}%`} sub={`${svcOnTime}/${totalSvc} jobs`} color={slaOnTime >= 80 ? "green" : slaOnTime >= 50 ? "amber" : "red"} href="/service" />
-        <KPI label="Forecast EOM" thai="คาดการณ์สิ้นเดือน" value={`${(forecast / 1000000).toFixed(1)}M`} sub="THB" color="cyan" href="/reports" />
+        <KPI label="Pipeline Value" thai="มูลค่าดีลรอปิด" value={`${(pipeline / 1000000).toFixed(1)}M`} sub="THB" color="blue" href="/projects" source="Projects lead→negotiation · ทุกช่วงเวลา" />
+        <KPI label="Overdue Jobs" thai="งานล่าช้า" value={String(overdueJobs)} sub={overdueJobs > 0 ? "ต้องแก้ด่วน!" : "ปกติ"} color={overdueJobs > 0 ? "red" : "green"} href="/sales" source="Sales+Presale+Service ค้างทั้งหมด" />
+        <KPI label="SLA On-time" thai="อัตราปิดงานตาม SLA" value={`${slaOnTime}%`} sub={`${svcOnTime}/${totalSvc} jobs`} color={slaOnTime >= 80 ? "green" : slaOnTime >= 50 ? "amber" : "red"} href="/service" source={`Service resolved+closed / ทั้งหมด · ${filterLabel}`} />
+        <KPI label="Forecast EOM" thai="คาดการณ์สิ้นเดือน" value={`${(forecast / 1000000).toFixed(1)}M`} sub="THB" color="cyan" href="/reports" source="actual + pipeline×30%" />
       </div>
 
       {/* Row 2: Profitability — เป้าหมายหลักของบริษัท */}
@@ -322,9 +407,9 @@ export default function DashboardPage() {
           <p className="text-[10px] text-purple-300/60">— เป้าหมายหลักของบริษัท (Gross Profit)</p>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-          <KPI label="Profit Target" thai="เป้ากำไร" value={profitTarget > 0 ? `${(profitTarget / 1000000).toFixed(2)}M` : "—"} sub="THB" color="purple" href="/reports" />
-          <KPI label="Actual Profit" thai="กำไรจริง" value={actualProfit > 0 ? `${(actualProfit / 1000000).toFixed(2)}M` : "—"} sub="THB" color="purple" href="/reports" />
-          <div className="rounded-xl bg-card border border-purple-800/40 p-4" title="กำไรเทียบเป้า">
+          <KPI label="Profit Target" thai="เป้ากำไร" value={profitTarget > 0 ? `${(profitTarget / 1000000).toFixed(2)}M` : "—"} sub="THB" color="purple" href="/reports" source={`Quota.profit_target · ${filterLabel}`} />
+          <KPI label="Actual Profit" thai="กำไรจริง" value={actualProfit > 0 ? `${(actualProfit / 1000000).toFixed(2)}M` : "—"} sub="THB" color="purple" href="/reports" source={`Quota.actual_profit · ${filterLabel}`} />
+          <div className="rounded-xl bg-card border border-purple-800/40 p-4" title={`กำไรเทียบเป้า · ที่มา: actual_profit ÷ profit_target · ${filterLabel}`}>
             <p className="text-[10px] text-muted uppercase">Profit Achievement</p>
             <p className="text-[10px] text-muted">กำไรเทียบเป้า</p>
             <p className={`text-2xl font-bold mt-1 ${profitPct >= 80 ? "text-green-400" : profitPct >= 50 ? "text-yellow-400" : profitPct > 0 ? "text-red-400" : "text-muted"}`}>{profitPct > 0 ? `${profitPct.toFixed(0)}%` : "—"}</p>
@@ -334,10 +419,11 @@ export default function DashboardPage() {
               </div>
             )}
             <p className="text-[10px] text-muted mt-1">เหลือ {profitRemaining > 0 ? `${(profitRemaining / 1000).toFixed(0)}K` : "0"} THB</p>
+            <p className="text-[9px] text-muted/50 mt-0.5 truncate">📌 Quota · {filterLabel}</p>
           </div>
-          <KPI label="Actual GP%" thai="margin จริง" value={gpPct > 0 ? `${gpPct.toFixed(1)}%` : "—"} sub={`${(actualProfit / 1000).toFixed(0)}K / ${(actual / 1000).toFixed(0)}K`} color={gpPct >= 20 ? "green" : gpPct >= 10 ? "amber" : gpPct > 0 ? "red" : "purple"} href="/reports" />
-          <KPI label="Approved QT Profit" thai="กำไรจาก QT อนุมัติ" value={`${(approvedQuotProfit / 1000).toFixed(0)}K`} sub="THB · pending bill" color="green" href="/quotations" />
-          <KPI label="Quotation Pipeline" thai="กำไรรอผล QT" value={`${(pipelineQuotProfit / 1000).toFixed(0)}K`} sub="THB · draft + sent" color="blue" href="/quotations" />
+          <KPI label="Actual GP%" thai="margin จริง" value={gpPct > 0 ? `${gpPct.toFixed(1)}%` : "—"} sub={`${(actualProfit / 1000).toFixed(0)}K / ${(actual / 1000).toFixed(0)}K`} color={gpPct >= 20 ? "green" : gpPct >= 10 ? "amber" : gpPct > 0 ? "red" : "purple"} href="/reports" source="actual_profit ÷ actual_sales" />
+          <KPI label="Approved QT Profit" thai="กำไรจาก QT อนุมัติ" value={approvedQuotProfit >= 1000 ? `${(approvedQuotProfit / 1000).toFixed(0)}K` : approvedQuotProfit > 0 ? `฿${approvedQuotProfit.toLocaleString()}` : "—"} sub="THB · pending bill" color="green" href="/quotations" source="Quotations status=approved · gross_profit" />
+          <KPI label="Quotation Pipeline" thai="กำไรรอผล QT" value={pipelineQuotProfit >= 1000 ? `${(pipelineQuotProfit / 1000).toFixed(0)}K` : pipelineQuotProfit > 0 ? `฿${pipelineQuotProfit.toLocaleString()}` : "—"} sub="THB · draft + sent" color="blue" href="/quotations" source="Quotations status=draft|sent · gross_profit" />
         </div>
       </div>
 
@@ -347,11 +433,14 @@ export default function DashboardPage() {
         {/* SALES OVERVIEW */}
         <div className="rounded-xl bg-card border border-border p-4">
           <div className="flex items-center justify-between mb-1">
-            <h3 className="text-sm font-semibold text-blue-400">Sales Overview</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-blue-400">Sales Overview</h3>
+              <span className="text-[9px] bg-blue-900/30 text-blue-400 border border-blue-800/40 rounded px-1.5 py-0.5">{filterLabel}</span>
+            </div>
             <Link href="/sales" className="text-[10px] text-accent hover:underline">Activities →</Link>
           </div>
           <div className="flex items-center gap-2 mb-3">
-            <p className="text-[10px] text-muted">ภาพรวมยอดขายและกิจกรรมของทีมขาย</p>
+            <p className="text-[10px] text-muted">ภาพรวมยอดขายและกิจกรรมของทีมขาย · next_follow_up</p>
             <Link href="/projects" className="text-[10px] text-accent/70 hover:text-accent hover:underline shrink-0">Pipeline →</Link>
           </div>
           <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
@@ -389,12 +478,15 @@ export default function DashboardPage() {
         {/* PRESALE OVERVIEW */}
         <div className="rounded-xl bg-card border border-border p-4">
           <div className="flex items-center justify-between mb-1">
-            <h3 className="text-sm font-semibold text-purple-400">Presale Workload</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-purple-400">Presale Workload</h3>
+              <span className="text-[9px] bg-purple-900/30 text-purple-400 border border-purple-800/40 rounded px-1.5 py-0.5">{filterLabel}</span>
+            </div>
             <Link href="/presale" className="text-[10px] text-accent hover:underline">ดู Presale →</Link>
           </div>
-          <p className="text-[10px] text-muted mb-3">ภาพรวมงานออกแบบโซลูชันและ BOQ</p>
+          <p className="text-[10px] text-muted mb-3">ภาพรวมงานออกแบบโซลูชันและ BOQ · due_date</p>
           <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
-            <div className="text-center"><p className="text-lg font-bold">{presale.length}</p><p className="text-muted">Total</p></div>
+            <div className="text-center"><p className="text-lg font-bold">{filtPresale.length}</p><p className="text-muted">Total</p></div>
             <div className="text-center"><p className="text-lg font-bold text-yellow-400">{prNew}</p><p className="text-muted">Waiting</p></div>
             <div className="text-center"><p className="text-lg font-bold text-blue-400">{prProg}</p><p className="text-muted">Working</p></div>
             <div className="text-center"><p className="text-lg font-bold text-green-400">{prDone}</p><p className="text-muted">Done</p></div>
@@ -429,8 +521,11 @@ export default function DashboardPage() {
 
         {/* SERVICE OVERVIEW */}
         <Link href="/service" className="rounded-xl bg-card border border-border p-4 hover:bg-card-hover transition-colors block" title="คลิกเพื่อดูรายละเอียดงานบริการ">
-          <h3 className="text-sm font-semibold text-rose-400">Service Operation</h3>
-          <p className="text-[10px] text-muted mb-3">ภาพรวมงาน CM / PM / Install และ SLA · คลิกเพื่อดูรายละเอียด</p>
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-sm font-semibold text-rose-400">Service Operation</h3>
+            <span className="text-[9px] bg-rose-900/30 text-rose-400 border border-rose-800/40 rounded px-1.5 py-0.5">{filterLabel}</span>
+          </div>
+          <p className="text-[10px] text-muted mb-3">ภาพรวมงาน CM / PM / Install และ SLA · service_date · คลิกเพื่อดูรายละเอียด</p>
           <div className="grid grid-cols-5 gap-2 mb-3 text-xs">
             <div className="text-center"><p className="text-lg font-bold">{cmJobs}</p><p className="text-muted">CM</p></div>
             <div className="text-center"><p className="text-lg font-bold">{pmJobs}</p><p className="text-muted">PM</p></div>
@@ -722,17 +817,18 @@ export default function DashboardPage() {
 }
 
 // === KPI Card Component ===
-function KPI({ label, thai, value, sub, color, href }: { label: string; thai: string; value: string; sub: string; color: string; href?: string }) {
+function KPI({ label, thai, value, sub, color, href, source }: { label: string; thai: string; value: string; sub: string; color: string; href?: string; source?: string }) {
   const colorMap: Record<string, string> = { green: "text-green-400", blue: "text-blue-400", red: "text-red-400", amber: "text-yellow-400", cyan: "text-cyan-400", purple: "text-purple-400" };
   const barMap: Record<string, string> = { green: "bg-green-600", blue: "bg-blue-600", red: "bg-red-600", amber: "bg-yellow-600", cyan: "bg-cyan-600", purple: "bg-purple-600" };
   const borderMap: Record<string, string> = { purple: "border-purple-800/40" };
   const inner = (
-    <div className={`rounded-xl bg-card border ${borderMap[color] || "border-border"} p-4 ${href ? "hover:border-accent/40 hover:bg-card-hover transition-colors cursor-pointer group" : ""}`} title={thai}>
+    <div className={`rounded-xl bg-card border ${borderMap[color] || "border-border"} p-4 ${href ? "hover:border-accent/40 hover:bg-card-hover transition-colors cursor-pointer group" : ""}`} title={source ? `${thai}\nที่มา: ${source}` : thai}>
       <p className="text-[10px] text-muted uppercase">{label}</p>
       <p className="text-[10px] text-muted">{thai}</p>
       <p className={`text-2xl font-bold mt-1 ${colorMap[color] || "text-white"}`}>{value}</p>
       <p className="text-[10px] text-muted mt-0.5">{sub}</p>
-      <div className="flex items-center justify-between mt-2">
+      {source && <p className="text-[9px] text-muted/50 mt-0.5 truncate">📌 {source}</p>}
+      <div className="flex items-center justify-between mt-1">
         <div className={`h-1 w-10 rounded ${barMap[color] || "bg-gray-600"}`} />
         {href && <span className="text-[9px] text-accent/40 group-hover:text-accent transition-colors">→</span>}
       </div>

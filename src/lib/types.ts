@@ -832,3 +832,20 @@ export interface PresaleCatalogItem {
   created_at?: unknown;
   updated_at?: string;
 }
+
+export interface CompanySettings {
+  id?: string;
+  tenant_id: string;
+  // Fiscal year — which calendar month Q1 starts (1=Jan, 10=Oct)
+  fiscal_year_start_month: number;
+  // Company info printed on documents
+  company_name?: string;
+  company_address?: string;
+  company_phone?: string;
+  company_tax_id?: string;
+  company_website?: string;
+  // Locale
+  currency: "THB" | "USD";
+  vat_percent: number;
+  updated_at?: string;
+}
