@@ -9,17 +9,35 @@ export interface User {
   nickname?: string;            // ชื่อเล่น (รวมคำนำหน้า เช่น "พี่จอร์ด" หรือ "น้องก้อย")
   display_preference?: "nickname" | "first_name" | "first_last" | "full"; // ชื่อใดที่จะใช้แสดง
   email: string;
-  role: "admin" | "sale" | "presale" | "service" | "avenger";
+  role: "admin" | "sale" | "presale" | "service" | "avenger"
+      | "Administrator" | "Branch Manager" | "Sales Manager" | "Sales Executive"
+      | "Presales Manager" | "Presales Engineer" | "Service Manager"
+      | "Service Technician" | "Operations Coordinator";
   team_id?: string;
+  branch_id?: string;
+  department?: string;
   active: boolean;
   position?: string;
-  department?: string;
   phone?: string;
   avatar?: string;
   bio?: string;
-  sales_code?: string; // 3-4 letter code for document numbering (e.g. "SPLC")
-  login_username?: string; // English login name (e.g. "yingyut")
-  password?: string; // stored plain text for now (P@ssw0rd default)
+  sales_code?: string;
+  login_username?: string;
+  password?: string;
+  permissions_override?: string[];
+}
+
+export interface ActivityLog {
+  id?: string;
+  tenant_id: string;
+  user_name: string;
+  user_role: string;
+  action: string;
+  module: string;
+  resource_id?: string;
+  resource_name?: string;
+  details?: string;
+  created_at?: unknown;
 }
 
 export interface Team {

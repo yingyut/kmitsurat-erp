@@ -2,9 +2,31 @@
 import { useEffect, useState } from "react";
 import type { User, Team } from "@/lib/types";
 
-const roles = ["admin", "sale", "presale", "service", "avenger"] as const;
-const roleLabels: Record<string, string> = { admin: "ผู้ดูแลระบบ", sale: "เซลล์", presale: "พรีเซลล์", service: "ช่างบริการ", avenger: "Avenger" };
-const roleColor: Record<string, string> = { admin: "bg-cyan-900/50 text-cyan-400", sale: "bg-blue-900/50 text-blue-400", presale: "bg-purple-900/50 text-purple-400", service: "bg-rose-900/50 text-rose-400", avenger: "bg-orange-900/50 text-orange-400" };
+const roles = [
+  "admin", "sale", "presale", "service", "avenger",
+  "Administrator", "Branch Manager", "Sales Manager", "Sales Executive",
+  "Presales Manager", "Presales Engineer", "Service Manager",
+  "Service Technician", "Operations Coordinator",
+] as const;
+const roleLabels: Record<string, string> = {
+  admin: "Admin (Legacy)", sale: "Sales (Legacy)", presale: "Presale (Legacy)", service: "Service (Legacy)", avenger: "Avenger (Legacy)",
+  "Administrator": "ผู้ดูแลระบบ",          "Branch Manager": "ผู้จัดการสาขา",
+  "Sales Manager": "ผู้จัดการฝ่ายขาย",     "Sales Executive": "เจ้าหน้าที่ขาย",
+  "Presales Manager": "ผู้จัดการพรีเซลล์", "Presales Engineer": "วิศวกรพรีเซลล์",
+  "Service Manager": "ผู้จัดการงานบริการ", "Service Technician": "ช่างบริการ",
+  "Operations Coordinator": "ผู้ประสานงาน",
+};
+const roleColor: Record<string, string> = {
+  admin: "bg-cyan-900/50 text-cyan-400",      sale: "bg-blue-900/50 text-blue-400",
+  presale: "bg-purple-900/50 text-purple-400", service: "bg-rose-900/50 text-rose-400",
+  avenger: "bg-orange-900/50 text-orange-400",
+  "Administrator": "bg-cyan-900/50 text-cyan-400",
+  "Branch Manager": "bg-purple-900/50 text-purple-400",
+  "Sales Manager": "bg-blue-900/50 text-blue-400",    "Sales Executive": "bg-blue-800/50 text-blue-300",
+  "Presales Manager": "bg-indigo-900/50 text-indigo-400", "Presales Engineer": "bg-indigo-800/50 text-indigo-300",
+  "Service Manager": "bg-rose-900/50 text-rose-400",  "Service Technician": "bg-rose-800/50 text-rose-300",
+  "Operations Coordinator": "bg-green-900/50 text-green-400",
+};
 const teamTypes = ["sales", "presale", "service", "avenger", "admin"] as const;
 
 type DisplayPref = NonNullable<User["display_preference"]>;

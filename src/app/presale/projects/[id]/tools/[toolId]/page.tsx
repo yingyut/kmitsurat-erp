@@ -9,6 +9,7 @@ import type {
 } from "@/lib/firestore";
 import { calcBOQSummary, BOQ_CATEGORY_LABEL } from "@/lib/boqMerge";
 import { useCurrentUser } from "@/lib/UserContext";
+import type { Permission } from "@/lib/rbac";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
@@ -470,7 +471,8 @@ type DesignerTab = "cameras" | "equipment" | "labor" | "boq" | "catalog";
 export default function ToolPage() {
   const params = useParams();
   const router = useRouter();
-  const { currentUser } = useCurrentUser();
+  const { currentUser, hasPermission } = useCurrentUser();
+  const canViewFinance = hasPermission("view_finance" as Permission);
   const projectId = params.id as string;
   const toolId = params.toolId as string;
 
@@ -801,7 +803,7 @@ export default function ToolPage() {
                     <th className="text-center px-2 py-2">จำนวน</th>
                     <th className="text-center px-2 py-2">นอกอาคาร</th>
                     <th className="text-left px-2 py-2 w-48">ค้นหาสินค้า / คลัง</th>
-                    <th className="text-right px-2 py-2">ต้นทุน/ตัว</th>
+                    {canViewFinance && <th className="text-right px-2 py-2">ต้นทุน/ตัว</th>}
                     <th className="text-right px-2 py-2">ขาย/ตัว</th>
                     <th className="text-right px-2 py-2">รวมขาย</th>
                     <th className="px-2 py-2"></th>
@@ -839,9 +841,11 @@ export default function ToolPage() {
                           onSaveRequest={(name) => setSaveCatalogModal({ open: true, itemType: "cctv_camera", initial: { name, code: cam.product_code ?? "", unit: "ตัว", cost_price: cam.cost_price, selling_price: cam.selling_price, camera_type: cam.type, camera_resolution: cam.resolution } })}
                         />
                       </td>
-                      <td className="px-2 py-1.5">
-                        <input type="number" min={0} className="w-20 px-2 py-1 bg-muted/10 border border-border/30 rounded text-xs text-right" placeholder="0" value={cam.cost_price ?? ""} onChange={(e) => updCam(cam.id, { cost_price: parseFloat(e.target.value) || 0 })} />
-                      </td>
+                      {canViewFinance && (
+                        <td className="px-2 py-1.5">
+                          <input type="number" min={0} className="w-20 px-2 py-1 bg-muted/10 border border-border/30 rounded text-xs text-right" placeholder="0" value={cam.cost_price ?? ""} onChange={(e) => updCam(cam.id, { cost_price: parseFloat(e.target.value) || 0 })} />
+                        </td>
+                      )}
                       <td className="px-2 py-1.5">
                         <input type="number" min={0} className="w-20 px-2 py-1 bg-muted/10 border border-border/30 rounded text-xs text-right" placeholder="0" value={cam.selling_price ?? ""} onChange={(e) => updCam(cam.id, { selling_price: parseFloat(e.target.value) || 0 })} />
                       </td>
@@ -1124,7 +1128,7 @@ export default function ToolPage() {
                       <span className="text-xs text-muted/60">฿{s.totalSelling.toLocaleString()} · GP {s.gpPct.toFixed(1)}%</span>
                     </div>
                     <table className="w-full text-xs">
-                      <thead><tr className="border-b border-border/20 text-muted/50"><th className="text-left px-4 py-2">#</th><th className="text-left px-3 py-2">รหัส</th><th className="text-left px-3 py-2">รายการ</th><th className="text-center px-3 py-2">จำนวน</th><th className="text-center px-3 py-2">หน่วย</th><th className="text-right px-3 py-2">ต้นทุน</th><th className="text-right px-3 py-2">ราคาขาย</th><th className="text-right px-3 py-2">รวม</th><th className="text-right px-3 py-2">GP%</th></tr></thead>
+                      <thead><tr className="border-b border-border/20 text-muted/50"><th className="text-left px-4 py-2">#</th><th className="text-left px-3 py-2">รหัส</th><th className="text-left px-3 py-2">รายการ</th><th className="text-center px-3 py-2">จำนวน</th><th className="text-center px-3 py-2">หน่วย</th>{canViewFinance && <th className="text-right px-3 py-2">ต้นทุน</th>}<th className="text-right px-3 py-2">ราคาขาย</th><th className="text-right px-3 py-2">รวม</th>{canViewFinance && <th className="text-right px-3 py-2">GP%</th>}</tr></thead>
                       <tbody>
                         {items.map((item, idx) => (
                           <tr key={item.id ?? idx} className="border-b border-border/10 hover:bg-muted/5">
@@ -1133,10 +1137,10 @@ export default function ToolPage() {
                             <td className="px-3 py-1.5 font-medium">{item.product_name}{item.notes && <span className="text-muted/50 ml-1">({item.notes})</span>}</td>
                             <td className="px-3 py-1.5 text-center">{item.qty}</td>
                             <td className="px-3 py-1.5 text-center text-muted/60">{item.unit}</td>
-                            <td className="px-3 py-1.5 text-right text-muted/70">฿{item.cost_price.toLocaleString()}</td>
+                            {canViewFinance && <td className="px-3 py-1.5 text-right text-muted/70">฿{item.cost_price.toLocaleString()}</td>}
                             <td className="px-3 py-1.5 text-right">฿{item.selling_price.toLocaleString()}</td>
                             <td className="px-3 py-1.5 text-right font-medium text-green-400">฿{item.total_selling.toLocaleString()}</td>
-                            <td className={`px-3 py-1.5 text-right ${item.margin_percent >= 20 ? "text-green-400" : item.margin_percent >= 10 ? "text-yellow-400" : "text-red-400"}`}>{item.margin_percent.toFixed(1)}%</td>
+                            {canViewFinance && <td className={`px-3 py-1.5 text-right ${item.margin_percent >= 20 ? "text-green-400" : item.margin_percent >= 10 ? "text-yellow-400" : "text-red-400"}`}>{item.margin_percent.toFixed(1)}%</td>}
                           </tr>
                         ))}
                       </tbody>

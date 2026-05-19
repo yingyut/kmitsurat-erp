@@ -1,8 +1,10 @@
 "use client";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { User } from "@/lib/types";
+import { checkPermission, checkModuleAccess, isNewRole } from "@/lib/rbac";
+import type { Permission } from "@/lib/rbac";
 
-// Default role permissions
+// Legacy module-level permissions (old roles — unchanged for backward compat)
 export const defaultPermissions: Record<string, string[]> = {
   admin:   ["dashboard","projects","sales","quotations","sales-workflow","sales-plan","presale","project-management","service","contracts","customers","vendors","products","users","reports","settings","help"],
   sale:    ["dashboard","projects","sales","quotations","sales-workflow","sales-plan","customers","help"],
@@ -11,13 +13,18 @@ export const defaultPermissions: Record<string, string[]> = {
   service: ["dashboard","service","contracts","customers","help"],
 };
 
-// Check if user can access a page
+// Check module-level access (used by Sidebar and hasAccess)
 export function canAccess(role: string | undefined, path: string): boolean {
   if (!role) return false;
-  if (role === "admin") return true; // admin sees everything
-  const perms = defaultPermissions[role] || [];
-  // Extract first segment: /sales/xxx → sales
+  if (role === "admin" || role === "Administrator") return true;
+
   const seg = path.replace(/^\//, "").split("/")[0] || "dashboard";
+
+  // New roles → use RBAC module permission map
+  if (isNewRole(role)) return checkModuleAccess(role, seg);
+
+  // Legacy roles → use old hardcoded module list
+  const perms = defaultPermissions[role] ?? [];
   return perms.includes(seg);
 }
 
@@ -29,9 +36,13 @@ interface UserCtx {
   isLoggedIn: boolean;
   logout: () => void;
   hasAccess: (path: string) => boolean;
+  hasPermission: (perm: Permission) => boolean;
 }
 
-const Ctx = createContext<UserCtx>({ currentUser: null, setCurrentUser: () => {}, users: [], loading: true, isLoggedIn: false, logout: () => {}, hasAccess: () => false });
+const Ctx = createContext<UserCtx>({
+  currentUser: null, setCurrentUser: () => {}, users: [], loading: true,
+  isLoggedIn: false, logout: () => {}, hasAccess: () => false, hasPermission: () => false,
+});
 
 export function useCurrentUser() { return useContext(Ctx); }
 
@@ -44,7 +55,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        // Check if logged in
         const loggedIn = localStorage.getItem("kmit_logged_in") === "true";
         setIsLoggedIn(loggedIn);
 
@@ -58,7 +68,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
           const saved = savedName ? active.find(u => u.name === savedName) : null;
           if (saved) setCurrentUser(saved);
           else {
-            // Saved user not found — logout
             localStorage.removeItem("kmit_logged_in");
             setIsLoggedIn(false);
           }
@@ -86,5 +95,28 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return canAccess(currentUser?.role, path);
   }
 
-  return <Ctx.Provider value={{ currentUser, setCurrentUser: handleSetUser, users, loading, isLoggedIn, logout, hasAccess }}>{children}</Ctx.Provider>;
+  function hasPermission(perm: Permission): boolean {
+    const role = currentUser?.role;
+    if (!role) return false;
+    // Admin (old or new) always has all permissions
+    if (role === "admin" || role === "Administrator") return true;
+    // Per-user override
+    if (currentUser?.permissions_override?.includes(perm)) return true;
+    // New roles
+    if (isNewRole(role)) return checkPermission(role, perm);
+    // Legacy roles: grant selected finance-neutral permissions
+    const legacyGranted: Partial<Record<string, Permission[]>> = {
+      sale:    ["view_dashboard","view_own_projects","view_own_customers","create_customer","view_quote","create_quote"],
+      avenger: ["view_dashboard","view_own_projects","view_own_customers","create_customer","view_quote","create_quote"],
+      presale: ["view_dashboard","view_presale","manage_presale","use_presale_tools","view_quote","create_quote","view_products","view_vendors","view_catalog","view_own_customers","view_own_projects"],
+      service: ["view_dashboard","view_own_tickets","create_ticket","view_own_customers","view_products","view_contracts"],
+    };
+    return (legacyGranted[role] ?? []).includes(perm);
+  }
+
+  return (
+    <Ctx.Provider value={{ currentUser, setCurrentUser: handleSetUser, users, loading, isLoggedIn, logout, hasAccess, hasPermission }}>
+      {children}
+    </Ctx.Provider>
+  );
 }

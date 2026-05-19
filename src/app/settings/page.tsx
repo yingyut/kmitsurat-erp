@@ -38,10 +38,17 @@ const settingsLinks = [
     icon: "🔔",
   },
   {
+    href: "/settings/roles",
+    title: "Role Management",
+    thai: "จัดการ Role และสิทธิ์ RBAC",
+    desc: "ดูและจัดการ Permission Matrix สำหรับ 9 ตำแหน่งงาน — Administrator, Branch Manager, Sales Manager, Sales Executive, Presales, Service, Operations",
+    icon: "🛡️",
+  },
+  {
     href: "/settings/permissions",
-    title: "Permissions / สิทธิ์",
-    thai: "สิทธิ์การเข้าถึง",
-    desc: "กำหนดว่าแต่ละ Role (Sale, Presale, Service) เข้าถึงเมนูไหนได้บ้าง",
+    title: "Permissions (Legacy)",
+    thai: "สิทธิ์เมนูแบบเก่า",
+    desc: "กำหนดการเข้าถึงเมนูสำหรับ Role เก่า (sale, presale, service) — ใช้ Role Management สำหรับระบบใหม่",
     icon: "🔒",
   },
   {
