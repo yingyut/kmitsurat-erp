@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useCurrentUser } from "@/lib/UserContext";
 import Link from "next/link";
 import type { NumberingSetting, User } from "@/lib/types";
 import { PLACEHOLDERS, previewNext } from "@/lib/numbering";
@@ -56,6 +57,8 @@ const SEED_DEFAULTS: Array<Omit<NumberingSetting, "id" | "tenant_id">> = [
 ];
 
 export default function NumberingSettingsPage() {
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_system");
   const [list, setList] = useState<NumberingSetting[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [previewUserCode, setPreviewUserCode] = useState("SPLC");
@@ -124,7 +127,9 @@ export default function NumberingSettingsPage() {
     await load();
   }
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canManage) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   const userCodes = [...new Set(users.map(u => u.sales_code).filter(Boolean) as string[])];
 

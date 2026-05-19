@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useCurrentUser } from "@/lib/UserContext";
 import type { ProductCategory } from "@/lib/types";
 import Link from "next/link";
 
@@ -18,6 +19,8 @@ const SEED: Array<{ name: string; description: string; icon: string }> = [
 ];
 
 export default function ProductCategoriesPage() {
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_system");
   const [list, setList] = useState<ProductCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -74,7 +77,9 @@ export default function ProductCategoriesPage() {
     finally { setSaving(false); }
   }
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canManage) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">

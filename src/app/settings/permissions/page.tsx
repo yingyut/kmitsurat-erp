@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { defaultPermissions } from "@/lib/UserContext";
+import { defaultPermissions, useCurrentUser } from "@/lib/UserContext";
 
 const allModules = [
   { id: "dashboard", label: "Dashboard", thai: "แดชบอร์ด", icon: "📊" },
@@ -27,6 +27,8 @@ const roles = ["admin", "sale", "avenger", "presale", "service"];
 const roleLabels: Record<string, string> = { admin: "Admin (ผู้ดูแล)", sale: "Sales (เซลล์)", avenger: "Avenger", presale: "Presale (พรีเซลล์)", service: "Service (ช่างบริการ)" };
 
 export default function PermissionsPage() {
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_roles");
   const [perms, setPerms] = useState<Record<string, string[]>>(defaultPermissions);
   const [mounted, setMounted] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -59,7 +61,9 @@ export default function PermissionsPage() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canManage) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">

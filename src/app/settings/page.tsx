@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useCurrentUser } from "@/lib/UserContext";
 
 const settingsLinks = [
   {
@@ -75,6 +76,13 @@ const settingsLinks = [
 ];
 
 export default function SettingsPage() {
+  const { currentUser, hasPermission, loading } = useCurrentUser();
+  const canAccess = hasPermission("manage_system") || hasPermission("manage_roles");
+
+  if (loading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canAccess) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
+
   return (
     <div className="p-6">
       <div className="mb-5">

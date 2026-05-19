@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useCurrentUser } from "@/lib/UserContext";
 import Link from "next/link";
 import type { IntegrationSetting } from "@/lib/types";
 import { TYPE_META, PLACEHOLDERS, DEFAULT_SUBFOLDERS, buildProjectFolderUrl, buildSubfolderUrl } from "@/lib/integrations";
@@ -32,6 +33,8 @@ const previewCtx = {
 };
 
 export default function IntegrationsSettingsPage() {
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_system");
   const [list, setList] = useState<IntegrationSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -95,7 +98,9 @@ export default function IntegrationsSettingsPage() {
     finally { setSaving(false); }
   }
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canManage) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">

@@ -22,7 +22,8 @@ const CATEGORY_COLOR: Record<PermCategory, string> = {
 };
 
 export default function RolesPage() {
-  const { users, currentUser } = useCurrentUser();
+  const { users, currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_roles");
   const [selectedRole, setSelectedRole] = useState<NewRoleName>("Administrator");
   const [view, setView] = useState<"matrix" | "detail">("detail");
   const [filterCat, setFilterCat] = useState<PermCategory | "All">("All");
@@ -39,6 +40,10 @@ export default function RolesPage() {
   const displayPerms = filterCat === "All"
     ? ALL_PERMISSIONS
     : ALL_PERMISSIONS.filter(p => PERMISSION_META[p].category === filterCat);
+
+  if (userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canManage) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6 space-y-5">

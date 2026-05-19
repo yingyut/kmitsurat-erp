@@ -63,7 +63,8 @@ export default function NotificationsPage() {
   // Test result
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testSending, setTestSending] = useState(false);
-  const { currentUser } = useCurrentUser();
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_system");
 
   async function load() {
     const fs = await import("@/lib/firestore");
@@ -197,7 +198,9 @@ export default function NotificationsPage() {
   const chLabel = (t: NotifyChannelType) => channelTypes.find(c => c.value === t)?.label || t;
   const trigLabel = (t: NotifyTrigger) => triggers.find(x => x.value === t)?.thai || t;
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canManage) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">

@@ -1,9 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useCurrentUser } from "@/lib/UserContext";
 import type { ProjectType } from "@/lib/types";
 import Link from "next/link";
 
 export default function ProjectTypesPage() {
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_system");
   const [list, setList] = useState<ProjectType[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -43,7 +46,9 @@ export default function ProjectTypesPage() {
     await fs.projectTypes.remove(id); await load();
   }
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canManage) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">

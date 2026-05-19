@@ -1,5 +1,6 @@
 "use client";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { useCurrentUser } from "@/lib/UserContext";
 
 // ── types ─────────────────────────────────────────────────────
 type Row = Record<string, unknown>;
@@ -210,6 +211,11 @@ async function restoreBackup(data: BackupData): Promise<Record<string, number>> 
 
 // ── page ──────────────────────────────────────────────────────
 export default function ImportExportPage() {
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_system");
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   const [tab, setTab] = useState<"import" | "backup">("import");
   const [module, setModule] = useState(MODULES[0].key);
   const [preview, setPreview] = useState<Row[] | null>(null);
@@ -310,6 +316,10 @@ export default function ImportExportPage() {
       setRestoring(false);
     }
   }, [restoreFile]);
+
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canManage) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">
