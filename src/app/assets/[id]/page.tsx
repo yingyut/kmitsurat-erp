@@ -153,6 +153,51 @@ export default function AssetDetailPage() {
           )}
         </div>
 
+        {/* PM Schedule */}
+        <div className="rounded-xl bg-card border border-border p-5">
+          <p className="text-xs font-semibold text-orange-400 uppercase tracking-widest mb-4">🔧 PM Schedule</p>
+          {!asset.pm_interval_months ? (
+            <p className="text-xs text-muted">ยังไม่ได้ตั้ง PM Schedule</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <Field label="ความถี่" value={asset.pm_interval_months === 1 ? "รายเดือน" : asset.pm_interval_months === 3 ? "3 เดือน" : asset.pm_interval_months === 6 ? "6 เดือน" : asset.pm_interval_months === 12 ? "รายปี" : `${asset.pm_interval_months} เดือน`} />
+              <Field label="ช่างรับผิดชอบ" value={asset.pm_assigned_to} />
+              <Field label="PM ล่าสุด" value={asset.pm_last_date} />
+              <Field label="PM ถัดไป" value={asset.pm_next_date} />
+            </div>
+          )}
+          {asset.pm_notes && <p className="text-xs text-muted mt-2 whitespace-pre-line">{asset.pm_notes}</p>}
+          {canManage && asset.pm_interval_months && (
+            <button
+              onClick={async () => {
+                const fs = await import("@/lib/firestore");
+                const today = new Date().toISOString().slice(0, 10);
+                const now = new Date().toISOString();
+                const interval = asset.pm_interval_months ?? 3;
+                const nextDate = (() => { const d = new Date(today); d.setMonth(d.getMonth() + interval); return d.toISOString().slice(0, 10); })();
+                await fs.serviceTickets.add({
+                  customer_id: asset.customer_id, customer_name: asset.customer_name,
+                  project_id: asset.project_id ?? "", project_name: asset.project_name ?? "",
+                  type: "pm_service",
+                  issue: `PM Service: ${asset.device_model}${asset.km_number ? ` (${asset.km_number})` : ""} — ${asset.location ?? asset.customer_name}`,
+                  technician: asset.pm_assigned_to ?? "",
+                  service_date: today, status: "open",
+                  asset_id: asset.id!, km_number: asset.km_number ?? "",
+                  opened_at: now, sla_response_hours: 4, sla_resolve_hours: 48,
+                  assignment_mode: asset.pm_assigned_to ? "individual" : "all",
+                  reported_by: "system", report_date: today, report_channel: "system",
+                  service_value: 0, service_cost: 0, gross_profit: 0, hours_spent: 0,
+                } as Record<string, unknown>);
+                await fs.assets.update(asset.id!, { pm_last_date: today, pm_next_date: nextDate, updated_at: today });
+                router.push("/service");
+              }}
+              className="mt-3 rounded-lg bg-accent/20 border border-accent/30 px-4 py-2 text-xs text-accent hover:bg-accent/30"
+            >
+              🔧 สร้าง PM Ticket ตอนนี้
+            </button>
+          )}
+        </div>
+
         {/* Documents */}
         <div className="rounded-xl bg-card border border-border p-5">
           <p className="text-xs font-semibold text-muted uppercase tracking-widest mb-4">เอกสาร</p>

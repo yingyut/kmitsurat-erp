@@ -72,6 +72,7 @@ export const MODULE_PERMISSIONS: Record<string, Permission[]> = {
   "service":            ["view_all_tickets", "view_own_tickets"],
   "contracts":          ["view_contracts", "manage_contracts"],
   "assets":             ["view_assets", "manage_assets"],
+  "assets/pm-schedule": ["view_assets", "manage_assets"],
   "customers":          ["view_all_customers", "view_own_customers", "create_customer"],
   "vendors":            ["view_vendors"],
   "products":           ["view_products", "manage_products"],

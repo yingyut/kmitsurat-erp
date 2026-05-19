@@ -28,6 +28,30 @@ function generateKmNumber(seq: number): string {
   return `KM-${year}-${String(seq).padStart(4, "0")}`;
 }
 
+const PM_INTERVALS = [
+  { val: 1, label: "รายเดือน (1 เดือน)" },
+  { val: 3, label: "ราย 3 เดือน" },
+  { val: 6, label: "ราย 6 เดือน" },
+  { val: 12, label: "รายปี (12 เดือน)" },
+];
+
+function calcNextPM(lastDate: string, intervalMonths: number): string {
+  if (!lastDate || !intervalMonths) return "";
+  const d = new Date(lastDate);
+  d.setMonth(d.getMonth() + intervalMonths);
+  return d.toISOString().slice(0, 10);
+}
+
+function pmBadge(nextDate?: string) {
+  if (!nextDate) return null;
+  const days = Math.ceil((new Date(nextDate).getTime() - Date.now()) / 86400000);
+  if (days < 0) return <span className="rounded-full px-2 py-0.5 text-[10px] bg-red-900/50 text-red-400">PM เลยกำหนด {Math.abs(days)} วัน</span>;
+  if (days === 0) return <span className="rounded-full px-2 py-0.5 text-[10px] bg-red-900/50 text-red-400">PM วันนี้!</span>;
+  if (days <= 30) return <span className="rounded-full px-2 py-0.5 text-[10px] bg-amber-900/50 text-amber-400">PM ใน {days} วัน</span>;
+  if (days <= 90) return <span className="rounded-full px-2 py-0.5 text-[10px] bg-yellow-900/50 text-yellow-400">PM {nextDate}</span>;
+  return <span className="rounded-full px-2 py-0.5 text-[10px] bg-green-900/50 text-green-400">PM {nextDate}</span>;
+}
+
 const EMPTY: Omit<Asset, "id" | "tenant_id" | "created_at"> = {
   km_number: "", serial_number: "", device_model: "", brand: "", category: "Switch",
   customer_id: "", customer_name: "", project_id: "", project_name: "",
@@ -35,6 +59,8 @@ const EMPTY: Omit<Asset, "id" | "tenant_id" | "created_at"> = {
   install_date: "", location: "", technician: "",
   warranty_start: "", warranty_end: "", sla_level: "",
   status: "active", notes: "",
+  pm_interval_months: undefined, pm_last_date: "", pm_next_date: "",
+  pm_assigned_to: "", pm_notes: "",
 };
 
 export default function AssetsPage() {
@@ -132,6 +158,11 @@ export default function AssetsPage() {
       sla_level: a.sla_level ?? "",
       status: a.status ?? "active",
       notes: a.notes ?? "",
+      pm_interval_months: a.pm_interval_months,
+      pm_last_date: a.pm_last_date ?? "",
+      pm_next_date: a.pm_next_date ?? "",
+      pm_assigned_to: a.pm_assigned_to ?? "",
+      pm_notes: a.pm_notes ?? "",
     });
     setShowModal(true);
   }
@@ -275,6 +306,7 @@ export default function AssetsPage() {
                     <th className="px-4 py-2.5">ลูกค้า</th>
                     <th className="px-4 py-2.5">สถานที่</th>
                     <th className="px-4 py-2.5">ประกัน</th>
+                    <th className="px-4 py-2.5">PM ถัดไป</th>
                     <th className="px-4 py-2.5">สถานะ</th>
                     <th className="px-4 py-2.5"></th>
                   </tr>
@@ -303,6 +335,13 @@ export default function AssetsPage() {
                           <div>
                             {warrantyBadge(a.warranty_end)}
                             <p className="text-[10px] text-muted mt-0.5">{a.warranty_end}</p>
+                          </div>
+                        ) : <span className="text-xs text-muted">—</span>}
+                      </td>
+                      <td className="px-4 py-2">
+                        {a.pm_next_date ? (
+                          <div>
+                            {pmBadge(a.pm_next_date)}
                           </div>
                         ) : <span className="text-xs text-muted">—</span>}
                       </td>
@@ -457,6 +496,54 @@ export default function AssetsPage() {
                 <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                   rows={2} placeholder="หมายเหตุเพิ่มเติม..."
                   className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none" />
+              </div>
+
+              {/* PM Schedule */}
+              <div className="border-t border-border pt-4">
+                <p className="text-xs font-semibold text-orange-400 mb-3">🔧 PM Schedule (Preventive Maintenance)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted mb-1 block">ความถี่ PM</label>
+                    <select
+                      value={form.pm_interval_months ?? ""}
+                      onChange={e => {
+                        const val = e.target.value ? Number(e.target.value) : undefined;
+                        const next = val && form.pm_last_date ? calcNextPM(form.pm_last_date, val) : form.pm_next_date;
+                        setForm(f => ({ ...f, pm_interval_months: val, pm_next_date: next ?? "" }));
+                      }}
+                      className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                    >
+                      <option value="">-- ไม่ตั้ง PM --</option>
+                      {PM_INTERVALS.map(p => <option key={p.val} value={p.val}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted mb-1 block">ช่างรับผิดชอบ PM</label>
+                    <input value={form.pm_assigned_to ?? ""} onChange={e => setForm(f => ({ ...f, pm_assigned_to: e.target.value }))}
+                      placeholder="ชื่อช่าง..."
+                      className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted mb-1 block">PM ล่าสุด</label>
+                    <input type="date" value={form.pm_last_date ?? ""} onChange={e => {
+                      const last = e.target.value;
+                      const next = last && form.pm_interval_months ? calcNextPM(last, form.pm_interval_months) : form.pm_next_date;
+                      setForm(f => ({ ...f, pm_last_date: last, pm_next_date: next ?? "" }));
+                    }}
+                      className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted mb-1 block">PM ถัดไป <span className="text-muted/60">(คำนวณอัตโนมัติ)</span></label>
+                    <input type="date" value={form.pm_next_date ?? ""} onChange={e => setForm(f => ({ ...f, pm_next_date: e.target.value }))}
+                      className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <label className="text-xs text-muted mb-1 block">รายการตรวจสอบ / ขอบเขต PM</label>
+                  <textarea value={form.pm_notes ?? ""} onChange={e => setForm(f => ({ ...f, pm_notes: e.target.value }))}
+                    rows={2} placeholder="เช่น ทำความสะอาด, ตรวจสอบ firmware, ทดสอบ failover..."
+                    className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none" />
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">

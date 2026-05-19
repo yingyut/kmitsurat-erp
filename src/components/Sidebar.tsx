@@ -34,6 +34,7 @@ const sections: Section[] = [
       { href: "/service", label: "Service Tickets", thai: "งานบริการ / ติดตั้ง / ซ่อม", icon: "🔧" },
       { href: "/contracts", label: "Contracts", thai: "สัญญา / รับประกัน / MA", icon: "🛡️" },
       { href: "/assets", label: "Assets", thai: "อุปกรณ์ / Serial Tracking", icon: "🖥️" },
+      { href: "/assets/pm-schedule", label: "PM Schedule", thai: "ตารางงาน PM อุปกรณ์", icon: "🔧" },
     ],
   },
   {

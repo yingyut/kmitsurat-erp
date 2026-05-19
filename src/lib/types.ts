@@ -785,6 +785,12 @@ export interface Asset {
   status: "active" | "inactive" | "maintenance" | "decommissioned";
   notes?: string;
   documents?: AssetDocument[];
+  // PM Schedule
+  pm_interval_months?: number;  // 1=รายเดือน 3=ราย3เดือน 6=ราย6เดือน 12=รายปี
+  pm_last_date?: string;         // YYYY-MM-DD — วัน PM ล่าสุด
+  pm_next_date?: string;         // YYYY-MM-DD — วัน PM ถัดไป (คำนวณ/ตั้งเอง)
+  pm_assigned_to?: string;       // ช่างรับผิดชอบ PM
+  pm_notes?: string;             // รายการตรวจสอบ / ขอบเขต PM
   created_at?: unknown;
   updated_at?: string;
   created_by?: string;

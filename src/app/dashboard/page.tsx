@@ -241,6 +241,12 @@ export default function DashboardPage() {
   if (warrantyExpired.length > 0) alerts.push({ id: "we", msg: `🖥️ ${warrantyExpired.length} อุปกรณ์หมดประกันแล้ว — ตรวจสอบ MA`, level: "red", href: "/assets" });
   if (warranty30.length > 0) alerts.push({ id: "w30", msg: `🖥️ ${warranty30.length} อุปกรณ์ประกันหมดใน ≤30 วัน — วางแผน renewal`, level: "orange", href: "/assets" });
 
+  // PM Schedule alerts
+  const pmDue = assets.filter(a => { if (!a.pm_next_date) return false; const d = dayDiff(a.pm_next_date); return d !== null && d < 0; });
+  const pm30 = assets.filter(a => { if (!a.pm_next_date) return false; const d = dayDiff(a.pm_next_date); return d !== null && d >= 0 && d <= 30; });
+  if (pmDue.length > 0) alerts.push({ id: "pmd", msg: `🔧 ${pmDue.length} อุปกรณ์ PM เลยกำหนดแล้ว — สร้าง PM Ticket`, level: "red", href: "/assets/pm-schedule" });
+  if (pm30.length > 0) alerts.push({ id: "pm30", msg: `🔧 ${pm30.length} อุปกรณ์ถึงรอบ PM ใน ≤30 วัน`, level: "orange", href: "/assets/pm-schedule" });
+
   // Work items
   type WI = { id: string; title: string; sub: string; type: string; status: string; value?: number; href: string };
   const workItems: WI[] = [
