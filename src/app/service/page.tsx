@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { ServiceTicket, Customer, Project, JobRequest, User } from "@/lib/types";
+import type { ServiceTicket, Customer, Project, JobRequest, User, Asset } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
+import Link from "next/link";
 
 const svcTypes = ["installation","site_survey","technical_survey","after_sales","repair","pm_service"] as const;
 const typeLabels: Record<string, string> = { installation: "Installation", site_survey: "Site Survey", technical_survey: "Technical Survey", after_sales: "After-Sales", repair: "Repair", pm_service: "PM Service" };
@@ -18,6 +19,8 @@ const empty = {
   target_skill: "", target_area: "",
   // SLA defaults
   sla_response_hours: 4, sla_resolve_hours: 48,
+  // Asset link
+  asset_id: "", km_number: "",
 };
 
 const channelLabel: Record<string, string> = { phone: "📞 โทรศัพท์", line: "💬 Line", email: "✉️ อีเมล", walk_in: "🚶 มาที่หน้าร้าน", system: "💻 ระบบ" };
@@ -59,6 +62,7 @@ export default function ServicePage() {
   const [projs, setProjs] = useState<Project[]>([]);
   const [incomingReqs, setIncomingReqs] = useState<JobRequest[]>([]);
   const [svcUsers, setSvcUsers] = useState<User[]>([]);
+  const [assetList, setAssetList] = useState<Asset[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | ServiceTicket["status"]>("all");
   const [loading, setLoading] = useState(true);
@@ -70,8 +74,8 @@ export default function ServicePage() {
   async function load() {
     const fs = await import("@/lib/firestore");
     try {
-      const [t, c, p, jr, u] = await Promise.all([fs.serviceTickets.list(), fs.customers.list(), fs.projects.list(), fs.jobRequests.list(), fs.users.list()]);
-      setList(t); setCusts(c); setProjs(p);
+      const [t, c, p, jr, u, al] = await Promise.all([fs.serviceTickets.list(), fs.customers.list(), fs.projects.list(), fs.jobRequests.list(), fs.users.list(), fs.assets.list()]);
+      setList(t); setCusts(c); setProjs(p); setAssetList(al);
       setIncomingReqs(jr.filter(j => j.request_to_team === "service"));
       setSvcUsers(u.filter(x => x.active && (x.role === "service" || x.role === "Service Technician" || x.role === "Service Manager")));
     } catch (e) { console.error(e); } finally { setLoading(false); }
@@ -189,8 +193,21 @@ export default function ServicePage() {
     };
   }).filter(x => x.count > 0).sort((a, b) => b.avgHours - a.avgHours);
 
-  function selectCust(id: string) { const c = custs.find((x) => x.id === id); setForm({ ...form, customer_id: id, customer_name: c?.company_name || "" }); }
-  function selectProj(id: string) { const p = projs.find((x) => x.id === id); setForm({ ...form, project_id: id, project_name: p?.name || "" }); }
+  function selectCust(id: string) { const c = custs.find((x) => x.id === id); setForm(f => ({ ...f, customer_id: id, customer_name: c?.company_name || "", asset_id: "", km_number: "" })); }
+  function selectProj(id: string) { const p = projs.find((x) => x.id === id); setForm(f => ({ ...f, project_id: id, project_name: p?.name || "" })); }
+  function selectAsset(id: string) {
+    if (!id) { setForm(f => ({ ...f, asset_id: "", km_number: "" })); return; }
+    const a = assetList.find(x => x.id === id);
+    if (!a) return;
+    setForm(f => ({
+      ...f,
+      asset_id: id,
+      km_number: a.km_number ?? "",
+      // auto-fill customer if not yet set
+      customer_id: f.customer_id || a.customer_id,
+      customer_name: f.customer_name || a.customer_name,
+    }));
+  }
 
   function updateMoney(field: "service_value" | "service_cost" | "hours_spent", val: number) {
     const next = { ...form, [field]: val };
@@ -561,7 +578,27 @@ export default function ServicePage() {
             <div><label className="text-[10px] text-muted">ลูกค้า</label><select value={form.customer_id} onChange={(e) => selectCust(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- Customer --</option>{custs.map((c) => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
             <div><label className="text-[10px] text-muted">โปรเจค</label><select value={form.project_id} onChange={(e) => selectProj(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- Project --</option>{projs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
             <div><label className="text-[10px] text-muted">วันนัด</label><input type="date" value={form.service_date} onChange={(e) => setForm({ ...form, service_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-            <div></div>
+            <div>
+              <label className="text-[10px] text-muted">🖥️ Asset / อุปกรณ์ที่เกี่ยวข้อง</label>
+              <select
+                value={form.asset_id}
+                onChange={e => selectAsset(e.target.value)}
+                className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"
+              >
+                <option value="">-- ไม่ระบุ --</option>
+                {assetList
+                  .filter(a => !form.customer_id || a.customer_id === form.customer_id)
+                  .filter(a => a.status !== "decommissioned")
+                  .map(a => (
+                    <option key={a.id} value={a.id}>
+                      {a.km_number} — {a.device_model} ({a.serial_number})
+                    </option>
+                  ))}
+              </select>
+              {form.asset_id && (
+                <p className="text-[10px] text-accent mt-0.5">KM: {form.km_number} · <a href={`/assets/${form.asset_id}`} target="_blank" rel="noreferrer" className="hover:underline">ดู Asset →</a></p>
+              )}
+            </div>
             <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียด *</label><textarea placeholder="Issue / Description" value={form.issue} onChange={(e) => setForm({ ...form, issue: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent min-h-20 resize-y mt-1" /></div>
           </div>
 
@@ -669,6 +706,16 @@ export default function ServicePage() {
                     {overdue && <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-[10px] text-red-400">⚠ เลยกำหนด</span>}
                   </div>
                   <p className="text-sm text-muted">{t.issue}</p>
+                  <div className="flex items-center gap-2 flex-wrap mt-1">
+                    {t.km_number && t.asset_id && (
+                      <Link href={`/assets/${t.asset_id}`} className="rounded px-1.5 py-0.5 bg-cyan-900/50 text-cyan-400 text-[10px] font-mono hover:underline" title="ดูข้อมูล Asset">
+                        🖥️ {t.km_number}
+                      </Link>
+                    )}
+                    {t.km_number && !t.asset_id && (
+                      <span className="rounded px-1.5 py-0.5 bg-cyan-900/30 text-cyan-400/70 text-[10px] font-mono">🖥️ {t.km_number}</span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted mt-1">
                     {t.customer_name}{t.project_name && ` · ${t.project_name}`}
                     {t.technician && ` · 🔧 ${t.technician}`}
