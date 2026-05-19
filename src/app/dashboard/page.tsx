@@ -17,6 +17,7 @@ export default function DashboardPage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("month");
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [sales, setSales] = useState<SalesActivity[]>([]);
@@ -27,6 +28,7 @@ export default function DashboardPage() {
   const [contracts, setContracts] = useState<ServiceContract[]>([]);
 
   async function load() {
+    setLoading(true);
     try {
       const fs = await import("@/lib/firestore");
       const [p, s, pr, sv, q, qt, ct] = await Promise.all([
@@ -35,11 +37,24 @@ export default function DashboardPage() {
         fs.serviceContracts.list(),
       ]);
       setProjects(p); setSales(s); setPresale(pr); setService(sv); setQuotas(q); setQuots(qt); setContracts(ct);
+      setLastUpdated(new Date());
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
 
-  useEffect(() => { setMounted(true); load(); }, []);
+  useEffect(() => {
+    setMounted(true);
+    load();
+    // Auto-refresh ทุก 60 วินาที
+    const interval = setInterval(load, 60000);
+    // Reload เมื่อ tab กลับมา focus (เช่น ไปแก้ข้อมูลที่หน้าอื่นแล้วกลับมา)
+    const handleVisibility = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
 
   // === CALCULATIONS ===
   const today = new Date().toISOString().slice(0, 10);
@@ -232,13 +247,23 @@ export default function DashboardPage() {
           <h1 className="text-xl font-bold" title="แดชบอร์ดผู้บริหาร">Executive Dashboard</h1>
           <p className="text-xs text-muted">ภาพรวมการทำงาน KMITSURAT — ตัดสินใจเร็วขึ้น</p>
         </div>
-        <div className="flex gap-1.5">
-          {(["today", "week", "month", "year"] as Filter[]).map(f => (
-            <button key={f} onClick={() => setFilter(f)} title={f === "today" ? "วันนี้" : f === "week" ? "สัปดาห์นี้" : f === "month" ? "เดือนนี้" : "ปีนี้"}
-              className={`px-3 py-1.5 rounded-lg text-xs ${filter === f ? "bg-accent text-white" : "bg-card border border-border text-muted hover:bg-card-hover"}`}>
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          {lastUpdated && !loading && (
+            <span className="text-[10px] text-muted hidden sm:inline">
+              อัปเดต {lastUpdated.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </span>
+          )}
+          <button onClick={load} disabled={loading} title="โหลดข้อมูลใหม่" className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
+            {loading ? "..." : "↺ Refresh"}
+          </button>
+          <div className="flex gap-1.5">
+            {(["today", "week", "month", "year"] as Filter[]).map(f => (
+              <button key={f} onClick={() => setFilter(f)} title={f === "today" ? "วันนี้" : f === "week" ? "สัปดาห์นี้" : f === "month" ? "เดือนนี้" : "ปีนี้"}
+                className={`px-3 py-1.5 rounded-lg text-xs ${filter === f ? "bg-accent text-white" : "bg-card border border-border text-muted hover:bg-card-hover"}`}>
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
