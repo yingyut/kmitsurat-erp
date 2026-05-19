@@ -113,11 +113,21 @@ export default function UsersPage() {
     if (!permOverrideUser) return;
     setSaving(true);
     const fs = await import("@/lib/firestore");
+    // กรอง permission ที่ role ให้อยู่แล้วออก ก่อน save
+    const rolePermsNow = new Set<string>(
+      isNewRole(permOverrideUser.role)
+        ? (ROLE_PERMISSIONS[permOverrideUser.role as keyof typeof ROLE_PERMISSIONS] ?? [])
+        : permOverrideUser.role === "admin" ? ALL_PERMISSIONS : []
+    );
+    const cleanOverrides = permOverrides.filter(p => !rolePermsNow.has(p));
     try {
-      await fs.users.update(permOverrideUser.id!, { permissions_override: permOverrides });
+      await fs.users.update(permOverrideUser.id!, { permissions_override: cleanOverrides });
       setPermOverrideUser(null);
       await load();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      alert("❌ บันทึกไม่สำเร็จ กรุณาลองใหม่");
+    }
     finally { setSaving(false); }
   }
 
