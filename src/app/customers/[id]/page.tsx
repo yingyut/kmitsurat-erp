@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import type { Customer, Quotation, Project, ServiceTicket, SalesActivity, JobRequest, ServiceContract } from "@/lib/types";
+import type { Customer, Quotation, Project, ServiceTicket, SalesActivity, JobRequest, ServiceContract, Asset } from "@/lib/types";
 
 const orgLabels: Record<string, string> = { government: "หน่วยงานราชการ", private: "เอกชน", education: "สถานศึกษา", hospital: "โรงพยาบาล", hotel: "โรงแรม", other: "อื่นๆ" };
 const orgColor: Record<string, string> = { government: "bg-blue-900/50 text-blue-400", private: "bg-emerald-900/50 text-emerald-400", education: "bg-purple-900/50 text-purple-400", hospital: "bg-rose-900/50 text-rose-400", hotel: "bg-amber-900/50 text-amber-400", other: "bg-gray-700 text-gray-400" };
@@ -38,7 +38,17 @@ function daysUntil(date?: string): number | null {
   return Math.floor((target.getTime() - today.getTime()) / 86400000);
 }
 
-type Tab = "overview" | "quotations" | "projects" | "service" | "contracts" | "activities";
+type Tab = "overview" | "quotations" | "projects" | "service" | "assets" | "contracts" | "activities";
+
+const assetStatusColor: Record<string, string> = {
+  active: "bg-green-900/50 text-green-400",
+  inactive: "bg-gray-700 text-gray-400",
+  maintenance: "bg-yellow-900/50 text-yellow-400",
+  decommissioned: "bg-red-900/50 text-red-400",
+};
+const assetStatusLabel: Record<string, string> = {
+  active: "ใช้งาน", inactive: "ไม่ใช้", maintenance: "ซ่อมบำรุง", decommissioned: "ปลดระวาง",
+};
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -51,6 +61,8 @@ export default function CustomerDetailPage() {
   const [activities, setActivities] = useState<SalesActivity[]>([]);
   const [jobRequests, setJobRequests] = useState<JobRequest[]>([]);
   const [contracts, setContracts] = useState<ServiceContract[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [assetSearch, setAssetSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
@@ -65,13 +77,14 @@ export default function CustomerDetailPage() {
       const customerName = c.company_name || "";
       const isMine = (x: { customer_id?: string; customer_name?: string }) =>
         x.customer_id === id || (customerName && x.customer_name === customerName);
-      const [q, p, s, a, jr, ct] = await Promise.all([
+      const [q, p, s, a, jr, ct, as_] = await Promise.all([
         fs.quotations.list(),
         fs.projects.list(),
         fs.serviceTickets.list(),
         fs.salesActivities.list(),
         fs.jobRequests.list(),
         fs.serviceContracts.list(),
+        fs.assets.list(),
       ]);
       setQuotations(q.filter(isMine));
       setProjects(p.filter(isMine));
@@ -79,6 +92,7 @@ export default function CustomerDetailPage() {
       setActivities(a.filter(isMine));
       setJobRequests(jr.filter(isMine));
       setContracts(ct.filter(isMine));
+      setAssets(as_.filter(isMine));
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -209,12 +223,26 @@ export default function CustomerDetailPage() {
           <p className="text-xl font-bold mt-1"><span>{stats.totalSvc}</span> <span className="text-muted text-base">/</span> <span className={stats.openSvc > 0 ? "text-amber-400" : "text-green-400"}>{stats.openSvc}</span></p>
           <p className="text-[10px] text-muted">PM {stats.pmSvc} · ครั้งล่าสุด {stats.lastInteraction || "—"}</p>
         </div>
+        <div className="rounded-xl bg-card border border-border p-4 cursor-pointer hover:border-accent/40" onClick={() => setTab("assets")}>
+          <p className="text-[10px] text-muted uppercase">🖥 อุปกรณ์ที่ติดตั้ง</p>
+          <p className="text-[10px] text-muted">active / ทั้งหมด</p>
+          <p className="text-xl font-bold mt-1">
+            <span className="text-blue-400">{assets.filter(a => a.status === "active").length}</span>
+            <span className="text-muted text-base"> / </span>
+            <span>{assets.length}</span>
+          </p>
+          <p className="text-[10px] text-muted">
+            {assets.filter(a => a.warranty_end && a.warranty_end < new Date().toISOString().slice(0, 10)).length > 0
+              ? <span className="text-red-400">⚠ หมดประกัน {assets.filter(a => a.warranty_end && a.warranty_end < new Date().toISOString().slice(0, 10)).length} เครื่อง</span>
+              : "ประกันยังใช้ได้"}
+          </p>
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b border-border overflow-x-auto">
-        {(["overview", "quotations", "projects", "service", "contracts", "activities"] as const).map(t => {
-          const labels: Record<Tab, string> = { overview: "ภาพรวม", quotations: `ใบเสนอราคา (${quotations.length})`, projects: `ดีล / โปรเจค (${projects.length})`, service: `บริการ (${serviceTickets.length})`, contracts: `🛡️ สัญญา/รับประกัน (${contracts.length})`, activities: `กิจกรรม (${activities.length})` };
+        {(["overview", "quotations", "projects", "service", "assets", "contracts", "activities"] as const).map(t => {
+          const labels: Record<Tab, string> = { overview: "ภาพรวม", quotations: `ใบเสนอราคา (${quotations.length})`, projects: `ดีล / โปรเจค (${projects.length})`, service: `บริการ (${serviceTickets.length})`, assets: `🖥 อุปกรณ์ (${assets.length})`, contracts: `🛡️ สัญญา/รับประกัน (${contracts.length})`, activities: `กิจกรรม (${activities.length})` };
           const isContractsWithAlert = t === "contracts" && contractStats.expiringSoon.length > 0;
           return (
             <button key={t} onClick={() => setTab(t)} className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
@@ -433,6 +461,7 @@ export default function CustomerDetailPage() {
                     <th className="px-4 py-2.5">วันที่</th>
                     <th className="px-4 py-2.5">ประเภท</th>
                     <th className="px-4 py-2.5">ปัญหา / รายละเอียด</th>
+                    <th className="px-4 py-2.5">KM / อุปกรณ์</th>
                     <th className="px-4 py-2.5">ช่าง</th>
                     <th className="px-4 py-2.5 text-right">รายได้</th>
                     <th className="px-4 py-2.5 text-right">กำไร</th>
@@ -440,11 +469,17 @@ export default function CustomerDetailPage() {
                   </tr></thead>
                   <tbody>{serviceTickets.map(t => {
                     const profit = t.gross_profit || ((t.service_value || 0) - (t.service_cost || 0));
+                    const linkedAsset = t.km_number ? assets.find(a => a.km_number === t.km_number) : t.asset_id ? assets.find(a => a.id === t.asset_id) : null;
                     return (
                       <tr key={t.id} className="border-b border-border last:border-0 hover:bg-card-hover">
                         <td className="px-4 py-2.5 text-muted whitespace-nowrap">{t.service_date || "-"}</td>
                         <td className="px-4 py-2.5">{svcTypeLabels[t.type]}</td>
                         <td className="px-4 py-2.5 text-muted text-xs">{t.issue}</td>
+                        <td className="px-4 py-2.5 text-xs">
+                          {t.km_number && <button onClick={() => { setTab("assets"); setAssetSearch(t.km_number!); }} className="font-mono text-blue-400 hover:underline">{t.km_number}</button>}
+                          {linkedAsset && <p className="text-muted">{linkedAsset.device_model}</p>}
+                          {!t.km_number && <span className="text-muted">—</span>}
+                        </td>
                         <td className="px-4 py-2.5 text-muted">{t.technician || "-"}</td>
                         <td className="px-4 py-2.5 text-right text-purple-400">{(t.service_value || 0).toLocaleString()}</td>
                         <td className={`px-4 py-2.5 text-right ${profit > 0 ? "text-green-400" : profit < 0 ? "text-red-400" : "text-muted"}`}>{profit ? profit.toLocaleString() : "-"}</td>
@@ -466,6 +501,134 @@ export default function CustomerDetailPage() {
           )}
         </div>
       )}
+
+      {/* ASSETS */}
+      {tab === "assets" && (() => {
+        const today = new Date().toISOString().slice(0, 10);
+        const s = assetSearch.toLowerCase();
+        const filtered = assets.filter(a =>
+          !s || a.km_number.toLowerCase().includes(s) || a.serial_number.toLowerCase().includes(s) ||
+          a.device_model.toLowerCase().includes(s) || (a.brand || "").toLowerCase().includes(s) ||
+          (a.location || "").toLowerCase().includes(s) || (a.category || "").toLowerCase().includes(s)
+        );
+        const activeCount = assets.filter(a => a.status === "active").length;
+        const expiredWarranty = assets.filter(a => a.warranty_end && a.warranty_end < today);
+        const expiringSoon = assets.filter(a => a.warranty_end && a.warranty_end >= today && a.warranty_end <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10));
+        const pmOverdue = assets.filter(a => a.pm_next_date && a.pm_next_date < today);
+        return (
+          <div className="space-y-3">
+            {/* Summary stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="rounded-lg bg-card border border-border p-3">
+                <p className="text-[10px] text-muted">อุปกรณ์ทั้งหมด</p>
+                <p className="text-base font-bold text-blue-400">{assets.length}</p>
+                <p className="text-[10px] text-muted">ใช้งาน {activeCount} เครื่อง</p>
+              </div>
+              <div className={`rounded-lg border p-3 ${expiredWarranty.length > 0 ? "bg-red-900/10 border-red-800/50" : "bg-card border-border"}`}>
+                <p className="text-[10px] text-muted">ประกันหมดแล้ว</p>
+                <p className={`text-base font-bold ${expiredWarranty.length > 0 ? "text-red-400" : "text-green-400"}`}>{expiredWarranty.length}</p>
+                <p className="text-[10px] text-muted">ใกล้หมด (30d) {expiringSoon.length}</p>
+              </div>
+              <div className={`rounded-lg border p-3 ${pmOverdue.length > 0 ? "bg-amber-900/10 border-amber-800/50" : "bg-card border-border"}`}>
+                <p className="text-[10px] text-muted">PM เกินกำหนด</p>
+                <p className={`text-base font-bold ${pmOverdue.length > 0 ? "text-amber-400" : "text-green-400"}`}>{pmOverdue.length}</p>
+                <p className="text-[10px] text-muted">เครื่องที่ต้องทำ PM</p>
+              </div>
+              <div className="rounded-lg bg-card border border-border p-3">
+                <p className="text-[10px] text-muted">หมวดอุปกรณ์</p>
+                <p className="text-base font-bold">{new Set(assets.map(a => a.category)).size}</p>
+                <p className="text-[10px] text-muted truncate">{[...new Set(assets.map(a => a.category))].slice(0, 3).join(", ")}</p>
+              </div>
+            </div>
+
+            {/* Search */}
+            <input
+              placeholder="ค้นหา KM / Serial / รุ่น / Brand / Location..."
+              value={assetSearch}
+              onChange={e => setAssetSearch(e.target.value)}
+              className="w-full rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"
+            />
+
+            {assets.length === 0 ? (
+              <div className="rounded-xl bg-card border border-border p-8 text-center">
+                <p className="text-muted text-sm mb-2">ยังไม่มีอุปกรณ์ที่ลงทะเบียนสำหรับลูกค้านี้</p>
+                <Link href="/assets" className="text-xs text-accent hover:underline">+ ไปเพิ่มอุปกรณ์ที่หน้า Assets</Link>
+              </div>
+            ) : filtered.length === 0 ? (
+              <p className="text-muted text-sm">ไม่พบอุปกรณ์ที่ตรงกับ &quot;{assetSearch}&quot;</p>
+            ) : (
+              <div className="rounded-xl bg-card border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
+                    <th className="px-4 py-2.5">KM Number</th>
+                    <th className="px-4 py-2.5">Serial Number</th>
+                    <th className="px-4 py-2.5">รุ่น / Brand</th>
+                    <th className="px-4 py-2.5">หมวด</th>
+                    <th className="px-4 py-2.5">โปรเจค / บิล</th>
+                    <th className="px-4 py-2.5">ที่ตั้ง</th>
+                    <th className="px-4 py-2.5">ติดตั้ง</th>
+                    <th className="px-4 py-2.5">ประกัน/MA</th>
+                    <th className="px-4 py-2.5">PM ถัดไป</th>
+                    <th className="px-4 py-2.5">สถานะ</th>
+                  </tr></thead>
+                  <tbody>{filtered.map(a => {
+                    const warrantyExpired = a.warranty_end && a.warranty_end < today;
+                    const warrantyExpiringSoon = a.warranty_end && !warrantyExpired && a.warranty_end <= new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+                    const pmDue = a.pm_next_date && a.pm_next_date < today;
+                    const linkedContract = contracts.find(c => c.id === a.contract_id);
+                    const svcCount = serviceTickets.filter(t => t.km_number === a.km_number || t.asset_id === a.id).length;
+                    return (
+                      <tr key={a.id} className="border-b border-border last:border-0 hover:bg-card-hover">
+                        <td className="px-4 py-2.5">
+                          <p className="font-mono text-xs text-blue-400 font-semibold">{a.km_number}</p>
+                          {svcCount > 0 && (
+                            <button onClick={() => { setTab("service"); }} className="text-[10px] text-amber-400 hover:underline">🔧 {svcCount} งาน</button>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-muted">{a.serial_number || "—"}</td>
+                        <td className="px-4 py-2.5">
+                          <p className="text-sm font-medium">{a.device_model}</p>
+                          <p className="text-[10px] text-muted">{a.brand}</p>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-muted">{a.category}</td>
+                        <td className="px-4 py-2.5 text-xs">
+                          {a.project_name ? <p className="text-muted truncate max-w-[140px]" title={a.project_name}>{a.project_name}</p> : <span className="text-muted">—</span>}
+                          {a.contract_number && <p className="text-[10px] text-muted font-mono">{a.contract_number}</p>}
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-muted">{a.location || "—"}</td>
+                        <td className="px-4 py-2.5 text-xs text-muted whitespace-nowrap">{a.install_date || "—"}</td>
+                        <td className="px-4 py-2.5 text-xs">
+                          {a.warranty_end ? (
+                            <div>
+                              <p className={warrantyExpired ? "text-red-400 font-semibold" : warrantyExpiringSoon ? "text-amber-400 font-semibold" : "text-green-400"}>{a.warranty_end}</p>
+                              {warrantyExpired && <p className="text-[10px] text-red-400">หมดประกัน</p>}
+                              {warrantyExpiringSoon && <p className="text-[10px] text-amber-400">ใกล้หมด</p>}
+                            </div>
+                          ) : <span className="text-muted">—</span>}
+                          {linkedContract && <p className="text-[10px] text-green-400 mt-0.5">📋 MA: {linkedContract.title?.slice(0, 20)}</p>}
+                        </td>
+                        <td className="px-4 py-2.5 text-xs">
+                          {a.pm_next_date
+                            ? <span className={pmDue ? "text-red-400 font-semibold" : "text-muted"}>{pmDue ? "⚠ " : ""}{a.pm_next_date}</span>
+                            : <span className="text-muted">—</span>
+                          }
+                          {a.pm_interval_months && <p className="text-[10px] text-muted">ทุก {a.pm_interval_months} เดือน</p>}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${assetStatusColor[a.status]}`}>{assetStatusLabel[a.status]}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+            )}
+            <div className="text-center">
+              <Link href="/assets" className="text-xs text-accent hover:underline">→ จัดการ Assets ทั้งหมด</Link>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* CONTRACTS */}
       {tab === "contracts" && (
