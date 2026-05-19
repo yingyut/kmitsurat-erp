@@ -100,10 +100,19 @@ export default function SalesPage() {
   async function saveActivity(isPlan = false) {
     if (!actForm.description.trim() && !actForm.expected_outcome?.trim()) return;
     setSaving(true);
-    const { salesActivities, logActivity } = await import("@/lib/firestore");
+    const { salesActivities, projects: projectsCol, logActivity } = await import("@/lib/firestore");
     const data = { ...actForm, is_plan: isPlan };
     try {
       await salesActivities.add(data as unknown as Record<string, unknown>);
+      // Update project's last_activity_date when a real (non-plan) activity is logged
+      if (!isPlan && actForm.project_id && actForm.customer_type !== "prospect") {
+        try {
+          await projectsCol.update(actForm.project_id, {
+            last_activity_date: today,
+            ownership_status: "active",
+          });
+        } catch { /* non-blocking */ }
+      }
       if (!isPlan) {
         try { await logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "create", module: "sales", resource_name: actForm.customer_name || actForm.description.slice(0, 50), details: `บันทึกกิจกรรม: ${actForm.description.slice(0, 80)}` }); } catch {}
       }

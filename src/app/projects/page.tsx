@@ -1,9 +1,44 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import type { Project, Customer, User, ProjectType, ServiceContract } from "@/lib/types";
 import Link from "next/link";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
+
+const OVERVIEW_DATE_LABELS = { all: "ทั้งหมด", month: "เดือนนี้", quarter: "ไตรมาสนี้", year: "ปีนี้" } as const;
+type OverviewDateMode = keyof typeof OVERVIEW_DATE_LABELS;
+
+// Ownership thresholds (days without activity)
+const AT_RISK_DAYS = 30;
+const OPEN_DAYS = 60;
+
+type OwnershipStatus = "active" | "at_risk" | "open" | "pending_transfer" | "none";
+
+function ownershipOf(p: Project): OwnershipStatus {
+  if (p.ownership_status === "pending_transfer") return "pending_transfer";
+  if (p.assigned_to_inactive) return "open";
+  if (!p.last_activity_date) return "none";
+  const days = Math.floor((Date.now() - new Date(p.last_activity_date).getTime()) / 86400000);
+  if (days <= AT_RISK_DAYS) return "active";
+  if (days <= OPEN_DAYS) return "at_risk";
+  return "open";
+}
+
+const OWNERSHIP_BADGE: Record<OwnershipStatus, { label: string; cls: string } | null> = {
+  active:           null,
+  none:             null,
+  at_risk:          { label: "⚠ ขาดการอัปเดต", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+  open:             { label: "🔓 ไม่มีเจ้าของ",  cls: "bg-red-500/10 text-red-400 border-red-500/20" },
+  pending_transfer: { label: "📋 รอโอนงาน",     cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+};
+
+function getProjDate(p: Project): Date | null {
+  const v = (p as unknown as Record<string, unknown>).created_at;
+  if (!v) return null;
+  if (typeof v === "object" && "toDate" in (v as object)) return (v as { toDate(): Date }).toDate();
+  const d = new Date(String(v));
+  return isNaN(d.getTime()) ? null : d;
+}
 
 const contractTypeMeta: Record<string, { label: string; icon: string; color: string }> = {
   product_warranty:      { label: "รับประกันสินค้า",     icon: "🛡️", color: "bg-blue-900/50 text-blue-400" },
@@ -64,6 +99,15 @@ export default function ProjectsPage() {
   // Job type inline add
   const [newTypeName, setNewTypeName] = useState("");
 
+  // Overview / drill-down
+  const [pipelineView, setPipelineView] = useState<"overview" | "list">("overview");
+  const [drillUser, setDrillUser] = useState<string | null>(null);
+  const [overviewDateMode, setOverviewDateMode] = useState<OverviewDateMode>("month");
+
+  // Ownership transfer
+  const [showTransferModal, setShowTransferModal] = useState<Project | null>(null);
+  const [transferNote, setTransferNote] = useState("");
+
   // Filtered customers for search
   const filteredCusts = custSearch ? custs.filter(c => c.company_name.toLowerCase().includes(custSearch.toLowerCase()) || c.contact_name.toLowerCase().includes(custSearch.toLowerCase())) : custs;
 
@@ -104,11 +148,13 @@ export default function ProjectsPage() {
     return contractsForProject(projectId).length;
   }
 
-  useEffect(() => { setMounted(true); load(); }, []);
-
   // Data isolation: new roles with only view_own_projects see their own pipeline only
   const ownProjectsOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_projects");
+  const canManage = hasPermission("view_all_projects");
   const baseList = ownProjectsOnly ? list.filter(p => p.assigned_to === currentUser?.name) : list;
+
+  useEffect(() => { setMounted(true); load(); }, []);
+  useEffect(() => { if (ownProjectsOnly) setPipelineView("list"); }, [ownProjectsOnly]);
 
   const filtered = baseList.filter(p => {
     const matchSearch = search ? (p.name.toLowerCase().includes(search.toLowerCase()) || p.customer_name.toLowerCase().includes(search.toLowerCase())) : true;
@@ -176,7 +222,8 @@ export default function ProjectsPage() {
       if (editId) {
         await fs.projects.update(editId, saveData as unknown as Record<string, unknown>);
       } else {
-        await fs.projects.add(saveData as unknown as Record<string, unknown>);
+        const newData = { ...saveData, last_activity_date: today, ownership_status: "active" as const };
+        await fs.projects.add(newData as unknown as Record<string, unknown>);
         try { await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "create", module: "projects", resource_name: form.name, details: `สร้างโปรเจกต์: ${form.name}` }); } catch {}
       }
       setForm(emptyForm); setShowForm(false); setEditId(null); await load();
@@ -199,9 +246,108 @@ export default function ProjectsPage() {
   function collapseAll() { setExpandedIds(new Set()); }
   function toggleSummary() { const v = !showSummary; setShowSummary(v); try { localStorage.setItem("pipeline_showSummary", String(v)); } catch {} }
 
-  // Owner filter
-  const owners = [...new Set(list.map(p => p.assigned_to).filter(Boolean))];
-  const filteredFinal = filtered.filter(p => ownerFilter === "all" || p.assigned_to === ownerFilter);
+  // Owner filter — only active users who have at least one project
+  const activeUserNames = new Set(users.map(u => u.name));
+  const owners = [...new Set(list.map(p => p.assigned_to).filter(Boolean))]
+    .filter(name => activeUserNames.has(name));
+  const filteredFinal = filtered.filter(p =>
+    drillUser ? p.assigned_to === drillUser : (ownerFilter === "all" || p.assigned_to === ownerFilter)
+  );
+
+  // Overview stats
+  const overviewFiltered = useMemo(() => {
+    if (overviewDateMode === "all") return list;
+    const now = new Date();
+    const starts: Record<OverviewDateMode, Date> = {
+      all: new Date(0),
+      month: new Date(now.getFullYear(), now.getMonth(), 1),
+      quarter: new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1),
+      year: new Date(now.getFullYear(), 0, 1),
+    };
+    const s = starts[overviewDateMode];
+    return list.filter(p => { const d = getProjDate(p); return !d || d >= s; });
+  }, [list, overviewDateMode]);
+
+  const salesStats = useMemo(() => {
+    const names = [...new Set(overviewFiltered.map(p => p.assigned_to).filter(Boolean))]
+      .filter(name => activeUserNames.size === 0 || activeUserNames.has(name));
+    return names.map(name => {
+      const ps = overviewFiltered.filter(p => p.assigned_to === name);
+      const active = ps.filter(p => !isClosed(p.status));
+      const won = ps.filter(p => p.status === "won");
+      const lost = ps.filter(p => p.status === "lost");
+      const closed = won.length + lost.length;
+      return {
+        name,
+        total: ps.length,
+        totalValue: ps.reduce((s, p) => s + (p.value || 0), 0),
+        active: active.length,
+        activeValue: active.reduce((s, p) => s + (p.value || 0), 0),
+        won: won.length, wonValue: won.reduce((s, p) => s + (p.value || 0), 0),
+        lost: lost.length, lostValue: lost.reduce((s, p) => s + (p.value || 0), 0),
+        winRate: closed > 0 ? Math.round((won.length / closed) * 100) : 0,
+        byStatus: Object.fromEntries(statuses.map(st => {
+          const sp = ps.filter(p => p.status === st);
+          return [st, { count: sp.length, value: sp.reduce((a, p) => a + (p.value || 0), 0) }];
+        })) as Record<string, { count: number; value: number }>,
+      };
+    }).sort((a, b) => b.activeValue - a.activeValue);
+  }, [overviewFiltered, users]);
+
+  const teamKPIs = useMemo(() => {
+    const lost = salesStats.reduce((s, x) => s + x.lost, 0);
+    const won = salesStats.reduce((s, x) => s + x.won, 0);
+    const closed = won + lost;
+    return {
+      active: salesStats.reduce((s, x) => s + x.active, 0),
+      activeValue: salesStats.reduce((s, x) => s + x.activeValue, 0),
+      won, wonValue: salesStats.reduce((s, x) => s + x.wonValue, 0),
+      lost, total: salesStats.reduce((s, x) => s + x.total, 0),
+      winRate: closed > 0 ? Math.round((won / closed) * 100) : 0,
+    };
+  }, [salesStats]);
+
+  async function handleRequestTransfer(project: Project) {
+    if (!transferNote.trim()) return;
+    const fs = await import("@/lib/firestore");
+    await fs.projects.update(project.id!, {
+      ownership_status: "pending_transfer",
+      transfer_requested_by: currentUser?.name ?? "",
+      transfer_requested_at: today,
+      transfer_note: transferNote,
+    });
+    setShowTransferModal(null);
+    setTransferNote("");
+    await load();
+  }
+
+  async function handleApproveTransfer(project: Project) {
+    if (!confirm(`อนุมัติโอนงาน "${project.name}" ให้ ${project.transfer_requested_by} ?`)) return;
+    const fs = await import("@/lib/firestore");
+    await fs.projects.update(project.id!, {
+      assigned_to: project.transfer_requested_by,
+      assigned_to_inactive: false,
+      ownership_status: "active",
+      transfer_requested_by: "",
+      transfer_requested_at: "",
+      transfer_note: "",
+      last_activity_date: today,
+    });
+    try { await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "update", module: "projects", resource_name: project.name, details: `โอนงาน: ${project.name} → ${project.transfer_requested_by}` }); } catch {}
+    await load();
+  }
+
+  async function handleRejectTransfer(project: Project) {
+    if (!confirm(`ปฏิเสธคำขอโอนงาน "${project.name}" ?`)) return;
+    const fs = await import("@/lib/firestore");
+    await fs.projects.update(project.id!, {
+      ownership_status: project.assigned_to_inactive ? "open" : "active",
+      transfer_requested_by: "",
+      transfer_requested_at: "",
+      transfer_note: "",
+    });
+    await load();
+  }
 
   async function markReminderSent(id: string) {
     const fs = await import("@/lib/firestore");
@@ -213,13 +359,199 @@ export default function ProjectsPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-start justify-between mb-4 gap-4">
         <div>
           <h1 className="text-xl font-bold" title="Sales Pipeline / โอกาสขาย">Sales Pipeline</h1>
           <p className="text-xs text-muted">โอกาสขาย / ดีล — ติดตามสถานะ Lead → Won/Lost วางแผน Re-engage</p>
         </div>
-        <button onClick={openAdd} title="เพิ่มโปรเจคใหม่" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ โปรเจคใหม่</button>
+        <div className="flex items-center gap-2 shrink-0">
+          {!ownProjectsOnly && (
+            <div className="flex bg-card border border-border/50 rounded-lg p-0.5">
+              <button onClick={() => { setPipelineView("overview"); setDrillUser(null); }}
+                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${pipelineView === "overview" ? "bg-accent text-white" : "text-muted/60 hover:text-foreground"}`}>
+                🏢 ภาพรวมทีม
+              </button>
+              <button onClick={() => setPipelineView("list")}
+                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${pipelineView === "list" ? "bg-accent text-white" : "text-muted/60 hover:text-foreground"}`}>
+                📋 Pipeline
+              </button>
+            </div>
+          )}
+          <button onClick={openAdd} title="เพิ่มโปรเจคใหม่" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ โปรเจคใหม่</button>
+        </div>
       </div>
+
+      {/* ── TEAM OVERVIEW ── */}
+      {pipelineView === "overview" && !ownProjectsOnly && !loading && (
+        <div className="space-y-4">
+          {/* Date filter */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted font-medium">ช่วงเวลา:</span>
+            {(Object.keys(OVERVIEW_DATE_LABELS) as OverviewDateMode[]).map(m => (
+              <button key={m} onClick={() => setOverviewDateMode(m)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${overviewDateMode === m ? "bg-accent text-white" : "bg-muted/10 text-muted/70 hover:bg-muted/20"}`}>
+                {OVERVIEW_DATE_LABELS[m]}
+              </button>
+            ))}
+          </div>
+
+          {/* Team KPIs */}
+          <div className="grid grid-cols-4 gap-3">
+            <div className="rounded-xl bg-card border border-border p-4">
+              <p className="text-xs text-muted/60 mb-1">Active Pipeline</p>
+              <p className="text-2xl font-bold text-blue-400">{teamKPIs.active}</p>
+              <p className="text-xs text-muted mt-0.5">฿{(teamKPIs.activeValue / 1e6).toFixed(1)}M</p>
+            </div>
+            <div className="rounded-xl bg-card border border-border p-4">
+              <p className="text-xs text-muted/60 mb-1">Won</p>
+              <p className="text-2xl font-bold text-green-400">{teamKPIs.won}</p>
+              <p className="text-xs text-muted mt-0.5">฿{(teamKPIs.wonValue / 1e6).toFixed(1)}M</p>
+            </div>
+            <div className="rounded-xl bg-card border border-border p-4">
+              <p className="text-xs text-muted/60 mb-1">Win Rate ทีม</p>
+              <p className="text-2xl font-bold">{teamKPIs.winRate}<span className="text-base">%</span></p>
+              <p className="text-xs text-muted mt-0.5">{teamKPIs.won} won / {teamKPIs.won + teamKPIs.lost} closed</p>
+            </div>
+            <div className="rounded-xl bg-card border border-border p-4">
+              <p className="text-xs text-muted/60 mb-1">ดีลทั้งหมด</p>
+              <p className="text-2xl font-bold">{teamKPIs.total}</p>
+              <p className="text-xs text-muted mt-0.5">{salesStats.length} เซลล์</p>
+            </div>
+          </div>
+
+          {/* Sales rep cards */}
+          {salesStats.length === 0 ? (
+            <div className="rounded-xl bg-card border border-border p-8 text-center text-muted text-sm">
+              ยังไม่มีข้อมูลสำหรับช่วงเวลานี้
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {salesStats.map(s => (
+                <button key={s.name}
+                  onClick={() => { setDrillUser(s.name); setPipelineView("list"); setOwnerFilter("all"); setStatusFilter("all"); setSearch(""); }}
+                  className="text-left rounded-xl bg-card border border-border p-5 hover:border-accent/50 hover:bg-card-hover transition-all group">
+                  {/* Header */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center text-accent font-bold text-base shrink-0">
+                      {s.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate">{s.name}</p>
+                      <p className="text-xs text-muted">{s.total} deals · {OVERVIEW_DATE_LABELS[overviewDateMode]}</p>
+                    </div>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${s.winRate >= 60 ? "bg-green-500/10 text-green-400 border-green-500/20" : s.winRate >= 40 ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" : "bg-muted/10 text-muted border-border"}`}>
+                      {s.winRate}%
+                    </span>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-3 gap-2 mb-4 text-center">
+                    <div className="rounded-lg bg-blue-500/5 border border-blue-500/10 py-2">
+                      <p className="text-lg font-bold text-blue-400 leading-tight">{s.active}</p>
+                      <p className="text-[10px] text-muted/70">Active</p>
+                      <p className="text-[10px] text-blue-400/70">฿{(s.activeValue / 1e6).toFixed(1)}M</p>
+                    </div>
+                    <div className="rounded-lg bg-green-500/5 border border-green-500/10 py-2">
+                      <p className="text-lg font-bold text-green-400 leading-tight">{s.won}</p>
+                      <p className="text-[10px] text-muted/70">Won</p>
+                      <p className="text-[10px] text-green-400/70">฿{(s.wonValue / 1e6).toFixed(1)}M</p>
+                    </div>
+                    <div className="rounded-lg bg-red-500/5 border border-red-500/10 py-2">
+                      <p className="text-lg font-bold text-red-400 leading-tight">{s.lost}</p>
+                      <p className="text-[10px] text-muted/70">Lost</p>
+                      <p className="text-[10px] text-red-400/70">฿{(s.lostValue / 1e6).toFixed(1)}M</p>
+                    </div>
+                  </div>
+
+                  {/* Mini funnel */}
+                  {s.total > 0 && (
+                    <div>
+                      <div className="flex rounded-md overflow-hidden h-4 mb-1.5">
+                        {statuses.filter(st => s.byStatus[st]?.count > 0).map(st => {
+                          const cnt = s.byStatus[st]?.count ?? 0;
+                          const pct = (cnt / s.total) * 100;
+                          const colors: Record<string, string> = { lead: "bg-gray-500", opportunity: "bg-blue-500", proposal: "bg-purple-500", negotiation: "bg-yellow-500", won: "bg-green-500", lost: "bg-red-500" };
+                          return <div key={st} className={`${colors[st]} flex items-center justify-center text-[8px] text-white font-medium`}
+                            style={{ width: `${Math.max(pct, 8)}%` }} title={`${statusLabels[st]}: ${cnt}`}>{cnt}</div>;
+                        })}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {statuses.filter(st => s.byStatus[st]?.count > 0).map(st => (
+                          <span key={st} className={`text-[9px] px-1 rounded ${statusColor[st]}`}>{statusLabels[st]} {s.byStatus[st].count}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Active share bar */}
+                  {teamKPIs.activeValue > 0 && s.active > 0 && (
+                    <div className="mt-3">
+                      <div className="flex justify-between text-[10px] text-muted/60 mb-1">
+                        <span>สัดส่วน Active</span>
+                        <span>{Math.round((s.activeValue / teamKPIs.activeValue) * 100)}%</span>
+                      </div>
+                      <div className="bg-muted/15 rounded-full h-1">
+                        <div className="bg-accent rounded-full h-1 transition-all"
+                          style={{ width: `${Math.min((s.activeValue / teamKPIs.activeValue) * 100, 100)}%` }} />
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-accent/60 group-hover:text-accent mt-3 text-right">คลิกเพื่อดู Pipeline →</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── PIPELINE VIEW ── */}
+      {(pipelineView === "list" || ownProjectsOnly) && (<>
+
+      {/* Drill-down header */}
+      {drillUser && (
+        <div className="flex items-center gap-3 mb-4 rounded-xl bg-card border border-border px-4 py-3">
+          <button onClick={() => { setDrillUser(null); setPipelineView("overview"); }}
+            className="text-sm text-accent hover:underline shrink-0">← ภาพรวมทีม</button>
+          <span className="text-muted/30">|</span>
+          <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-accent font-bold text-sm shrink-0">
+            {drillUser.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="font-semibold text-sm">{drillUser}</p>
+            <p className="text-[11px] text-muted">
+              {list.filter(p => p.assigned_to === drillUser).length} deals ·&nbsp;
+              Active {list.filter(p => p.assigned_to === drillUser && !isClosed(p.status)).length} ·&nbsp;
+              Won {list.filter(p => p.assigned_to === drillUser && p.status === "won").length}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Transfer Requests — manager/admin only */}
+      {canManage && !drillUser && (() => {
+        const pending = list.filter(p => p.ownership_status === "pending_transfer");
+        if (pending.length === 0) return null;
+        return (
+          <div className="space-y-2 mb-4">
+            <p className="text-xs font-semibold text-blue-400">📋 คำขอโอนงาน ({pending.length} รายการ)</p>
+            {pending.map(p => (
+              <div key={p.id} className="rounded-lg bg-blue-900/20 border border-blue-800 px-4 py-3 flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{p.name}</p>
+                  <p className="text-xs text-muted">{p.customer_name} · เจ้าของเดิม: {p.assigned_to || "ไม่มีเจ้าของ"}</p>
+                  <p className="text-xs text-blue-400 mt-0.5">คำขอจาก: <b>{p.transfer_requested_by}</b>{p.transfer_requested_at && ` · ${p.transfer_requested_at}`}</p>
+                  {p.transfer_note && <p className="text-xs text-muted mt-0.5">เหตุผล: {p.transfer_note}</p>}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => handleApproveTransfer(p)} className="text-xs bg-green-800/50 text-green-400 border border-green-700/50 rounded px-3 py-1.5 hover:bg-green-800/80">✓ อนุมัติ</button>
+                  <button onClick={() => handleRejectTransfer(p)} className="text-xs bg-red-800/50 text-red-400 border border-red-700/50 rounded px-3 py-1.5 hover:bg-red-800/80">✗ ปฏิเสธ</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Alerts */}
       {(reEngageAlerts.length > 0 || reminderAlerts.length > 0) && (
@@ -566,7 +898,7 @@ export default function ProjectsPage() {
 
       {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
 
-      {/* Project list — collapsible cards */}
+      {/* Project list */}
       {filteredFinal.length === 0 ? <p className="text-muted text-sm">ไม่พบโปรเจค</p> : (
         <div className="space-y-2.5">
           {filteredFinal.map(p => {
@@ -612,6 +944,7 @@ export default function ProjectsPage() {
                     {/* Status badge — bigger */}
                     <div className="flex flex-col items-end gap-1.5 shrink-0 min-w-[90px]">
                       <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusColor[p.status]}`}>{statusLabels[p.status]}</span>
+                      {(() => { const b = OWNERSHIP_BADGE[ownershipOf(p)]; return b ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium border ${b.cls}`}>{b.label}</span> : null; })()}
                       <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                         <button onClick={() => openEdit(p)} className="text-[10px] text-accent hover:underline">แก้ไข</button>
                         <button onClick={() => handleDelete(p.id!, p.name)} className="text-[10px] text-danger hover:underline">ลบ</button>
@@ -659,11 +992,27 @@ export default function ProjectsPage() {
                           </div>
                         )}
                         {/* Quick actions */}
-                        <div className="flex gap-1.5 pt-1">
+                        <div className="flex gap-1.5 pt-1 flex-wrap">
                           <button onClick={() => setDetail(p)} className="text-[10px] bg-card border border-border rounded px-2 py-1 hover:bg-card-hover">📄 Detail</button>
                           <Link href="/quotations" className="text-[10px] bg-card border border-border rounded px-2 py-1 hover:bg-card-hover">💰 QT</Link>
                           <Link href="/presale" className="text-[10px] bg-card border border-border rounded px-2 py-1 hover:bg-card-hover">📋 PS</Link>
                           <Link href="/service" className="text-[10px] bg-card border border-border rounded px-2 py-1 hover:bg-card-hover">🔧 SV</Link>
+                          {(() => {
+                            const os = ownershipOf(p);
+                            const isOwner = p.assigned_to === currentUser?.name && !p.assigned_to_inactive;
+                            if (isOwner || os === "active" || os === "none") return null;
+                            if (p.ownership_status === "pending_transfer") {
+                              return p.transfer_requested_by === currentUser?.name
+                                ? <span className="text-[10px] text-blue-400 border border-blue-500/30 rounded px-2 py-1">📋 รออนุมัติ</span>
+                                : null;
+                            }
+                            return (
+                              <button onClick={e => { e.stopPropagation(); setShowTransferModal(p); setTransferNote(""); }}
+                                className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded px-2 py-1 hover:bg-amber-500/20">
+                                🙋 ขอรับงาน
+                              </button>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -676,6 +1025,38 @@ export default function ProjectsPage() {
       )}
 
       </>)}
+
+      </>)}
+
+      {/* Transfer Request Modal */}
+      {showTransferModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => { setShowTransferModal(null); setTransferNote(""); }}>
+          <div className="rounded-2xl bg-card border border-border p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-bold mb-1">ขอรับงาน</h3>
+            <p className="text-sm text-muted mb-4">{showTransferModal.name} · {showTransferModal.customer_name}</p>
+            <div className="mb-4">
+              <label className="text-xs text-muted block mb-1.5">เหตุผลในการขอรับงาน *</label>
+              <textarea
+                value={transferNote}
+                onChange={e => setTransferNote(e.target.value)}
+                placeholder="เช่น มีความสัมพันธ์กับลูกค้า, เคยทำโปรเจคที่คล้ายกัน, ต้องการช่วยดูแลลูกค้ารายนี้"
+                className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent min-h-[80px] resize-y"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => handleRequestTransfer(showTransferModal)} disabled={!transferNote.trim()}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">
+                ส่งคำขอ
+              </button>
+              <button onClick={() => { setShowTransferModal(null); setTransferNote(""); }}
+                className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

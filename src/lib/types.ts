@@ -197,6 +197,13 @@ export interface Project {
   reminder_to_email: string;
   reminder_cc_email: string;
   reminder_note: string;
+  // Ownership / activity tracking
+  last_activity_date?: string;       // YYYY-MM-DD — auto-updated when an activity is logged
+  ownership_status?: "active" | "at_risk" | "open" | "pending_transfer";
+  assigned_to_inactive?: boolean;    // true when the assigned user has been deleted
+  transfer_requested_by?: string;
+  transfer_requested_at?: string;
+  transfer_note?: string;
 }
 
 export interface ProjectTask {

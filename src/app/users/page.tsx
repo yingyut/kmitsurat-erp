@@ -265,10 +265,18 @@ export default function UsersPage() {
   }
 
   async function deleteUser(id: string, name: string) {
-    if (!confirm(`ลบผู้ใช้ "${name}" ?`)) return;
+    if (!confirm(`ลบผู้ใช้ "${name}" ?\n\nโปรเจคที่ยังค้างอยู่ของ ${name} จะถูกปล่อยเป็น "ไม่มีเจ้าของ" และเปิดให้เซลล์ท่านอื่นขอรับงานได้`)) return;
     const fs = await import("@/lib/firestore");
+    // Flag active projects belonging to this user as "open"
+    try {
+      const allProjects = await fs.projects.list();
+      const userProjects = allProjects.filter(p => p.assigned_to === name && !["won", "lost"].includes(p.status));
+      await Promise.all(userProjects.map(p =>
+        fs.projects.update(p.id!, { assigned_to_inactive: true, ownership_status: "open" as const })
+      ));
+    } catch (e) { console.error("project flag error", e); }
     await fs.users.remove(id);
-    await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "users", action: "delete", resource_id: id, resource_name: name, details: `ลบผู้ใช้: ${name}` });
+    await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "users", action: "delete", resource_id: id, resource_name: name, details: `ลบผู้ใช้: ${name} (โปรเจคที่เกี่ยวข้องถูก flag เป็น open)` });
     if (selectedUser?.id === id) setSelectedUser(null);
     await load();
   }

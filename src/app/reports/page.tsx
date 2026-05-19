@@ -5,13 +5,28 @@ import { useCurrentUser } from "@/lib/UserContext";
 // ── types ─────────────────────────────────────────────────────
 type Row = Record<string, unknown>;
 type ColDef = { key: string; label: string };
+type DateMode = "all" | "month" | "quarter" | "year" | "custom";
+
+interface DateRange { start: Date | null; end: Date | null }
 
 interface ReportDef {
   key: string;
   name: string;
   desc: string;
   cols: ColDef[];
+  dateField?: string;
   fetch: () => Promise<Row[]>;
+}
+
+interface SummaryData {
+  qt_count: number;
+  qt_total_selling: number;
+  qt_gross_profit: number;
+  qt_gp_pct: number;
+  svc_count: number;
+  svc_revenue: number;
+  svc_gp: number;
+  act_count: number;
 }
 
 // ── helpers ───────────────────────────────────────────────────
@@ -100,12 +115,56 @@ function exportPDF(rows: Row[], cols: ColDef[], name: string) {
   w.print();
 }
 
+// ── date filter helpers ───────────────────────────────────────
+function computeDateRange(mode: DateMode, customStart: string, customEnd: string): DateRange {
+  const now = new Date();
+  if (mode === "all") return { start: null, end: null };
+  if (mode === "month") return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: now };
+  if (mode === "quarter") {
+    const q = Math.floor(now.getMonth() / 3);
+    return { start: new Date(now.getFullYear(), q * 3, 1), end: now };
+  }
+  if (mode === "year") return { start: new Date(now.getFullYear(), 0, 1), end: now };
+  return {
+    start: customStart ? new Date(customStart) : null,
+    end: customEnd ? new Date(customEnd + "T23:59:59") : now,
+  };
+}
+
+function rowDate(r: Row, field: string): Date | null {
+  const v = r[field];
+  if (!v) return null;
+  if (typeof v === "object" && "toDate" in (v as object)) return (v as { toDate(): Date }).toDate();
+  const d = new Date(String(v));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function applyDateFilter(rows: Row[], field: string, range: DateRange): Row[] {
+  if (!range.start && !range.end) return rows;
+  return rows.filter(r => {
+    const d = rowDate(r, field);
+    if (!d) return true;
+    if (range.start && d < range.start) return false;
+    if (range.end && d > range.end) return false;
+    return true;
+  });
+}
+
+const DATE_MODES: { key: DateMode; label: string }[] = [
+  { key: "all",     label: "ทั้งหมด" },
+  { key: "month",   label: "เดือนนี้" },
+  { key: "quarter", label: "ไตรมาสนี้" },
+  { key: "year",    label: "ปีนี้" },
+  { key: "custom",  label: "กำหนดเอง" },
+];
+
 // ── report definitions ────────────────────────────────────────
 const REPORTS: ReportDef[] = [
   {
     key: "sales_activities",
     name: "Sales Activities Report",
     desc: "All sales activities with filters by date, user, customer",
+    dateField: "created_at",
     cols: [
       { key: "type",           label: "Type" },
       { key: "customer_name",  label: "Customer" },
@@ -125,6 +184,7 @@ const REPORTS: ReportDef[] = [
     key: "quotations",
     name: "Quotation Summary",
     desc: "Quotation list with total selling, GP%, status breakdown",
+    dateField: "created_at",
     cols: [
       { key: "quotation_number", label: "Quotation #" },
       { key: "customer_name",    label: "Customer" },
@@ -147,6 +207,7 @@ const REPORTS: ReportDef[] = [
     key: "service_tickets",
     name: "Service Tickets Report",
     desc: "Service history by customer, technician, type",
+    dateField: "service_date",
     cols: [
       { key: "customer_name", label: "Customer" },
       { key: "project_name",  label: "Project" },
@@ -216,6 +277,7 @@ const REPORTS: ReportDef[] = [
     key: "projects",
     name: "Project Pipeline",
     desc: "Projects by status with value and probability",
+    dateField: "created_at",
     cols: [
       { key: "name",                label: "Project" },
       { key: "customer_name",       label: "Customer" },
@@ -241,11 +303,47 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [dateMode, setDateMode] = useState<DateMode>("month");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [summary, setSummary] = useState<SummaryData | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
   useEffect(() => { setMounted(true); }, []);
 
-  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
-  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
-  if (!canView) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
+  const dateRange = computeDateRange(dateMode, customStart, customEnd);
+
+  const loadSummary = useCallback(async () => {
+    setSummaryLoading(true); setSummary(null);
+    try {
+      const fs = await import("@/lib/firestore");
+      const [qts, svcs, acts] = await Promise.all([
+        fs.quotations.list(),
+        fs.serviceTickets.list(),
+        fs.salesActivities.list(),
+      ]);
+      const dr = computeDateRange(dateMode, customStart, customEnd);
+      const fqts = applyDateFilter(qts as unknown as Row[], "created_at", dr);
+      const fsvcs = applyDateFilter(svcs as unknown as Row[], "service_date", dr);
+      const facts = applyDateFilter(acts as unknown as Row[], "created_at", dr);
+      const qt_total = fqts.reduce((s, r) => s + (Number(r.total_selling) || 0), 0);
+      const qt_gp = fqts.reduce((s, r) => s + (Number(r.gross_profit) || 0), 0);
+      setSummary({
+        qt_count: fqts.length,
+        qt_total_selling: qt_total,
+        qt_gross_profit: qt_gp,
+        qt_gp_pct: qt_total > 0 ? (qt_gp / qt_total) * 100 : 0,
+        svc_count: fsvcs.length,
+        svc_revenue: fsvcs.reduce((s, r) => s + (Number(r.service_value) || 0), 0),
+        svc_gp: fsvcs.reduce((s, r) => s + (Number(r.gross_profit) || 0), 0),
+        act_count: facts.length,
+      });
+    } catch (e) {
+      setError(`Summary failed: ${e instanceof Error ? e.message : "unknown"}`);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [dateMode, customStart, customEnd]);
 
   const handleExport = useCallback(
     async (reportKey: string, format: "csv" | "excel" | "pdf") => {
@@ -255,59 +353,130 @@ export default function ReportsPage() {
       setLoading(loadKey);
       setError(null);
       try {
-        const rows = await report.fetch();
+        const raw = await report.fetch();
+        const rows = report.dateField ? applyDateFilter(raw, report.dateField, dateRange) : raw;
         if (rows.length === 0) {
-          setError(`No data found for "${report.name}"`);
+          setError(`ไม่พบข้อมูลใน "${report.name}" สำหรับช่วงวันที่ที่เลือก`);
           return;
         }
-        if (format === "csv")   await exportCSV(rows, report.cols, report.name);
-        if (format === "excel") await exportExcel(rows, report.cols, report.name);
-        if (format === "pdf")   exportPDF(rows, report.cols, report.name);
+        const suffix = dateMode === "all" ? "" : ` (${DATE_MODES.find(d => d.key === dateMode)?.label ?? dateMode})`;
+        if (format === "csv")   await exportCSV(rows, report.cols, report.name + suffix);
+        if (format === "excel") await exportExcel(rows, report.cols, report.name + suffix);
+        if (format === "pdf")   exportPDF(rows, report.cols, report.name + suffix);
       } catch (e) {
         setError(`Export failed: ${e instanceof Error ? e.message : "Unknown error"}`);
       } finally {
         setLoading(null);
       }
     },
-    []
+    [dateRange, dateMode]
   );
 
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canView) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
+
+  const fmt = (n: number) => n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
+
   return (
-    <div className="p-6">
-      <div className="mb-5">
+    <div className="p-6 space-y-5">
+      <div>
         <h1 className="text-xl font-bold">Reports / Export</h1>
-        <p className="text-sm text-muted mt-1">Select a report and choose export format</p>
+        <p className="text-sm text-muted mt-1">กรองตามช่วงเวลาและ Export รายงาน</p>
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive">
-          {error}
-          <button
-            className="ml-3 underline text-xs opacity-70 hover:opacity-100"
-            onClick={() => setError(null)}
-          >
-            Dismiss
+      {/* Date Filter Bar */}
+      <div className="rounded-xl bg-card border border-border p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-muted font-medium whitespace-nowrap">ช่วงเวลา:</span>
+          <div className="flex gap-1 flex-wrap">
+            {DATE_MODES.map(m => (
+              <button key={m.key} onClick={() => setDateMode(m.key)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${dateMode === m.key ? "bg-accent text-white" : "bg-muted/10 text-muted/70 hover:bg-muted/20"}`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+          {dateMode === "custom" && (
+            <div className="flex items-center gap-2">
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                className="rounded-lg bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent" />
+              <span className="text-xs text-muted">—</span>
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                className="rounded-lg bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent" />
+            </div>
+          )}
+          <button onClick={loadSummary} disabled={summaryLoading}
+            className="rounded-lg bg-accent text-accent-foreground px-4 py-1.5 text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity ml-auto">
+            {summaryLoading ? "กำลังโหลด..." : "คำนวณสรุป"}
           </button>
+        </div>
+        {dateMode !== "all" && (
+          <p className="text-[11px] text-muted/60 mt-2">
+            {dateRange.start ? `ตั้งแต่ ${dateRange.start.toLocaleDateString("th-TH")}` : ""}{dateRange.end ? ` ถึง ${dateRange.end.toLocaleDateString("th-TH")}` : ""}
+            {" · "}Export จะกรองข้อมูลตามช่วงเวลานี้ด้วย
+          </p>
+        )}
+      </div>
+
+      {/* Summary Panel */}
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-xl bg-card border border-border p-4">
+            <p className="text-xs text-muted/60 mb-1">ยอดขาย (ใบเสนอราคา)</p>
+            <p className="text-xl font-bold text-foreground">฿{fmt(summary.qt_total_selling)}</p>
+            <p className="text-[11px] text-muted/60 mt-0.5">{summary.qt_count} ใบ</p>
+          </div>
+          <div className="rounded-xl bg-card border border-border p-4">
+            <p className="text-xs text-muted/60 mb-1">กำไรขั้นต้น</p>
+            <p className="text-xl font-bold text-green-400">฿{fmt(summary.qt_gross_profit)}</p>
+            <p className="text-[11px] text-muted/60 mt-0.5">GP {summary.qt_gp_pct.toFixed(1)}%</p>
+          </div>
+          <div className="rounded-xl bg-card border border-border p-4">
+            <p className="text-xs text-muted/60 mb-1">รายได้บริการ</p>
+            <p className="text-xl font-bold text-blue-400">฿{fmt(summary.svc_revenue)}</p>
+            <p className="text-[11px] text-muted/60 mt-0.5">{summary.svc_count} ใบงาน · GP ฿{fmt(summary.svc_gp)}</p>
+          </div>
+          <div className="rounded-xl bg-card border border-border p-4">
+            <p className="text-xs text-muted/60 mb-1">กิจกรรมงานขาย</p>
+            <p className="text-xl font-bold text-foreground">{fmt(summary.act_count)}</p>
+            <p className="text-[11px] text-muted/60 mt-0.5">รายการ</p>
+          </div>
         </div>
       )}
 
+      {error && (
+        <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-4 py-3 text-sm text-destructive flex items-center justify-between">
+          {error}
+          <button className="ml-3 underline text-xs opacity-70 hover:opacity-100" onClick={() => setError(null)}>ปิด</button>
+        </div>
+      )}
+
+      {/* Report Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {REPORTS.map((r) => (
           <div key={r.key} className="rounded-xl bg-card border border-border p-5">
-            <p className="text-sm font-medium mb-1">{r.name}</p>
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <p className="text-sm font-medium">{r.name}</p>
+              {r.dateField && dateMode !== "all" && (
+                <span className="rounded px-1.5 py-0.5 text-[10px] bg-accent/10 text-accent border border-accent/20 shrink-0">
+                  {DATE_MODES.find(d => d.key === dateMode)?.label}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted mb-4">{r.desc}</p>
             <div className="flex gap-2 flex-wrap">
-              {(["csv", "excel", "pdf"] as const).map((fmt) => {
-                const lk = `${r.key}-${fmt}`;
+              {(["csv", "excel", "pdf"] as const).map((fmt2) => {
+                const lk = `${r.key}-${fmt2}`;
                 const busy = loading === lk;
                 return (
                   <button
-                    key={fmt}
-                    onClick={() => handleExport(r.key, fmt)}
+                    key={fmt2}
+                    onClick={() => handleExport(r.key, fmt2)}
                     disabled={loading !== null}
                     className="rounded-lg border border-border px-3 py-1.5 text-xs hover:bg-card-hover disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
                   >
-                    {busy ? "Loading..." : `Export ${fmt.toUpperCase()}`}
+                    {busy ? "Loading..." : `Export ${fmt2.toUpperCase()}`}
                   </button>
                 );
               })}

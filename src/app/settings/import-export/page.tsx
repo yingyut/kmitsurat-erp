@@ -99,6 +99,88 @@ const BACKUP_COLLECTIONS = [
   "users", "teams", "project_types", "product_categories", "job_requests",
 ];
 
+// ── sample data ───────────────────────────────────────────────
+type SampleProduct = { code: string; name: string; brand: string; category: string; unit: string; cost_price: number; selling_price: number; type: string; active: boolean };
+type SampleAsset = { km_number: string; serial_number: string; device_model: string; brand: string; category: string; customer_name: string; customer_id: string; project_name: string; install_date: string; location: string; technician: string; warranty_start: string; warranty_end: string; sla_level: string; status: string; notes: string; pm_interval_months: number; pm_last_date: string; pm_next_date: string; pm_assigned_to: string };
+
+const SAMPLE_PRODUCTS: SampleProduct[] = [
+  { code: "CAM-HIK-2CD2143", name: "Hikvision DS-2CD2143G2-I กล้อง IP 4MP IR 40m", brand: "Hikvision", category: "Camera", unit: "ตัว", cost_price: 2200, selling_price: 3200, type: "product", active: true },
+  { code: "CAM-HIK-2CD2183", name: "Hikvision DS-2CD2183G2-I กล้อง IP 8MP IR 40m", brand: "Hikvision", category: "Camera", unit: "ตัว", cost_price: 3800, selling_price: 5500, type: "product", active: true },
+  { code: "CAM-HIK-2CD2347", name: "Hikvision DS-2CD2347G2-LU กล้อง IP ColorVu 4MP", brand: "Hikvision", category: "Camera", unit: "ตัว", cost_price: 4200, selling_price: 6200, type: "product", active: true },
+  { code: "CAM-DAH-SDT", name: "Dahua SD49425XB-HNR กล้อง IP Speed Dome 4MP AI", brand: "Dahua", category: "Camera", unit: "ตัว", cost_price: 12000, selling_price: 17500, type: "product", active: true },
+  { code: "NVR-HIK-7616NI", name: "Hikvision DS-7616NI-K2/16P NVR 16CH PoE 4K", brand: "Hikvision", category: "NVR", unit: "เครื่อง", cost_price: 8500, selling_price: 12500, type: "product", active: true },
+  { code: "NVR-HIK-7608NI", name: "Hikvision DS-7608NI-Q2/8P NVR 8CH PoE 4K", brand: "Hikvision", category: "NVR", unit: "เครื่อง", cost_price: 5500, selling_price: 8200, type: "product", active: true },
+  { code: "SW-CSC-SG35028", name: "Cisco SG350-28 Managed Switch 24-Port Gigabit", brand: "Cisco", category: "Switch", unit: "เครื่อง", cost_price: 14500, selling_price: 20000, type: "product", active: true },
+  { code: "SW-CSC-CBS35024", name: "Cisco CBS350-24T-4G Managed Switch 24-Port", brand: "Cisco", category: "Switch", unit: "เครื่อง", cost_price: 9800, selling_price: 14500, type: "product", active: true },
+  { code: "SW-DLK-DGS1210", name: "D-Link DGS-1210-28 Smart Managed Switch 24-Port", brand: "D-Link", category: "Switch", unit: "เครื่อง", cost_price: 4200, selling_price: 6500, type: "product", active: true },
+  { code: "AP-UBI-U6LITE", name: "Ubiquiti UniFi U6 Lite Dual-Band Wi-Fi 6 AP", brand: "Ubiquiti", category: "Access Point", unit: "ตัว", cost_price: 2800, selling_price: 4200, type: "product", active: true },
+  { code: "AP-UBI-U6PRO", name: "Ubiquiti UniFi U6 Pro Dual-Band Wi-Fi 6 AP", brand: "Ubiquiti", category: "Access Point", unit: "ตัว", cost_price: 4500, selling_price: 6800, type: "product", active: true },
+  { code: "SRV-HP-DL380G10", name: "HP ProLiant DL380 Gen10 Rack Server 2U", brand: "HP", category: "Server", unit: "เครื่อง", cost_price: 85000, selling_price: 120000, type: "product", active: true },
+  { code: "SRV-DELL-R750", name: "Dell PowerEdge R750 Rack Server 2U Dual Xeon", brand: "Dell", category: "Server", unit: "เครื่อง", cost_price: 95000, selling_price: 135000, type: "product", active: true },
+  { code: "UPS-APC-SRT1500", name: "APC Smart-UPS SRT 1500VA Online UPS", brand: "APC", category: "UPS", unit: "เครื่อง", cost_price: 18000, selling_price: 25000, type: "product", active: true },
+  { code: "UPS-APC-BR1200", name: "APC Back-UPS BR1200SI 1200VA Line-Interactive", brand: "APC", category: "UPS", unit: "เครื่อง", cost_price: 4500, selling_price: 6500, type: "product", active: true },
+  { code: "CABLE-CAT6-BOX", name: "สายแลน CAT6 UTP กล่อง 305 เมตร", brand: "Panduit", category: "Cable", unit: "กล่อง", cost_price: 1200, selling_price: 1800, type: "product", active: true },
+  { code: "PP-AMP-24P", name: "AMP CAT6 Patch Panel 24-Port 1U", brand: "AMP", category: "Infrastructure", unit: "ชุด", cost_price: 1800, selling_price: 2800, type: "product", active: true },
+  { code: "SVC-INSTALL-CAM", name: "ค่าแรงติดตั้งกล้อง CCTV (ต่อจุด)", brand: "-", category: "Service", unit: "จุด", cost_price: 350, selling_price: 600, type: "service", active: true },
+  { code: "SVC-INSTALL-NET", name: "ค่าแรงติดตั้งระบบ Network (ต่อจุด)", brand: "-", category: "Service", unit: "จุด", cost_price: 300, selling_price: 500, type: "service", active: true },
+  { code: "SVC-MA-ANNUAL", name: "ค่าบำรุงรักษาระบบ (MA) รายปี", brand: "-", category: "Service", unit: "ระบบ", cost_price: 5000, selling_price: 9000, type: "service", active: true },
+];
+
+const SAMPLE_ASSETS: SampleAsset[] = [
+  { km_number: "KM-2024-0001", serial_number: "HIK24000123", device_model: "DS-2CD2143G2-I", brand: "Hikvision", category: "Camera", customer_name: "บริษัท ทดสอบ จำกัด", customer_id: "", project_name: "ติดตั้งกล้อง CCTV อาคาร A", install_date: "2024-03-15", location: "ชั้น 1 ล็อบบี้", technician: "สมชาย ใจดี", warranty_start: "2024-03-15", warranty_end: "2026-03-14", sla_level: "8x5NBD", status: "active", notes: "", pm_interval_months: 6, pm_last_date: "2025-09-15", pm_next_date: "2026-03-15", pm_assigned_to: "สมชาย ใจดี" },
+  { km_number: "KM-2024-0002", serial_number: "HIK24000124", device_model: "DS-2CD2143G2-I", brand: "Hikvision", category: "Camera", customer_name: "บริษัท ทดสอบ จำกัด", customer_id: "", project_name: "ติดตั้งกล้อง CCTV อาคาร A", install_date: "2024-03-15", location: "ชั้น 1 ทางเข้าหลัก", technician: "สมชาย ใจดี", warranty_start: "2024-03-15", warranty_end: "2026-03-14", sla_level: "8x5NBD", status: "active", notes: "", pm_interval_months: 6, pm_last_date: "2025-09-15", pm_next_date: "2026-03-15", pm_assigned_to: "สมชาย ใจดี" },
+  { km_number: "KM-2024-0003", serial_number: "HIK24NVR001", device_model: "DS-7616NI-K2/16P", brand: "Hikvision", category: "NVR", customer_name: "บริษัท ทดสอบ จำกัด", customer_id: "", project_name: "ติดตั้งกล้อง CCTV อาคาร A", install_date: "2024-03-15", location: "ห้อง Server ชั้น 2", technician: "สมชาย ใจดี", warranty_start: "2024-03-15", warranty_end: "2027-03-14", sla_level: "8x5NBD", status: "active", notes: "HDD 4TB x2", pm_interval_months: 12, pm_last_date: "2025-03-15", pm_next_date: "2026-03-15", pm_assigned_to: "สมชาย ใจดี" },
+  { km_number: "KM-2024-0004", serial_number: "CSC240056789", device_model: "SG350-28", brand: "Cisco", category: "Switch", customer_name: "โรงแรมสุราษฎร์แกรนด์", customer_id: "", project_name: "ระบบ Network โรงแรม", install_date: "2024-06-01", location: "ห้อง MDF ชั้น 1", technician: "วิชัย รักดี", warranty_start: "2024-06-01", warranty_end: "2027-05-31", sla_level: "24x7", status: "active", notes: "Core switch ชั้น 1", pm_interval_months: 6, pm_last_date: "2025-12-01", pm_next_date: "2026-06-01", pm_assigned_to: "วิชัย รักดี" },
+  { km_number: "KM-2024-0005", serial_number: "UBI2024001", device_model: "UniFi U6 Lite", brand: "Ubiquiti", category: "Access Point", customer_name: "โรงแรมสุราษฎร์แกรนด์", customer_id: "", project_name: "ระบบ Network โรงแรม", install_date: "2024-06-01", location: "ชั้น 1 Lobby", technician: "วิชัย รักดี", warranty_start: "2024-06-01", warranty_end: "2025-05-31", sla_level: "8x5NBD", status: "active", notes: "", pm_interval_months: 12, pm_last_date: "2025-06-01", pm_next_date: "2026-06-01", pm_assigned_to: "วิชัย รักดี" },
+  { km_number: "KM-2024-0006", serial_number: "UBI2024002", device_model: "UniFi U6 Lite", brand: "Ubiquiti", category: "Access Point", customer_name: "โรงแรมสุราษฎร์แกรนด์", customer_id: "", project_name: "ระบบ Network โรงแรม", install_date: "2024-06-01", location: "ชั้น 2 ห้องประชุม", technician: "วิชัย รักดี", warranty_start: "2024-06-01", warranty_end: "2025-05-31", sla_level: "8x5NBD", status: "active", notes: "", pm_interval_months: 12, pm_last_date: "2025-06-01", pm_next_date: "2026-06-01", pm_assigned_to: "วิชัย รักดี" },
+  { km_number: "KM-2023-0001", serial_number: "HP23SRV0091", device_model: "ProLiant DL380 Gen10", brand: "HP", category: "Server", customer_name: "โรงพยาบาลเมืองสุราษฎร์", customer_id: "", project_name: "ระบบ Server Virtualization", install_date: "2023-11-20", location: "Data Center ชั้น B1", technician: "ประสิทธิ์ เก่งมาก", warranty_start: "2023-11-20", warranty_end: "2026-11-19", sla_level: "24x7", status: "active", notes: "VMware ESXi 8.0, RAM 256GB", pm_interval_months: 3, pm_last_date: "2026-02-20", pm_next_date: "2026-05-20", pm_assigned_to: "ประสิทธิ์ เก่งมาก" },
+  { km_number: "KM-2023-0002", serial_number: "APC23UPS001", device_model: "Smart-UPS SRT1500", brand: "APC", category: "UPS", customer_name: "โรงพยาบาลเมืองสุราษฎร์", customer_id: "", project_name: "ระบบ Server Virtualization", install_date: "2023-11-20", location: "Data Center ชั้น B1", technician: "ประสิทธิ์ เก่งมาก", warranty_start: "2023-11-20", warranty_end: "2025-11-19", sla_level: "24x7", status: "active", notes: "เปลี่ยนแบตเตอรี่ปี 2026", pm_interval_months: 6, pm_last_date: "2025-11-20", pm_next_date: "2026-05-20", pm_assigned_to: "ประสิทธิ์ เก่งมาก" },
+  { km_number: "KM-2022-0005", serial_number: "DAH22CAM005", device_model: "DS-2CD2183G2-I", brand: "Hikvision", category: "Camera", customer_name: "ห้างสรรพสินค้า วัน", customer_id: "", project_name: "ระบบ CCTV ห้างสรรพสินค้า", install_date: "2022-07-10", location: "ชั้น G ลานจอดรถ", technician: "สมชาย ใจดี", warranty_start: "2022-07-10", warranty_end: "2024-07-09", sla_level: "8x5", status: "active", notes: "ประกันหมดแล้ว — รอต่อ MA", pm_interval_months: 6, pm_last_date: "2025-07-10", pm_next_date: "2026-01-10", pm_assigned_to: "สมชาย ใจดี" },
+  { km_number: "KM-2022-0006", serial_number: "DAH22NVR001", device_model: "DS-7608NI-Q2/8P", brand: "Hikvision", category: "NVR", customer_name: "ห้างสรรพสินค้า วัน", customer_id: "", project_name: "ระบบ CCTV ห้างสรรพสินค้า", install_date: "2022-07-10", location: "ห้องควบคุม ชั้น 3", technician: "สมชาย ใจดี", warranty_start: "2022-07-10", warranty_end: "2025-07-09", sla_level: "8x5", status: "maintenance", notes: "อยู่ระหว่างซ่อม HDD เสีย", pm_interval_months: 12, pm_last_date: "2025-07-10", pm_next_date: "2026-07-10", pm_assigned_to: "สมชาย ใจดี" },
+  { km_number: "KM-2025-0001", serial_number: "CSC25SW0001", device_model: "CBS350-24T-4G", brand: "Cisco", category: "Switch", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", customer_id: "", project_name: "ระบบ Network อาคารเรียน 1", install_date: "2025-01-15", location: "อาคาร 1 ชั้น 1 MDF", technician: "วิชัย รักดี", warranty_start: "2025-01-15", warranty_end: "2028-01-14", sla_level: "8x5NBD", status: "active", notes: "", pm_interval_months: 6, pm_last_date: "2025-07-15", pm_next_date: "2026-01-15", pm_assigned_to: "วิชัย รักดี" },
+  { km_number: "KM-2025-0002", serial_number: "UBI25AP0001", device_model: "UniFi U6 Pro", brand: "Ubiquiti", category: "Access Point", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", customer_id: "", project_name: "ระบบ Network อาคารเรียน 1", install_date: "2025-01-15", location: "อาคาร 1 ชั้น 2", technician: "วิชัย รักดี", warranty_start: "2025-01-15", warranty_end: "2026-01-14", sla_level: "8x5NBD", status: "active", notes: "", pm_interval_months: 12, pm_last_date: "2025-01-15", pm_next_date: "2026-01-15", pm_assigned_to: "วิชัย รักดี" },
+  { km_number: "KM-2025-0003", serial_number: "UBI25AP0002", device_model: "UniFi U6 Pro", brand: "Ubiquiti", category: "Access Point", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", customer_id: "", project_name: "ระบบ Network อาคารเรียน 1", install_date: "2025-01-15", location: "อาคาร 1 ชั้น 3", technician: "วิชัย รักดี", warranty_start: "2025-01-15", warranty_end: "2026-01-14", sla_level: "8x5NBD", status: "active", notes: "", pm_interval_months: 12, pm_last_date: "2025-01-15", pm_next_date: "2026-01-15", pm_assigned_to: "วิชัย รักดี" },
+  { km_number: "KM-2024-0010", serial_number: "APC24UPS010", device_model: "Back-UPS BR1200SI", brand: "APC", category: "UPS", customer_name: "สำนักงานเทศบาลเมืองสุราษฎร์ธานี", customer_id: "", project_name: "ระบบ CCTV เทศบาล", install_date: "2024-09-01", location: "ห้องควบคุม ชั้น 2", technician: "สมชาย ใจดี", warranty_start: "2024-09-01", warranty_end: "2026-08-31", sla_level: "8x5", status: "active", notes: "", pm_interval_months: 12, pm_last_date: "2025-09-01", pm_next_date: "2026-09-01", pm_assigned_to: "สมชาย ใจดี" },
+  { km_number: "KM-2024-0011", serial_number: "DLK24SW001", device_model: "DGS-1210-28", brand: "D-Link", category: "Switch", customer_name: "สำนักงานเทศบาลเมืองสุราษฎร์ธานี", customer_id: "", project_name: "ระบบ Network เทศบาล", install_date: "2024-09-01", location: "ห้อง Server ชั้น 1", technician: "วิชัย รักดี", warranty_start: "2024-09-01", warranty_end: "2026-08-31", sla_level: "8x5", status: "active", notes: "", pm_interval_months: 6, pm_last_date: "2025-09-01", pm_next_date: "2026-03-01", pm_assigned_to: "วิชัย รักดี" },
+];
+
+async function seedSampleProducts(): Promise<{ added: number; skipped: number }> {
+  const fb = await import("firebase/firestore");
+  const { db } = await import("@/lib/firebase");
+  let added = 0; let skipped = 0;
+  // Check existing to avoid duplicates
+  const q = fb.query(fb.collection(db, "products"), fb.where("tenant_id", "==", "kmitsurat"));
+  const snap = await fb.getDocs(q);
+  const existingCodes = new Set(snap.docs.map(d => d.data().code as string));
+  const batch = fb.writeBatch(db);
+  for (const p of SAMPLE_PRODUCTS) {
+    if (existingCodes.has(p.code) && p.code) { skipped++; continue; }
+    const ref = fb.doc(fb.collection(db, "products"));
+    batch.set(ref, { ...p, tenant_id: "kmitsurat", created_at: new Date() });
+    added++;
+  }
+  await batch.commit();
+  return { added, skipped };
+}
+
+async function seedSampleAssets(): Promise<{ added: number; skipped: number }> {
+  const fb = await import("firebase/firestore");
+  const { db } = await import("@/lib/firebase");
+  let added = 0; let skipped = 0;
+  const q = fb.query(fb.collection(db, "assets"), fb.where("tenant_id", "==", "kmitsurat"));
+  const snap = await fb.getDocs(q);
+  const existingKMs = new Set(snap.docs.map(d => d.data().km_number as string));
+  const batch = fb.writeBatch(db);
+  for (const a of SAMPLE_ASSETS) {
+    if (existingKMs.has(a.km_number)) { skipped++; continue; }
+    const ref = fb.doc(fb.collection(db, "assets"));
+    batch.set(ref, { ...a, tenant_id: "kmitsurat", created_at: new Date() });
+    added++;
+  }
+  await batch.commit();
+  return { added, skipped };
+}
+
 // ── helpers ───────────────────────────────────────────────────
 function coerceRow(row: Row, mod: ModuleDef): Row {
   const result: Row = { ...mod.defaults };
@@ -216,7 +298,11 @@ export default function ImportExportPage() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  const [tab, setTab] = useState<"import" | "backup">("import");
+  const [tab, setTab] = useState<"import" | "backup" | "sample">("import");
+  const [seedingProd, setSeedingProd] = useState(false);
+  const [seedingAsset, setSeedingAsset] = useState(false);
+  const [seedProdResult, setSeedProdResult] = useState<{ added: number; skipped: number } | null>(null);
+  const [seedAssetResult, setSeedAssetResult] = useState<{ added: number; skipped: number } | null>(null);
   const [module, setModule] = useState(MODULES[0].key);
   const [preview, setPreview] = useState<Row[] | null>(null);
   const [parsedRows, setParsedRows] = useState<Row[]>([]);
@@ -333,6 +419,7 @@ export default function ImportExportPage() {
         {[
           { key: "import", label: "Import Data" },
           { key: "backup", label: "Backup & Restore" },
+          { key: "sample", label: "ข้อมูลตัวอย่าง" },
         ].map((t) => (
           <button key={t.key}
             onClick={() => setTab(t.key as "import" | "backup")}
@@ -454,6 +541,98 @@ export default function ImportExportPage() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── SAMPLE DATA TAB ── */}
+      {tab === "sample" && (
+        <div className="max-w-2xl space-y-5">
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 px-4 py-3 text-xs text-amber-400">
+            ข้อมูลตัวอย่างสำหรับทดสอบระบบ — ระบบจะตรวจสอบและข้ามรายการที่มีอยู่แล้ว (ตาม code / KM number)
+          </div>
+
+          {/* Sample Products */}
+          <div className="rounded-xl bg-card border border-border p-5">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="text-sm font-medium">สินค้าตัวอย่าง (Products)</p>
+                <p className="text-xs text-muted mt-0.5">{SAMPLE_PRODUCTS.length} รายการ — กล้อง CCTV, NVR, Switch, AP, Server, UPS, Cable, บริการ</p>
+              </div>
+              <button
+                onClick={async () => {
+                  setSeedingProd(true); setSeedProdResult(null);
+                  try { setSeedProdResult(await seedSampleProducts()); }
+                  finally { setSeedingProd(false); }
+                }}
+                disabled={seedingProd}
+                className="rounded-lg bg-accent text-accent-foreground px-4 py-2 text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0">
+                {seedingProd ? "กำลังสร้าง..." : "สร้างสินค้าตัวอย่าง"}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1 mb-3">
+              {["Camera", "NVR", "Switch", "Access Point", "Server", "UPS", "Cable", "Infrastructure", "Service"].map(cat => (
+                <span key={cat} className="rounded bg-card-hover border border-border px-2 py-0.5 text-[11px] text-muted">{cat} ({SAMPLE_PRODUCTS.filter(p => p.category === cat).length})</span>
+              ))}
+            </div>
+            {seedProdResult && (
+              <div className={`rounded-lg border px-3 py-2 text-xs ${seedProdResult.added > 0 ? "border-green-500/30 bg-green-500/10 text-green-400" : "border-border bg-card-hover text-muted"}`}>
+                เพิ่มแล้ว {seedProdResult.added} รายการ{seedProdResult.skipped > 0 ? ` · ข้ามที่มีอยู่แล้ว ${seedProdResult.skipped} รายการ` : ""}
+              </div>
+            )}
+          </div>
+
+          {/* Sample Assets */}
+          <div className="rounded-xl bg-card border border-border p-5">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="text-sm font-medium">อุปกรณ์ติดตั้งตัวอย่าง (Assets)</p>
+                <p className="text-xs text-muted mt-0.5">{SAMPLE_ASSETS.length} รายการ — หลายลูกค้า, หลายประเภท, มีทั้งในประกันและหมดประกัน</p>
+              </div>
+              <button
+                onClick={async () => {
+                  setSeedingAsset(true); setSeedAssetResult(null);
+                  try { setSeedAssetResult(await seedSampleAssets()); }
+                  finally { setSeedingAsset(false); }
+                }}
+                disabled={seedingAsset}
+                className="rounded-lg bg-accent text-accent-foreground px-4 py-2 text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0">
+                {seedingAsset ? "กำลังสร้าง..." : "สร้าง Asset ตัวอย่าง"}
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-card-hover">
+                    <th className="text-left px-2 py-1.5 border border-border/40 text-muted font-medium">KM Number</th>
+                    <th className="text-left px-2 py-1.5 border border-border/40 text-muted font-medium">รุ่น</th>
+                    <th className="text-left px-2 py-1.5 border border-border/40 text-muted font-medium">ประเภท</th>
+                    <th className="text-left px-2 py-1.5 border border-border/40 text-muted font-medium">ลูกค้า</th>
+                    <th className="text-left px-2 py-1.5 border border-border/40 text-muted font-medium">ประกันถึง</th>
+                    <th className="text-left px-2 py-1.5 border border-border/40 text-muted font-medium">สถานะ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {SAMPLE_ASSETS.map(a => (
+                    <tr key={a.km_number} className="hover:bg-card-hover">
+                      <td className="px-2 py-1.5 border border-border/30 font-mono text-accent">{a.km_number}</td>
+                      <td className="px-2 py-1.5 border border-border/30">{a.device_model}</td>
+                      <td className="px-2 py-1.5 border border-border/30 text-muted">{a.category}</td>
+                      <td className="px-2 py-1.5 border border-border/30 truncate max-w-[160px]">{a.customer_name}</td>
+                      <td className={`px-2 py-1.5 border border-border/30 ${new Date(a.warranty_end) < new Date() ? "text-rose-400" : "text-green-400"}`}>{a.warranty_end}</td>
+                      <td className="px-2 py-1.5 border border-border/30">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] ${a.status === "active" ? "bg-green-500/10 text-green-400" : a.status === "maintenance" ? "bg-amber-500/10 text-amber-400" : "bg-muted/10 text-muted"}`}>{a.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {seedAssetResult && (
+              <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${seedAssetResult.added > 0 ? "border-green-500/30 bg-green-500/10 text-green-400" : "border-border bg-card-hover text-muted"}`}>
+                เพิ่มแล้ว {seedAssetResult.added} รายการ{seedAssetResult.skipped > 0 ? ` · ข้ามที่มีอยู่แล้ว ${seedAssetResult.skipped} รายการ` : ""}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

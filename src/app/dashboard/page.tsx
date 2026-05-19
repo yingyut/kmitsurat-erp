@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract, Asset } from "@/lib/types";
+import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract, Asset, User } from "@/lib/types";
 import {
   BarChart, Bar, PieChart, Pie, Cell, FunnelChart, Funnel, LabelList,
   XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -27,17 +27,19 @@ export default function DashboardPage() {
   const [quots, setQuots] = useState<Quotation[]>([]);
   const [contracts, setContracts] = useState<ServiceContract[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
 
   async function load() {
     setLoading(true);
     try {
       const fs = await import("@/lib/firestore");
-      const [p, s, pr, sv, q, qt, ct, at] = await Promise.all([
+      const [p, s, pr, sv, q, qt, ct, at, u] = await Promise.all([
         fs.projects.list(), fs.salesActivities.list(), fs.presaleRequests.list(),
         fs.serviceTickets.list(), fs.salesQuotas.list(), fs.quotations.list(),
-        fs.serviceContracts.list(), fs.assets.list(),
+        fs.serviceContracts.list(), fs.assets.list(), fs.users.list(),
       ]);
       setProjects(p); setSales(s); setPresale(pr); setService(sv); setQuotas(q); setQuots(qt); setContracts(ct); setAssets(at);
+      setUsers(u.filter(x => x.active));
       setLastUpdated(new Date());
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -59,9 +61,10 @@ export default function DashboardPage() {
 
   // === CALCULATIONS ===
   const today = new Date().toISOString().slice(0, 10);
-  const revenue = projects.filter(p => p.status === "won").reduce((s, p) => s + (p.value || 0), 0);
   const target = quotas.reduce((s, q) => s + (q.quota_target || 0), 0);
   const actual = quotas.reduce((s, q) => s + (q.actual_sales || 0), 0);
+  // Revenue = actual sales from quotas (same source as TARGET VS ACTUAL) so both cards are consistent
+  const revenue = actual;
   const targetPct = target > 0 ? (actual / target * 100) : 0;
   const pipeline = projects.filter(p => !["won", "lost"].includes(p.status)).reduce((s, p) => s + (p.value || 0), 0);
   const overdueJobs = sales.filter(a => a.next_follow_up && a.next_follow_up < today && a.status !== "done").length
@@ -158,10 +161,14 @@ export default function DashboardPage() {
   const totalDeals = projects.filter(p => p.status !== "lost").length;
   const convRate = totalDeals > 0 ? (wonCount / totalDeals * 100) : 0;
 
-  const activityByPerson = [...new Set(sales.map(a => a.assigned_to))].filter(Boolean).map(name => ({
-    name: name.split(" ")[0],
-    count: sales.filter(a => a.assigned_to === name).length,
-  }));
+  const activeNames = new Set(users.map(u => u.name));
+  const isActive = (name: string) => activeNames.size === 0 || activeNames.has(name);
+  const activityByPerson = [...new Set(sales.map(a => a.assigned_to))].filter(Boolean)
+    .filter(isActive)
+    .map(name => ({
+      name: name.split(" ")[0],
+      count: sales.filter(a => a.assigned_to === name).length,
+    }));
 
   const todayCalls = sales.filter(a => a.type === "phone_call").length;
   const todayMeetings = sales.filter(a => a.type === "meeting" || a.type === "visit").length;
@@ -178,7 +185,7 @@ export default function DashboardPage() {
     { name: "Survey", value: presale.filter(r => r.type === "site_survey").length },
   ].filter(d => d.value > 0);
 
-  const prWorkload = [...new Set(presale.map(r => r.assigned_to))].filter(Boolean).map(name => ({
+  const prWorkload = [...new Set(presale.map(r => r.assigned_to))].filter(Boolean).filter(isActive).map(name => ({
     name: name.split(" ")[0],
     pending: presale.filter(r => r.assigned_to === name && r.status === "pending").length,
     progress: presale.filter(r => r.assigned_to === name && r.status === "in_progress").length,
@@ -214,7 +221,7 @@ export default function DashboardPage() {
   const projValue = projects.reduce((s, p) => s + (p.value || 0), 0);
 
   // Team Performance
-  const allNames = [...new Set([...sales.map(a => a.assigned_to), ...presale.map(r => r.assigned_to), ...service.map(t => t.technician)])].filter(Boolean);
+  const allNames = [...new Set([...sales.map(a => a.assigned_to), ...presale.map(r => r.assigned_to), ...service.map(t => t.technician)])].filter(Boolean).filter(isActive);
   const teamPerf = allNames.map(name => {
     const sA = sales.filter(a => a.assigned_to === name);
     const pA = presale.filter(r => r.assigned_to === name);
@@ -294,18 +301,18 @@ export default function DashboardPage() {
       {/* ═══════════════ LAYER 1: DECISION ═══════════════ */}
       {/* Row 1: Revenue / Operations */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-3">
-        <KPI label="Total Revenue" thai="รายได้รวม" value={`${(revenue / 1000000).toFixed(1)}M`} sub="THB" color="green" />
-        <div className="rounded-xl bg-card border border-border p-4" title="ยอดขายเทียบเป้า">
+        <KPI label="Total Revenue" thai="รายได้รวม" value={`${(revenue / 1000000).toFixed(1)}M`} sub="THB" color="green" href="/sales" />
+        <Link href="/sales" className="rounded-xl bg-card border border-border p-4 hover:border-accent/40 hover:bg-card-hover transition-colors group cursor-pointer block" title="ยอดขายเทียบเป้า">
           <p className="text-[10px] text-muted uppercase">Target vs Actual</p>
           <p className="text-[10px] text-muted">ยอดเทียบเป้า</p>
           <p className={`text-2xl font-bold mt-1 ${targetPct >= 80 ? "text-green-400" : targetPct >= 50 ? "text-yellow-400" : "text-red-400"}`}>{targetPct.toFixed(0)}%</p>
           <div className="mt-2 h-2 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${targetPct >= 80 ? "bg-green-500" : targetPct >= 50 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(targetPct, 100)}%` }} /></div>
           <p className="text-[10px] text-muted mt-1">{actual.toLocaleString()} / {target.toLocaleString()}</p>
-        </div>
-        <KPI label="Pipeline Value" thai="มูลค่าดีลรอปิด" value={`${(pipeline / 1000000).toFixed(1)}M`} sub="THB" color="blue" />
-        <KPI label="Overdue Jobs" thai="งานล่าช้า" value={String(overdueJobs)} sub={overdueJobs > 0 ? "ต้องแก้ด่วน!" : "ปกติ"} color={overdueJobs > 0 ? "red" : "green"} />
-        <KPI label="SLA On-time" thai="อัตราปิดงานตาม SLA" value={`${slaOnTime}%`} sub={`${svcOnTime}/${totalSvc} jobs`} color={slaOnTime >= 80 ? "green" : slaOnTime >= 50 ? "amber" : "red"} />
-        <KPI label="Forecast EOM" thai="คาดการณ์สิ้นเดือน" value={`${(forecast / 1000000).toFixed(1)}M`} sub="THB" color="cyan" />
+        </Link>
+        <KPI label="Pipeline Value" thai="มูลค่าดีลรอปิด" value={`${(pipeline / 1000000).toFixed(1)}M`} sub="THB" color="blue" href="/projects" />
+        <KPI label="Overdue Jobs" thai="งานล่าช้า" value={String(overdueJobs)} sub={overdueJobs > 0 ? "ต้องแก้ด่วน!" : "ปกติ"} color={overdueJobs > 0 ? "red" : "green"} href="/sales" />
+        <KPI label="SLA On-time" thai="อัตราปิดงานตาม SLA" value={`${slaOnTime}%`} sub={`${svcOnTime}/${totalSvc} jobs`} color={slaOnTime >= 80 ? "green" : slaOnTime >= 50 ? "amber" : "red"} href="/service" />
+        <KPI label="Forecast EOM" thai="คาดการณ์สิ้นเดือน" value={`${(forecast / 1000000).toFixed(1)}M`} sub="THB" color="cyan" href="/reports" />
       </div>
 
       {/* Row 2: Profitability — เป้าหมายหลักของบริษัท */}
@@ -315,8 +322,8 @@ export default function DashboardPage() {
           <p className="text-[10px] text-purple-300/60">— เป้าหมายหลักของบริษัท (Gross Profit)</p>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-          <KPI label="Profit Target" thai="เป้ากำไร" value={profitTarget > 0 ? `${(profitTarget / 1000000).toFixed(2)}M` : "—"} sub="THB" color="purple" />
-          <KPI label="Actual Profit" thai="กำไรจริง" value={actualProfit > 0 ? `${(actualProfit / 1000000).toFixed(2)}M` : "—"} sub="THB" color="purple" />
+          <KPI label="Profit Target" thai="เป้ากำไร" value={profitTarget > 0 ? `${(profitTarget / 1000000).toFixed(2)}M` : "—"} sub="THB" color="purple" href="/reports" />
+          <KPI label="Actual Profit" thai="กำไรจริง" value={actualProfit > 0 ? `${(actualProfit / 1000000).toFixed(2)}M` : "—"} sub="THB" color="purple" href="/reports" />
           <div className="rounded-xl bg-card border border-purple-800/40 p-4" title="กำไรเทียบเป้า">
             <p className="text-[10px] text-muted uppercase">Profit Achievement</p>
             <p className="text-[10px] text-muted">กำไรเทียบเป้า</p>
@@ -328,9 +335,9 @@ export default function DashboardPage() {
             )}
             <p className="text-[10px] text-muted mt-1">เหลือ {profitRemaining > 0 ? `${(profitRemaining / 1000).toFixed(0)}K` : "0"} THB</p>
           </div>
-          <KPI label="Actual GP%" thai="margin จริง" value={gpPct > 0 ? `${gpPct.toFixed(1)}%` : "—"} sub={`${(actualProfit / 1000).toFixed(0)}K / ${(actual / 1000).toFixed(0)}K`} color={gpPct >= 20 ? "green" : gpPct >= 10 ? "amber" : gpPct > 0 ? "red" : "purple"} />
-          <KPI label="Approved QT Profit" thai="กำไรจาก QT อนุมัติ" value={`${(approvedQuotProfit / 1000).toFixed(0)}K`} sub="THB · pending bill" color="green" />
-          <KPI label="Quotation Pipeline" thai="กำไรรอผล QT" value={`${(pipelineQuotProfit / 1000).toFixed(0)}K`} sub="THB · draft + sent" color="blue" />
+          <KPI label="Actual GP%" thai="margin จริง" value={gpPct > 0 ? `${gpPct.toFixed(1)}%` : "—"} sub={`${(actualProfit / 1000).toFixed(0)}K / ${(actual / 1000).toFixed(0)}K`} color={gpPct >= 20 ? "green" : gpPct >= 10 ? "amber" : gpPct > 0 ? "red" : "purple"} href="/reports" />
+          <KPI label="Approved QT Profit" thai="กำไรจาก QT อนุมัติ" value={`${(approvedQuotProfit / 1000).toFixed(0)}K`} sub="THB · pending bill" color="green" href="/quotations" />
+          <KPI label="Quotation Pipeline" thai="กำไรรอผล QT" value={`${(pipelineQuotProfit / 1000).toFixed(0)}K`} sub="THB · draft + sent" color="blue" href="/quotations" />
         </div>
       </div>
 
@@ -339,8 +346,14 @@ export default function DashboardPage() {
 
         {/* SALES OVERVIEW */}
         <div className="rounded-xl bg-card border border-border p-4">
-          <h3 className="text-sm font-semibold text-blue-400">Sales Overview</h3>
-          <p className="text-[10px] text-muted mb-3">ภาพรวมยอดขายและกิจกรรมของทีมขาย</p>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-sm font-semibold text-blue-400">Sales Overview</h3>
+            <Link href="/sales" className="text-[10px] text-accent hover:underline">Activities →</Link>
+          </div>
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-[10px] text-muted">ภาพรวมยอดขายและกิจกรรมของทีมขาย</p>
+            <Link href="/projects" className="text-[10px] text-accent/70 hover:text-accent hover:underline shrink-0">Pipeline →</Link>
+          </div>
           <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
             <div className="text-center"><p className="text-lg font-bold">{todayCalls}</p><p className="text-muted">Calls</p></div>
             <div className="text-center"><p className="text-lg font-bold">{todayMeetings}</p><p className="text-muted">Meetings</p></div>
@@ -375,7 +388,10 @@ export default function DashboardPage() {
 
         {/* PRESALE OVERVIEW */}
         <div className="rounded-xl bg-card border border-border p-4">
-          <h3 className="text-sm font-semibold text-purple-400">Presale Workload</h3>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-sm font-semibold text-purple-400">Presale Workload</h3>
+            <Link href="/presale" className="text-[10px] text-accent hover:underline">ดู Presale →</Link>
+          </div>
           <p className="text-[10px] text-muted mb-3">ภาพรวมงานออกแบบโซลูชันและ BOQ</p>
           <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
             <div className="text-center"><p className="text-lg font-bold">{presale.length}</p><p className="text-muted">Total</p></div>
@@ -449,23 +465,26 @@ export default function DashboardPage() {
 
         {/* PROJECT OVERVIEW */}
         <div className="rounded-xl bg-card border border-border p-4">
-          <h3 className="text-sm font-semibold text-indigo-400">Project Overview</h3>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-sm font-semibold text-indigo-400">Project Overview</h3>
+            <Link href="/projects" className="text-[10px] text-accent hover:underline">ดู Pipeline →</Link>
+          </div>
           <p className="text-[10px] text-muted mb-3">ภาพรวมโปรเจคและมูลค่างาน</p>
           <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
-            <div className="text-center"><p className="text-lg font-bold text-blue-400">{activeP}</p><p className="text-muted">Active</p></div>
-            <div className="text-center"><p className="text-lg font-bold text-yellow-400">{pendingP}</p><p className="text-muted">Pending</p></div>
-            <div className="text-center"><p className="text-lg font-bold text-green-400">{completedP}</p><p className="text-muted">Won</p></div>
+            <Link href="/projects" className="text-center hover:opacity-80 block"><p className="text-lg font-bold text-blue-400">{activeP}</p><p className="text-muted">Active</p></Link>
+            <Link href="/projects" className="text-center hover:opacity-80 block"><p className="text-lg font-bold text-yellow-400">{pendingP}</p><p className="text-muted">Pending</p></Link>
+            <Link href="/projects" className="text-center hover:opacity-80 block"><p className="text-lg font-bold text-green-400">{completedP}</p><p className="text-muted">Won</p></Link>
             <div className="text-center"><p className="text-lg font-bold">{(projValue / 1000000).toFixed(1)}M</p><p className="text-muted">Value</p></div>
           </div>
           <div className="space-y-1.5">
             {projects.slice(0, 5).map(p => (
-              <div key={p.id} className="flex items-center justify-between text-xs py-1 border-b border-border last:border-0">
+              <Link key={p.id} href="/projects" className="flex items-center justify-between text-xs py-1 border-b border-border last:border-0 hover:bg-card-hover -mx-1 px-1 rounded transition-colors">
                 <div className="flex-1 min-w-0"><p className="truncate font-medium">{p.name}</p><p className="text-muted">{p.customer_name}</p></div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-muted">{(p.value || 0).toLocaleString()}</span>
                   <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${p.status === "won" ? "bg-green-900/50 text-green-400" : p.status === "lost" ? "bg-red-900/50 text-red-400" : "bg-blue-900/50 text-blue-400"}`}>{p.status}</span>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
@@ -636,8 +655,11 @@ export default function DashboardPage() {
 
         {/* TEAM PERFORMANCE */}
         <div className="lg:col-span-2 rounded-xl bg-card border border-border p-4">
-          <h3 className="text-sm font-semibold mb-1" title="ผลงานรายบุคคล">Team Performance</h3>
-          <p className="text-[10px] text-muted mb-3">ภาระงานและผลงานของแต่ละคน</p>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-sm font-semibold" title="ผลงานรายบุคคล">Team Performance</h3>
+            <Link href="/reports" className="text-[10px] text-accent hover:underline">รายงาน →</Link>
+          </div>
+          <p className="text-[10px] text-muted mb-3">ภาระงานและผลงานของแต่ละคน · คลิกชื่อเพื่อดูรายละเอียด</p>
           {teamPerf.length === 0 ? <p className="text-xs text-muted">ไม่มีข้อมูล</p> : (<>
             <ResponsiveContainer width="100%" height={160}>
               <BarChart data={teamChart} margin={{ left: 0, right: 5 }}>
@@ -654,7 +676,7 @@ export default function DashboardPage() {
                 <thead><tr className="text-[10px] text-muted uppercase border-b border-border"><th className="px-2 py-1.5 text-left">Name</th><th className="px-2 py-1.5 text-center">Total</th><th className="px-2 py-1.5 text-center">Done</th><th className="px-2 py-1.5 text-center">Pending</th><th className="px-2 py-1.5 text-center">Late</th><th className="px-2 py-1.5">Progress</th></tr></thead>
                 <tbody>{teamPerf.map(m => {
                   const pct = m.total > 0 ? (m.done / m.total * 100) : 0;
-                  return (<tr key={m.name} className="border-b border-border last:border-0"><td className="px-2 py-1.5 font-medium">{m.name}</td><td className="px-2 py-1.5 text-center">{m.total}</td><td className="px-2 py-1.5 text-center text-green-400">{m.done}</td><td className="px-2 py-1.5 text-center text-yellow-400">{m.pending}</td><td className="px-2 py-1.5 text-center text-red-400">{m.late}</td><td className="px-2 py-1.5"><div className="flex items-center gap-1.5"><div className="h-1.5 w-14 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${pct >= 80 ? "bg-green-500" : pct >= 50 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${pct}%` }} /></div><span className="text-muted">{pct.toFixed(0)}%</span></div></td></tr>);
+                  return (<tr key={m.name} className="border-b border-border last:border-0 hover:bg-card-hover/50 cursor-pointer" onClick={() => window.location.href = "/sales"} title={`คลิกเพื่อดูกิจกรรมของ ${m.name}`}><td className="px-2 py-1.5 font-medium text-accent hover:underline">{m.name}</td><td className="px-2 py-1.5 text-center">{m.total}</td><td className="px-2 py-1.5 text-center text-green-400">{m.done}</td><td className="px-2 py-1.5 text-center text-yellow-400">{m.pending}</td><td className="px-2 py-1.5 text-center text-red-400">{m.late}</td><td className="px-2 py-1.5"><div className="flex items-center gap-1.5"><div className="h-1.5 w-14 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${pct >= 80 ? "bg-green-500" : pct >= 50 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${pct}%` }} /></div><span className="text-muted">{pct.toFixed(0)}%</span></div></td></tr>);
                 })}</tbody>
               </table>
             </div>
@@ -700,17 +722,21 @@ export default function DashboardPage() {
 }
 
 // === KPI Card Component ===
-function KPI({ label, thai, value, sub, color }: { label: string; thai: string; value: string; sub: string; color: string }) {
+function KPI({ label, thai, value, sub, color, href }: { label: string; thai: string; value: string; sub: string; color: string; href?: string }) {
   const colorMap: Record<string, string> = { green: "text-green-400", blue: "text-blue-400", red: "text-red-400", amber: "text-yellow-400", cyan: "text-cyan-400", purple: "text-purple-400" };
   const barMap: Record<string, string> = { green: "bg-green-600", blue: "bg-blue-600", red: "bg-red-600", amber: "bg-yellow-600", cyan: "bg-cyan-600", purple: "bg-purple-600" };
   const borderMap: Record<string, string> = { purple: "border-purple-800/40" };
-  return (
-    <div className={`rounded-xl bg-card border ${borderMap[color] || "border-border"} p-4`} title={thai}>
+  const inner = (
+    <div className={`rounded-xl bg-card border ${borderMap[color] || "border-border"} p-4 ${href ? "hover:border-accent/40 hover:bg-card-hover transition-colors cursor-pointer group" : ""}`} title={thai}>
       <p className="text-[10px] text-muted uppercase">{label}</p>
       <p className="text-[10px] text-muted">{thai}</p>
       <p className={`text-2xl font-bold mt-1 ${colorMap[color] || "text-white"}`}>{value}</p>
       <p className="text-[10px] text-muted mt-0.5">{sub}</p>
-      <div className={`mt-2 h-1 w-10 rounded ${barMap[color] || "bg-gray-600"}`} />
+      <div className="flex items-center justify-between mt-2">
+        <div className={`h-1 w-10 rounded ${barMap[color] || "bg-gray-600"}`} />
+        {href && <span className="text-[9px] text-accent/40 group-hover:text-accent transition-colors">→</span>}
+      </div>
     </div>
   );
+  return href ? <Link href={href}>{inner}</Link> : inner;
 }
