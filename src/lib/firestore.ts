@@ -9,6 +9,7 @@ import type {
   User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow,
+  PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem,
 } from "./types";
 
 // Re-export types
@@ -17,6 +18,9 @@ export type {
   BomItem, PresaleAttachment,
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, QuotationItem, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow, NotifyChannelType, NotifyTrigger,
+  PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem,
+  PresaleToolType, PresaleToolStatus, PresaleProjectStatus, BOQCategory,
+  CCTVDesignData, CCTVCamera, CCTVRecorder, CCTVInfraItem, CCTVLaborItem,
 } from "./types";
 
 // ============================================================
@@ -27,6 +31,32 @@ const TENANT = "kmitsurat";
 
 async function addDoc_(col: string, data: Record<string, unknown>) {
   return addDoc(collection(db, col), { ...data, tenant_id: TENANT, created_at: serverTimestamp() });
+}
+
+async function listDocsWhere<T extends { id?: string }>(
+  col: string,
+  field: string,
+  value: string,
+  sortField = "created_at"
+): Promise<T[]> {
+  try {
+    const q = query(
+      collection(db, col),
+      where("tenant_id", "==", TENANT),
+      where(field, "==", value),
+      orderBy(sortField, "desc")
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+  } catch {
+    const q2 = query(
+      collection(db, col),
+      where("tenant_id", "==", TENANT),
+      where(field, "==", value)
+    );
+    const snap = await getDocs(q2);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+  }
 }
 
 async function listDocs<T extends { id?: string }>(col: string, sortField = "created_at"): Promise<T[]> {
@@ -64,6 +94,7 @@ function svc<T extends { id?: string }>(col: string, sortField = "created_at") {
   return {
     add: (data: Record<string, unknown>) => addDoc_(col, data),
     list: () => listDocs<T>(col, sortField),
+    listWhere: (field: string, value: string) => listDocsWhere<T>(col, field, value, sortField),
     get: (id: string) => getDoc_<T>(col, id),
     update: (id: string, data: Record<string, unknown>) => updateDoc_(col, id, data),
     remove: (id: string) => deleteDoc_(col, id),
@@ -92,3 +123,9 @@ export const jobRequests = svc<JobRequest>("job_requests");
 export const salesQuotas = svc<SalesQuota>("sales_quotas");
 export const notificationChannels = svc<NotificationChannel>("notification_channels");
 export const notificationWorkflows = svc<NotificationWorkflow>("notification_workflows");
+
+// Presale Multi-Tool Project System
+export const presaleMultiProjects = svc<PresaleMultiProject>("presale_projects");
+export const presaleTools = svc<ProjectTool>("presale_tools");
+export const toolBoqItems = svc<ToolBOQItem>("presale_tool_boq_items");
+export const projectBoqItems = svc<ProjectBOQItem>("presale_project_boq_items");

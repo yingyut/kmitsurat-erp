@@ -540,3 +540,169 @@ export interface QuotationRevision {
   vat_amount: number;
   notes: string;
 }
+
+// ============================================================
+// PRESALE MULTI-TOOL PROJECT SYSTEM
+// ============================================================
+
+export type PresaleToolType =
+  | "cctv_designer"
+  | "wifi_designer"
+  | "access_control"
+  | "network_rack"
+  | "server_room"
+  | "custom_boq";
+
+export type PresaleToolStatus = "draft" | "designing" | "boq_ready" | "sent_to_quotation";
+
+export type PresaleProjectStatus = "draft" | "in_progress" | "ready" | "completed";
+
+export type BOQCategory =
+  | "cctv"
+  | "wifi"
+  | "access_control"
+  | "network"
+  | "server"
+  | "labor"
+  | "miscellaneous";
+
+export interface PresaleMultiProject {
+  id?: string;
+  tenant_id: string;
+  name: string;
+  customer_id: string;
+  customer_name: string;
+  sales_project_id?: string;
+  sales_project_name?: string;
+  assigned_to: string;
+  status: PresaleProjectStatus;
+  notes?: string;
+  created_by: string;
+  created_at?: unknown;
+  total_cost?: number;
+  total_selling?: number;
+  gp_percent?: number;
+  converted_to_quotation_id?: string;
+  converted_quotation_number?: string;
+  converted_at?: string;
+}
+
+export interface ProjectTool {
+  id?: string;
+  tenant_id: string;
+  presale_project_id: string;
+  tool_type: PresaleToolType;
+  name: string;
+  status: PresaleToolStatus;
+  design_data?: CCTVDesignData | Record<string, unknown>;
+  boq_total_cost?: number;
+  boq_total_selling?: number;
+  order?: number;
+  created_at?: unknown;
+  updated_at?: string;
+}
+
+export interface ToolBOQItem {
+  id?: string;
+  tenant_id: string;
+  presale_project_id: string;
+  tool_id: string;
+  tool_type: PresaleToolType;
+  category: BOQCategory;
+  product_id?: string;
+  product_code: string;
+  product_name: string;
+  brand?: string;
+  unit: string;
+  qty: number;
+  cost_price: number;
+  selling_price: number;
+  discount: number;
+  total_cost: number;
+  total_selling: number;
+  margin_percent: number;
+  merge_key?: string;
+  notes?: string;
+  order?: number;
+}
+
+export interface ProjectBOQItem {
+  id?: string;
+  tenant_id: string;
+  presale_project_id: string;
+  category: BOQCategory;
+  product_code: string;
+  product_name: string;
+  brand?: string;
+  unit: string;
+  qty: number;
+  cost_price: number;
+  selling_price: number;
+  discount: number;
+  total_cost: number;
+  total_selling: number;
+  margin_percent: number;
+  source_tools: string[];
+  is_merged: boolean;
+  notes?: string;
+  order?: number;
+}
+
+// CCTV Designer Types
+export interface CCTVCamera {
+  id: string;
+  location: string;
+  qty: number;
+  type: "dome" | "bullet" | "ptz" | "fisheye" | "box";
+  resolution: "2MP" | "4MP" | "8MP" | "12MP";
+  outdoor: boolean;
+  ir_distance?: number;
+  product_code?: string;
+  product_name?: string;
+  cost_price?: number;
+  selling_price?: number;
+  notes?: string;
+}
+
+export interface CCTVRecorder {
+  id: string;
+  type: "NVR" | "DVR" | "Hybrid";
+  channels: number;
+  qty: number;
+  hdd_tb?: number;
+  product_code?: string;
+  product_name?: string;
+  cost_price?: number;
+  selling_price?: number;
+}
+
+export interface CCTVInfraItem {
+  id: string;
+  name: string;
+  unit: string;
+  qty: number;
+  product_code?: string;
+  product_name?: string;
+  cost_price?: number;
+  selling_price?: number;
+  notes?: string;
+}
+
+export interface CCTVLaborItem {
+  id: string;
+  description: string;
+  qty: number;
+  unit: string;
+  cost_price: number;
+  selling_price: number;
+}
+
+export interface CCTVDesignData {
+  cameras: CCTVCamera[];
+  recorders: CCTVRecorder[];
+  infrastructure: CCTVInfraItem[];
+  labor: CCTVLaborItem[];
+  storage_days?: number;
+  site_notes?: string;
+  design_notes?: string;
+}
