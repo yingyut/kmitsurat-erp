@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract } from "@/lib/types";
+import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract, Asset } from "@/lib/types";
 import {
   BarChart, Bar, PieChart, Pie, Cell, FunnelChart, Funnel, LabelList,
   XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -26,17 +26,18 @@ export default function DashboardPage() {
   const [quotas, setQuotas] = useState<SalesQuota[]>([]);
   const [quots, setQuots] = useState<Quotation[]>([]);
   const [contracts, setContracts] = useState<ServiceContract[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
 
   async function load() {
     setLoading(true);
     try {
       const fs = await import("@/lib/firestore");
-      const [p, s, pr, sv, q, qt, ct] = await Promise.all([
+      const [p, s, pr, sv, q, qt, ct, at] = await Promise.all([
         fs.projects.list(), fs.salesActivities.list(), fs.presaleRequests.list(),
         fs.serviceTickets.list(), fs.salesQuotas.list(), fs.quotations.list(),
-        fs.serviceContracts.list(),
+        fs.serviceContracts.list(), fs.assets.list(),
       ]);
-      setProjects(p); setSales(s); setPresale(pr); setService(sv); setQuotas(q); setQuots(qt); setContracts(ct);
+      setProjects(p); setSales(s); setPresale(pr); setService(sv); setQuotas(q); setQuots(qt); setContracts(ct); setAssets(at);
       setLastUpdated(new Date());
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -132,6 +133,19 @@ export default function DashboardPage() {
     { name: ">90d", value: expiryBuckets.safe, fill: C.green },
   ];
 
+  // === WARRANTY EXPIRY (Assets) ===
+  const activeAssets = assets.filter(a => a.status === "active" || a.status === "maintenance");
+  const assetsWithWarranty = activeAssets.filter(a => a.warranty_end);
+  const warrantyExpired = assetsWithWarranty.filter(a => dayDiff(a.warranty_end) !== null && dayDiff(a.warranty_end)! < 0);
+  const warranty30 = assetsWithWarranty.filter(a => { const d = dayDiff(a.warranty_end); return d !== null && d >= 0 && d <= 30; });
+  const warranty60 = assetsWithWarranty.filter(a => { const d = dayDiff(a.warranty_end); return d !== null && d > 30 && d <= 60; });
+  const warranty90 = assetsWithWarranty.filter(a => { const d = dayDiff(a.warranty_end); return d !== null && d > 60 && d <= 90; });
+  const topWarrantyExpiring = assetsWithWarranty
+    .map(a => ({ a, d: dayDiff(a.warranty_end)! }))
+    .filter(x => x.d >= 0)
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 8);
+
   // Sales
   const funnelData = [
     { value: projects.filter(p => p.status === "lead").length, name: "Lead", fill: C.blue },
@@ -224,6 +238,8 @@ export default function DashboardPage() {
   if (draftQ > 0) alerts.push({ id: "dq", msg: `${draftQ} ใบเสนอราคา Draft รอส่ง`, level: "green", href: "/quotations" });
   expiredContracts.forEach(c => alerts.push({ id: `ec-${c.id}`, msg: `🛡️ สัญญาหมดอายุ: ${c.title} — ${c.customer_name}`, level: "red", href: "/contracts" }));
   if (expiringContracts.length > 0) alerts.push({ id: "rc", msg: `🛡️ ${expiringContracts.length} สัญญาใกล้หมด ≤30 วัน (รวม ${(contractRenewalValue / 1000).toLocaleString()}K) — เสนอ renewal`, level: "orange", href: "/contracts" });
+  if (warrantyExpired.length > 0) alerts.push({ id: "we", msg: `🖥️ ${warrantyExpired.length} อุปกรณ์หมดประกันแล้ว — ตรวจสอบ MA`, level: "red", href: "/assets" });
+  if (warranty30.length > 0) alerts.push({ id: "w30", msg: `🖥️ ${warranty30.length} อุปกรณ์ประกันหมดใน ≤30 วัน — วางแผน renewal`, level: "orange", href: "/assets" });
 
   // Work items
   type WI = { id: string; title: string; sub: string; type: string; status: string; value?: number; href: string };
@@ -520,6 +536,86 @@ export default function DashboardPage() {
                         <span className={`shrink-0 font-semibold ${d! <= 7 ? "text-red-400" : d! <= 30 ? "text-amber-400" : d! <= 90 ? "text-yellow-400" : "text-muted"}`}>{d}d</span>
                       </div>
                       <p className="text-[9px] text-muted truncate">{c.customer_name}</p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WARRANTY EXPIRY ALERT (full-width row) */}
+      {assetsWithWarranty.length > 0 && (
+        <div className="rounded-xl bg-card border border-border p-4 mb-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-orange-400">🖥️ Warranty Expiry Alert</h3>
+              <p className="text-[10px] text-muted">ติดตามอุปกรณ์ที่ประกันใกล้หมด — วางแผน MA ต่อ</p>
+            </div>
+            <Link href="/assets" className="text-[10px] text-accent hover:underline">ดู Assets ทั้งหมด →</Link>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg bg-red-900/10 border border-red-800/40 p-3">
+                <p className="text-[10px] text-muted">หมดประกันแล้ว 🔴</p>
+                <p className="text-2xl font-bold text-red-400">{warrantyExpired.length}</p>
+                <p className="text-[10px] text-muted">อุปกรณ์</p>
+              </div>
+              <div className="rounded-lg bg-amber-900/10 border border-amber-800/40 p-3">
+                <p className="text-[10px] text-muted">≤30 วัน 🟠</p>
+                <p className="text-2xl font-bold text-amber-400">{warranty30.length}</p>
+                <p className="text-[10px] text-muted">อุปกรณ์</p>
+              </div>
+              <div className="rounded-lg bg-yellow-900/10 border border-yellow-800/40 p-3">
+                <p className="text-[10px] text-muted">31–60 วัน 🟡</p>
+                <p className="text-2xl font-bold text-yellow-400">{warranty60.length}</p>
+                <p className="text-[10px] text-muted">อุปกรณ์</p>
+              </div>
+              <div className="rounded-lg bg-background border border-border p-3">
+                <p className="text-[10px] text-muted">61–90 วัน</p>
+                <p className="text-2xl font-bold text-foreground">{warranty90.length}</p>
+                <p className="text-[10px] text-muted">อุปกรณ์</p>
+              </div>
+            </div>
+
+            {/* Expiry bar chart */}
+            <div>
+              <p className="text-[10px] text-muted mb-1">Expiry Timeline</p>
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart data={[
+                  { name: "หมดแล้ว", value: warrantyExpired.length, fill: C.rose },
+                  { name: "≤30d", value: warranty30.length, fill: C.orange },
+                  { name: "31-60", value: warranty60.length, fill: C.amber },
+                  { name: "61-90", value: warranty90.length, fill: "#facc15" },
+                ]} margin={{ left: 0, right: 5 }}>
+                  <XAxis dataKey="name" tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                  <YAxis hide />
+                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 11 }} />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>{[C.rose, C.orange, C.amber, "#facc15"].map((c, i) => <Cell key={i} fill={c} />)}</Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Top expiring assets list */}
+            <div>
+              <p className="text-[10px] text-muted mb-1">อุปกรณ์ใกล้หมดประกัน Top 8</p>
+              {topWarrantyExpiring.length === 0 ? <p className="text-xs text-muted">ไม่มีอุปกรณ์ใกล้หมดประกัน</p> : (
+                <div className="space-y-1 max-h-[140px] overflow-y-auto">
+                  {topWarrantyExpiring.map(({ a, d }) => (
+                    <Link key={a.id} href={`/assets/${a.id}`} className="flex items-center justify-between gap-1 py-1 border-b border-border last:border-0 hover:opacity-80 group">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-mono font-medium text-accent group-hover:underline truncate">{a.km_number}</p>
+                        <p className="text-[10px] text-muted truncate">{a.device_model} · {a.customer_name}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={`text-xs font-semibold ${d <= 7 ? "text-red-400" : d <= 30 ? "text-amber-400" : d <= 60 ? "text-yellow-400" : "text-muted"}`}>
+                          {d === 0 ? "วันนี้!" : `${d}d`}
+                        </p>
+                        <p className="text-[9px] text-muted">{a.warranty_end}</p>
+                      </div>
                     </Link>
                   ))}
                 </div>
