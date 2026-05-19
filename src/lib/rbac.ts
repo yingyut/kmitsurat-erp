@@ -18,7 +18,8 @@ export type Permission =
   | "view_contracts" | "manage_contracts"
   | "view_vendors"
   | "view_products"  | "manage_products"
-  | "view_catalog";
+  | "view_catalog"
+  | "view_assets"    | "manage_assets";
 
 export const ALL_PERMISSIONS: Permission[] = [
   "view_dashboard",
@@ -37,6 +38,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "view_vendors",
   "view_products",      "manage_products",
   "view_catalog",
+  "view_assets",        "manage_assets",
 ];
 
 // ─── New 9 roles ────────────────────────────────────────────────────────────────
@@ -69,6 +71,7 @@ export const MODULE_PERMISSIONS: Record<string, Permission[]> = {
   "project-management": ["view_all_projects"],
   "service":            ["view_all_tickets", "view_own_tickets"],
   "contracts":          ["view_contracts", "manage_contracts"],
+  "assets":             ["view_assets", "manage_assets"],
   "customers":          ["view_all_customers", "view_own_customers", "create_customer"],
   "vendors":            ["view_vendors"],
   "products":           ["view_products", "manage_products"],
@@ -94,7 +97,7 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
     "view_contracts",     "manage_contracts",
     "view_vendors",       "view_products",
     "assign_job",         "close_ticket",
-    "view_catalog",
+    "view_catalog",       "view_assets",         "manage_assets",
   ],
 
   "Sales Manager": [
@@ -139,13 +142,14 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
     "view_contracts",     "manage_contracts",
     "view_all_customers",
     "view_finance",       "view_reports",
-    "view_products",
+    "view_products",      "view_assets",        "manage_assets",
   ],
 
   "Service Technician": [
     "view_dashboard",
     "view_own_tickets",   "create_ticket",
     "view_own_customers", "view_products",      "view_contracts",
+    "view_assets",
   ],
 
   "Operations Coordinator": [
@@ -154,6 +158,7 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
     "view_contracts",     "view_all_customers",
     "view_vendors",       "view_products",
     "view_presale",       "view_quote",
+    "view_assets",        "manage_assets",
   ],
 };
 
@@ -246,6 +251,8 @@ export const PERMISSION_META: Record<Permission, { label: string; thai: string; 
   "view_vendors":         { label: "View Vendors",      thai: "ดูผู้ขาย / Suppliers",       category: "Master Data" },
   "view_products":        { label: "View Products",     thai: "ดูสินค้า",                   category: "Master Data" },
   "manage_products":      { label: "Manage Products",   thai: "จัดการสินค้า",              category: "Master Data" },
+  "view_assets":          { label: "View Assets",       thai: "ดูอุปกรณ์ / Serial",        category: "Operations" },
+  "manage_assets":        { label: "Manage Assets",     thai: "จัดการ Asset Tracking",     category: "Operations" },
   "manage_users":         { label: "Manage Users",      thai: "จัดการผู้ใช้",              category: "Admin" },
   "manage_roles":         { label: "Manage Roles",      thai: "จัดการ Role / สิทธิ์",      category: "Admin" },
   "view_reports":         { label: "View Reports",      thai: "ดูรายงาน",                   category: "Admin" },

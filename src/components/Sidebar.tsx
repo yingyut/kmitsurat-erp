@@ -33,6 +33,7 @@ const sections: Section[] = [
       { href: "/project-management", label: "Project Execution", thai: "ดำเนินโปรเจค / Action Plan", icon: "🗂️" },
       { href: "/service", label: "Service Tickets", thai: "งานบริการ / ติดตั้ง / ซ่อม", icon: "🔧" },
       { href: "/contracts", label: "Contracts", thai: "สัญญา / รับประกัน / MA", icon: "🛡️" },
+      { href: "/assets", label: "Assets", thai: "อุปกรณ์ / Serial Tracking", icon: "🖥️" },
     ],
   },
   {

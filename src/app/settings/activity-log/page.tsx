@@ -13,6 +13,7 @@ const moduleLabels: Record<string, string> = {
   quotations: "ใบเสนอราคา",
   users: "ผู้ใช้",
   settings: "ตั้งค่า",
+  assets: "Assets",
 };
 
 const actionLabels: Record<string, string> = {

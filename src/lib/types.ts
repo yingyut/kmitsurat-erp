@@ -342,6 +342,9 @@ export interface ServiceTicket {
   // SLA targets (in hours)
   sla_response_hours?: number; // response time target (default 4)
   sla_resolve_hours?: number;  // resolution time target (default 48)
+  // Asset linking
+  asset_id?: string;
+  km_number?: string;          // KM-YYYY-XXXX of linked asset
 }
 
 export interface Vendor {
@@ -741,6 +744,50 @@ export interface PresalePreset {
   created_by: string;
   created_at?: unknown;
   updated_at?: string;
+}
+
+// ============================================================
+// ASSET & SERIAL TRACKING
+// ============================================================
+
+export interface AssetDocument {
+  name: string;
+  url: string;
+  type: "manual" | "warranty_card" | "invoice" | "photo" | "other";
+  uploaded_at: string;   // YYYY-MM-DD
+  uploaded_by: string;
+}
+
+export interface Asset {
+  id?: string;
+  tenant_id: string;
+  km_number: string;          // KM-YYYY-XXXX — generated on create
+  serial_number: string;
+  device_model: string;       // e.g. "Cisco C9200L-24P"
+  brand: string;
+  category: string;           // Switch / AP / Camera / NVR / Server / UPS / Other
+  // Linked records
+  customer_id: string;
+  customer_name: string;
+  project_id?: string;
+  project_name?: string;
+  contract_id?: string;       // linked MA/warranty contract id
+  contract_number?: string;
+  // Installation
+  install_date?: string;      // YYYY-MM-DD
+  location?: string;          // physical location description
+  technician?: string;
+  // Warranty / SLA
+  warranty_start?: string;    // YYYY-MM-DD
+  warranty_end?: string;      // YYYY-MM-DD
+  sla_level?: string;         // "8x5" | "24x7" | "NBD" | "4H" | …
+  // Status
+  status: "active" | "inactive" | "maintenance" | "decommissioned";
+  notes?: string;
+  documents?: AssetDocument[];
+  created_at?: unknown;
+  updated_at?: string;
+  created_by?: string;
 }
 
 // Presale Product Catalog (reusable across tools)
