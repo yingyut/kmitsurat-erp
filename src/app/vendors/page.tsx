@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { Vendor, VendorPrice } from "@/lib/types";
+import { useCurrentUser } from "@/lib/UserContext";
 
 type VendorType = Vendor["vendor_type"];
 
@@ -66,6 +67,10 @@ const SEED: Array<typeof empty> = [
 ];
 
 export default function VendorsPage() {
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_vendors");
+  const canView = hasPermission("view_vendors") || canManage;
+
   const [list, setList] = useState<Vendor[]>([]);
   const [vendorPrices, setVendorPrices] = useState<VendorPrice[]>([]);
   const [search, setSearch] = useState("");
@@ -154,8 +159,13 @@ export default function VendorsPage() {
     setSaving(true);
     const fs = await import("@/lib/firestore");
     try {
-      if (editId) await fs.vendors.update(editId, form as unknown as Record<string, unknown>);
-      else await fs.vendors.add(form as unknown as Record<string, unknown>);
+      if (editId) {
+        await fs.vendors.update(editId, form as unknown as Record<string, unknown>);
+        await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "vendors", action: "update", resource_id: editId, resource_name: form.name, details: `แก้ไข Vendor: ${form.name}` });
+      } else {
+        const ref = await fs.vendors.add(form as unknown as Record<string, unknown>);
+        await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "vendors", action: "create", resource_id: (ref as { id?: string }).id, resource_name: form.name, details: `เพิ่ม Vendor: ${form.name} (${TYPE_META[form.vendor_type].thai})` });
+      }
       setForm(empty); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); } finally { setSaving(false); }
   }
@@ -183,10 +193,14 @@ export default function VendorsPage() {
     }
     if (!confirm(`ลบ vendor "${name}" ?`)) return;
     const fs = await import("@/lib/firestore");
-    await fs.vendors.remove(id); await load();
+    await fs.vendors.remove(id);
+    await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "vendors", action: "delete", resource_id: id, resource_name: name, details: `ลบ Vendor: ${name}` });
+    await load();
   }
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canView) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">
@@ -196,10 +210,15 @@ export default function VendorsPage() {
           <p className="text-xs text-muted">จัดการข้อมูลผู้ขาย — ใช้ผูกราคาในแต่ละสินค้า เพื่อเทียบราคาและดูประวัติ</p>
         </div>
         <div className="flex gap-2">
-          {list.length === 0 && (
+          <button onClick={() => { setLoading(true); load(); }} disabled={loading} className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
+            {loading ? "..." : "↺ Refresh"}
+          </button>
+          {canManage && list.length === 0 && (
             <button onClick={seedVendors} disabled={saving} className="rounded-lg border border-accent text-accent px-4 py-2 text-sm hover:bg-accent/10 disabled:opacity-50">📥 โหลดตัวอย่าง 5 ราย</button>
           )}
-          <button onClick={openAdd} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ เพิ่ม Vendor</button>
+          {canManage && (
+            <button onClick={openAdd} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">+ เพิ่ม Vendor</button>
+          )}
         </div>
       </div>
 
@@ -247,7 +266,7 @@ export default function VendorsPage() {
       )}
 
       {/* Form */}
-      {showForm && (
+      {showForm && canManage && (
         <div className="rounded-xl bg-card border border-border p-5 mb-4">
           <h2 className="text-base font-semibold mb-3">{editId ? "แก้ไข Vendor" : "เพิ่ม Vendor ใหม่"}</h2>
 
@@ -370,10 +389,12 @@ export default function VendorsPage() {
                     {v.active ? <span className="rounded-full bg-green-900/50 px-2 py-0.5 text-xs text-green-400">Active</span> : <span className="rounded-full bg-gray-700 px-2 py-0.5 text-xs text-gray-400">Inactive</span>}
                   </td>
                   <td className="px-4 py-2.5">
-                    <div className="flex gap-2">
-                      <button onClick={() => openEdit(v)} className="text-xs text-accent hover:underline">แก้ไข</button>
-                      <button onClick={() => handleDelete(v.id!, v.name)} className="text-xs text-danger hover:underline">ลบ</button>
-                    </div>
+                    {canManage && (
+                      <div className="flex gap-2">
+                        <button onClick={() => openEdit(v)} className="text-xs text-accent hover:underline">แก้ไข</button>
+                        <button onClick={() => handleDelete(v.id!, v.name)} className="text-xs text-danger hover:underline">ลบ</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );

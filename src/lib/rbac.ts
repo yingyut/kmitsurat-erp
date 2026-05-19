@@ -16,7 +16,7 @@ export type Permission =
   | "manage_system"
   | "view_presale"   | "manage_presale" | "use_presale_tools"
   | "view_contracts" | "manage_contracts"
-  | "view_vendors"
+  | "view_vendors"   | "manage_vendors"
   | "view_products"  | "manage_products"
   | "view_catalog"
   | "view_assets"    | "manage_assets";
@@ -35,7 +35,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "manage_system",
   "view_presale",       "manage_presale",     "use_presale_tools",
   "view_contracts",     "manage_contracts",
-  "view_vendors",
+  "view_vendors",       "manage_vendors",
   "view_products",      "manage_products",
   "view_catalog",
   "view_assets",        "manage_assets",
@@ -74,7 +74,7 @@ export const MODULE_PERMISSIONS: Record<string, Permission[]> = {
   "assets":             ["view_assets", "manage_assets"],
   "assets/pm-schedule": ["view_assets", "manage_assets"],
   "customers":          ["view_all_customers", "view_own_customers", "create_customer"],
-  "vendors":            ["view_vendors"],
+  "vendors":            ["view_vendors", "manage_vendors"],
   "products":           ["view_products", "manage_products"],
   "users":              ["manage_users"],
   "reports":            ["view_reports"],
@@ -96,7 +96,7 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
     "manage_users",
     "view_presale",       "use_presale_tools",
     "view_contracts",     "manage_contracts",
-    "view_vendors",       "view_products",
+    "view_vendors",       "manage_vendors",     "view_products",
     "assign_job",         "close_ticket",
     "view_catalog",       "view_assets",         "manage_assets",
   ],
@@ -250,6 +250,7 @@ export const PERMISSION_META: Record<Permission, { label: string; thai: string; 
   "view_contracts":       { label: "View Contracts",    thai: "ดูสัญญา / MA",               category: "Operations" },
   "manage_contracts":     { label: "Manage Contracts",  thai: "จัดการสัญญา",               category: "Operations" },
   "view_vendors":         { label: "View Vendors",      thai: "ดูผู้ขาย / Suppliers",       category: "Master Data" },
+  "manage_vendors":       { label: "Manage Vendors",    thai: "จัดการผู้ขาย / Suppliers",    category: "Master Data" },
   "view_products":        { label: "View Products",     thai: "ดูสินค้า",                   category: "Master Data" },
   "manage_products":      { label: "Manage Products",   thai: "จัดการสินค้า",              category: "Master Data" },
   "view_assets":          { label: "View Assets",       thai: "ดูอุปกรณ์ / Serial",        category: "Operations" },
