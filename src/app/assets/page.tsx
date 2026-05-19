@@ -4,6 +4,51 @@ import { useRouter } from "next/navigation";
 import type { Asset, Customer } from "@/lib/firestore";
 import { useCurrentUser } from "@/lib/UserContext";
 
+async function exportAssetsToExcel(rows: Asset[], filename = "assets") {
+  const XLSX = await import("xlsx");
+  const today = new Date().toISOString().slice(0, 10);
+  const PM_LABEL: Record<number, string> = { 1: "รายเดือน", 3: "3 เดือน", 6: "6 เดือน", 12: "รายปี" };
+  const STATUS_TH: Record<string, string> = { active: "ใช้งาน", inactive: "ไม่ใช้งาน", maintenance: "ซ่อมบำรุง", decommissioned: "ปลดระวาง" };
+
+  const data = rows.map(a => {
+    const wDays = a.warranty_end ? Math.ceil((new Date(a.warranty_end).getTime() - Date.now()) / 86400000) : null;
+    const pmDays = a.pm_next_date ? Math.ceil((new Date(a.pm_next_date).getTime() - Date.now()) / 86400000) : null;
+    return {
+      "KM Number": a.km_number ?? "",
+      "Serial Number": a.serial_number ?? "",
+      "รุ่นอุปกรณ์": a.device_model ?? "",
+      "ยี่ห้อ": a.brand ?? "",
+      "ประเภท": a.category ?? "",
+      "ลูกค้า": a.customer_name ?? "",
+      "โปรเจกต์": a.project_name ?? "",
+      "สถานที่": a.location ?? "",
+      "ช่างติดตั้ง": a.technician ?? "",
+      "วันที่ติดตั้ง": a.install_date ?? "",
+      "ประกันเริ่ม": a.warranty_start ?? "",
+      "ประกันหมด": a.warranty_end ?? "",
+      "ประกัน (วันเหลือ)": wDays !== null ? wDays : "",
+      "สถานะประกัน": wDays === null ? "" : wDays < 0 ? "หมดแล้ว" : wDays <= 30 ? "ใกล้หมด" : "ปกติ",
+      "SLA": a.sla_level ?? "",
+      "เลขสัญญา MA": a.contract_number ?? "",
+      "สถานะ": STATUS_TH[a.status] ?? a.status,
+      "ความถี่ PM": a.pm_interval_months ? (PM_LABEL[a.pm_interval_months] ?? `${a.pm_interval_months}m`) : "",
+      "PM ล่าสุด": a.pm_last_date ?? "",
+      "PM ถัดไป": a.pm_next_date ?? "",
+      "PM (วันเหลือ)": pmDays !== null ? pmDays : "",
+      "สถานะ PM": pmDays === null ? "" : pmDays < 0 ? "เลยกำหนด" : pmDays <= 30 ? "ใกล้ถึง" : "ปกติ",
+      "ช่าง PM": a.pm_assigned_to ?? "",
+      "หมายเหตุ": a.notes ?? "",
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  // Column widths
+  ws["!cols"] = [14,18,24,14,12,24,24,20,14,14,14,14,12,14,10,16,10,12,12,12,12,12,14,24].map(w => ({ wch: w }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Assets");
+  XLSX.writeFile(wb, `${filename}_${today}.xlsx`);
+}
+
 const CATEGORIES = ["Switch", "AP", "Router", "Firewall", "Camera", "NVR/DVR", "Server", "UPS", "Workstation", "Printer", "Other"];
 const STATUS_LABEL: Record<string, string> = {
   active: "ใช้งาน", inactive: "ไม่ใช้งาน", maintenance: "ซ่อมบำรุง", decommissioned: "ปลดระวาง",
@@ -239,6 +284,17 @@ export default function AssetsPage() {
         <div className="flex gap-2">
           <button onClick={() => { setLoading(true); load(); }} disabled={loading} className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
             {loading ? "..." : "↺ Refresh"}
+          </button>
+          <button
+            onClick={async () => {
+              await exportAssetsToExcel(filtered, "assets_report");
+              const fs = await import("@/lib/firestore");
+              await fs.logActivity({ user_name: user.name, user_role: user.role, module: "assets", action: "export", resource_name: "assets_report", details: `Export Asset Excel ${filtered.length} รายการ` });
+            }}
+            className="rounded-lg border border-green-700/50 px-3 py-2 text-xs text-green-400 hover:bg-green-900/20"
+            title="Export รายการอุปกรณ์ที่กรองแล้วเป็น Excel"
+          >
+            📥 Export Excel
           </button>
           {canManage && (
             <button onClick={openCreate} className="rounded-lg bg-accent px-4 py-2 text-xs font-medium text-white hover:bg-accent/80">

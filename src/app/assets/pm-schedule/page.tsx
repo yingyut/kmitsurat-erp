@@ -29,6 +29,34 @@ function calcNextPM(lastDate: string, intervalMonths: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+async function exportPMScheduleToExcel(rows: Asset[], filename = "pm_schedule") {
+  const XLSX = await import("xlsx");
+  const today = new Date().toISOString().slice(0, 10);
+  const data = rows.map(a => {
+    const d = a.pm_next_date ? Math.floor((new Date(a.pm_next_date).getTime() - Date.now()) / 86400000) : null;
+    return {
+      "KM Number": a.km_number ?? "",
+      "Serial Number": a.serial_number ?? "",
+      "รุ่นอุปกรณ์": a.device_model ?? "",
+      "ประเภท": a.category ?? "",
+      "ลูกค้า": a.customer_name ?? "",
+      "สถานที่": a.location ?? "",
+      "ความถี่ PM": a.pm_interval_months ? (PM_INTERVAL_LABEL[a.pm_interval_months] ?? `${a.pm_interval_months}m`) : "",
+      "PM ล่าสุด": a.pm_last_date ?? "",
+      "PM ถัดไป": a.pm_next_date ?? "",
+      "วันเหลือ": d !== null ? d : "",
+      "สถานะ PM": d === null ? "" : d < 0 ? "เลยกำหนด" : d <= 7 ? "เร่งด่วน" : d <= 30 ? "ใกล้ถึง" : d <= 90 ? "ปกติ" : "เหลือเวลา",
+      "ช่าง PM": a.pm_assigned_to ?? "",
+      "หมายเหตุ PM": a.pm_notes ?? "",
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws["!cols"] = [14, 18, 24, 12, 24, 20, 12, 12, 12, 10, 12, 14, 24].map(w => ({ wch: w }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "PM Schedule");
+  XLSX.writeFile(wb, `${filename}_${today}.xlsx`);
+}
+
 export default function PMSchedulePage() {
   const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
   const router = useRouter();
@@ -200,9 +228,22 @@ export default function PMSchedulePage() {
           </div>
           <p className="text-xs text-muted mt-0.5">ตารางงานบำรุงรักษาเชิงป้องกัน — ติดตาม PM ที่เลย/ใกล้ครบกำหนด</p>
         </div>
-        <button onClick={() => { setLoading(true); load(); }} disabled={loading} className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
-          {loading ? "..." : "↺ Refresh"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              await exportPMScheduleToExcel(filtered, "pm_schedule_report");
+              const fs = await import("@/lib/firestore");
+              await fs.logActivity({ user_name: user.name, user_role: user.role, module: "assets", action: "export", resource_name: "pm_schedule_report", details: `Export PM Schedule Excel ${filtered.length} รายการ` });
+            }}
+            className="rounded-lg border border-green-700/50 px-3 py-2 text-xs text-green-400 hover:bg-green-900/20"
+            title="Export PM Schedule ที่กรองแล้วเป็น Excel"
+          >
+            📥 Export Excel
+          </button>
+          <button onClick={() => { setLoading(true); load(); }} disabled={loading} className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
+            {loading ? "..." : "↺ Refresh"}
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
