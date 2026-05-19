@@ -30,10 +30,17 @@ const sections: Section[] = [
     subtitle: "หลังได้ดีล",
     items: [
       { href: "/presale", label: "Presale Tasks", thai: "งานพรีเซลล์ (BOQ / Solution)", icon: "📋" },
-      { href: "/presale/projects", label: "Presale Projects", thai: "โปรเจกต์ออกแบบ Multi-Tool BOQ", icon: "🔧" },
       { href: "/project-management", label: "Project Execution", thai: "ดำเนินโปรเจค / Action Plan", icon: "🗂️" },
       { href: "/service", label: "Service Tickets", thai: "งานบริการ / ติดตั้ง / ซ่อม", icon: "🔧" },
       { href: "/contracts", label: "Contracts", thai: "สัญญา / รับประกัน / MA", icon: "🛡️" },
+    ],
+  },
+  {
+    title: "PRESALE TOOLS",
+    subtitle: "เครื่องมือออกแบบ",
+    items: [
+      { href: "/presale/tools", label: "Tool Launcher", thai: "เริ่มใช้เครื่องมือทันที ไม่ต้องสร้างโปรเจกต์ก่อน", icon: "🧰" },
+      { href: "/presale/projects", label: "Presale Projects", thai: "โปรเจกต์ออกแบบ Multi-Tool BOQ", icon: "📁" },
     ],
   },
   {
