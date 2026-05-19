@@ -3,6 +3,7 @@ import { useEffect, useState, Suspense, Fragment } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Product, ProductCategory, Vendor, VendorPrice, PriceHistory } from "@/lib/types";
+import { useCurrentUser } from "@/lib/UserContext";
 
 const empty = { code: "", name: "", brand: "", category: "", unit: "pcs", cost_price: 0, selling_price: 0, price_member: 0, price_special: 0, default_discount: 0, active: true, type: "product" as Product["type"] };
 const emptyVp = { vendor_id: "", current_price: 0, min_qty: 1, lead_time_days: 0, notes: "" };
@@ -12,6 +13,10 @@ function todayStr() { return new Date().toISOString().slice(0, 10); }
 function ProductsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
+  const canManage = hasPermission("manage_products");
+  const canView = hasPermission("view_products") || canManage;
+
   const [list, setList] = useState<Product[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -180,16 +185,28 @@ function ProductsContent() {
   }
 
   async function handleSave() {
-    if (!form.name.trim()) return; // only name is required now
+    if (!form.name.trim()) return;
     setSaving(true);
-    const { products } = await import("@/lib/firestore");
+    const fs = await import("@/lib/firestore");
     try {
-      if (editId) await products.update(editId, form as unknown as Record<string, unknown>);
-      else await products.add(form as unknown as Record<string, unknown>);
+      if (editId) {
+        await fs.products.update(editId, form as unknown as Record<string, unknown>);
+        await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "products", action: "update", resource_id: editId, resource_name: form.name, details: `แก้ไข Product: ${form.name} (${form.code || "ไม่มีโค้ด"})` });
+      } else {
+        const ref = await fs.products.add(form as unknown as Record<string, unknown>);
+        await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "products", action: "create", resource_id: (ref as { id?: string }).id, resource_name: form.name, details: `เพิ่ม Product: ${form.name} (${form.category || "ไม่มีหมวด"})` });
+      }
       setForm(empty); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); } finally { setSaving(false); }
   }
-  async function handleDelete(id: string) { if (!confirm("Delete?")) return; const { products } = await import("@/lib/firestore"); await products.remove(id); await load(); }
+  async function handleDelete(id: string) {
+    const target = list.find(p => p.id === id);
+    if (!confirm(`ลบ "${target?.name ?? id}" ?`)) return;
+    const fs = await import("@/lib/firestore");
+    await fs.products.remove(id);
+    await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "products", action: "delete", resource_id: id, resource_name: target?.name ?? id, details: `ลบ Product: ${target?.name ?? id}` });
+    await load();
+  }
 
   async function quickSetCategory(id: string, category: string) {
     const { products } = await import("@/lib/firestore");
@@ -199,7 +216,9 @@ function ProductsContent() {
     catch (e) { console.error(e); await load(); /* revert on error */ }
   }
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canView) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">
@@ -208,10 +227,17 @@ function ProductsContent() {
           <h1 className="text-xl font-bold" title="สินค้า / บริการ / รายการราคา">Products / Services</h1>
           <p className="text-xs text-muted">รายการสินค้าและบริการ — ใช้ในใบเสนอราคา</p>
         </div>
-        <button onClick={openAdd} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ เพิ่มสินค้า/บริการ"}</button>
+        <div className="flex gap-2">
+          <button onClick={() => { setLoading(true); load(); }} disabled={loading} className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
+            {loading ? "..." : "↺ Refresh"}
+          </button>
+          {canManage && (
+            <button onClick={openAdd} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "ยกเลิก" : "+ เพิ่มสินค้า/บริการ"}</button>
+          )}
+        </div>
       </div>
 
-      {showForm && (
+      {showForm && canManage && (
         <div className="rounded-xl bg-card border border-border p-5 mb-5">
           <h2 className="text-base font-semibold mb-3">{editId ? "แก้ไข" : "เพิ่มสินค้า/บริการใหม่"}</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
@@ -396,8 +422,10 @@ function ProductsContent() {
                       <button onClick={() => toggleExpand(p.id!)} title={isExpanded ? "ปิด" : "ดูราคา vendor"} className={`text-xs rounded px-1.5 py-0.5 border ${isExpanded ? "bg-accent text-white border-accent" : "border-border hover:bg-card-hover"}`}>
                         🏪 {vps.length}{isExpanded ? " ▴" : " ▾"}
                       </button>
-                      <button onClick={() => openEdit(p)} className="text-xs text-accent hover:underline">แก้</button>
-                      <button onClick={() => handleDelete(p.id!)} className="text-xs text-danger hover:underline">ลบ</button>
+                      {canManage && <>
+                        <button onClick={() => openEdit(p)} className="text-xs text-accent hover:underline">แก้</button>
+                        <button onClick={() => handleDelete(p.id!)} className="text-xs text-danger hover:underline">ลบ</button>
+                      </>}
                     </div>
                   </td>
                 </tr>
@@ -421,6 +449,7 @@ function ProductsContent() {
                         showHistory={showHistoryFor === p.id}
                         toggleHistory={() => setShowHistoryFor(showHistoryFor === p.id ? null : p.id!)}
                         trendForVendor={(vid) => trendForVendor(p.id!, vid)}
+                        canManage={canManage}
                       />
                     </td>
                   </tr>
@@ -451,6 +480,7 @@ type VendorPanelProps = {
   showHistory: boolean;
   toggleHistory: () => void;
   trendForVendor: (vid: string) => { pct: number; direction: "up" | "down" | "flat" } | null;
+  canManage: boolean;
 };
 
 const VENDOR_TYPE_ICON: Record<string, string> = {
@@ -467,7 +497,7 @@ const VENDOR_TYPE_LABEL: Record<string, string> = {
 };
 
 function VendorPanel(props: VendorPanelProps) {
-  const { product, vendors, vendorPrices, history, cheapest, vpForm, setVpForm, vpEditId, openVpEdit, cancelVpEdit, saveVendorPrice, deleteVendorPrice, saving, showHistory, toggleHistory, trendForVendor } = props;
+  const { product, vendors, vendorPrices, history, cheapest, vpForm, setVpForm, vpEditId, openVpEdit, cancelVpEdit, saveVendorPrice, deleteVendorPrice, saving, showHistory, toggleHistory, trendForVendor, canManage } = props;
 
   const activeVendors = vendors.filter(v => v.active);
   // Sort vendor prices: cheapest first
@@ -494,8 +524,8 @@ function VendorPanel(props: VendorPanelProps) {
         </div>
       </div>
 
-      {/* Vendor price form (always visible) */}
-      <div className="rounded-lg bg-card border border-border p-3">
+      {/* Vendor price form (managers only) */}
+      {canManage && <div className="rounded-lg bg-card border border-border p-3">
         <p className="text-[11px] font-semibold mb-2">{isEditing ? "✏️ แก้ราคา / อัปเดตราคา" : "+ เพิ่มราคาจาก Vendor"}</p>
         {activeVendors.length === 0 ? (
           <p className="text-xs text-amber-400">ยังไม่มี Vendor ในระบบ — <Link href="/vendors" className="underline">ไปเพิ่ม Vendor ก่อน</Link></p>
@@ -552,7 +582,7 @@ function VendorPanel(props: VendorPanelProps) {
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Vendor prices table */}
       {sortedVps.length > 0 && (
@@ -595,10 +625,12 @@ function VendorPanel(props: VendorPanelProps) {
                     <td className="px-3 py-2 text-muted">{vp.last_updated || "-"}</td>
                     <td className="px-3 py-2 text-muted truncate max-w-[200px]" title={vp.notes}>{vp.notes || "-"}</td>
                     <td className="px-3 py-2">
-                      <div className="flex gap-2">
-                        <button onClick={() => openVpEdit(vp)} className="text-[10px] text-accent hover:underline">แก้</button>
-                        <button onClick={() => deleteVendorPrice(vp.id!, vp.vendor_name)} className="text-[10px] text-danger hover:underline">ลบ</button>
-                      </div>
+                      {canManage && (
+                        <div className="flex gap-2">
+                          <button onClick={() => openVpEdit(vp)} className="text-[10px] text-accent hover:underline">แก้</button>
+                          <button onClick={() => deleteVendorPrice(vp.id!, vp.vendor_name)} className="text-[10px] text-danger hover:underline">ลบ</button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
