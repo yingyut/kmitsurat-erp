@@ -706,3 +706,28 @@ export interface CCTVDesignData {
   site_notes?: string;
   design_notes?: string;
 }
+
+// Presale Product Catalog (reusable across tools)
+export type CatalogItemType = "cctv_camera" | "cctv_recorder" | "cctv_infra" | "cctv_labor";
+
+export interface PresaleCatalogItem {
+  id?: string;
+  tenant_id: string;
+  item_type: CatalogItemType;
+  code: string;
+  name: string;
+  brand?: string;
+  unit: string;
+  cost_price: number;
+  selling_price: number;
+  // Camera-specific
+  camera_type?: CCTVCamera["type"];
+  camera_resolution?: CCTVCamera["resolution"];
+  // Recorder-specific
+  recorder_type?: CCTVRecorder["type"];
+  recorder_channels?: number;
+  notes?: string;
+  created_by: string;
+  created_at?: unknown;
+  updated_at?: string;
+}
