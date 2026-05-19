@@ -47,7 +47,7 @@ function formatTime(ts: unknown): string {
 }
 
 export default function ActivityLogPage() {
-  const { currentUser, hasPermission } = useCurrentUser();
+  const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -96,9 +96,10 @@ export default function ActivityLogPage() {
   const canView = currentUser?.role === "admin" || currentUser?.role === "Administrator"
     || hasPermission("view_reports") || hasPermission("manage_system");
 
-  if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
-  if (mounted && !currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
-  if (mounted && !canView) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
+  // รอทั้ง mounted และ UserContext โหลดเสร็จก่อนตรวจสิทธิ์
+  if (!mounted || userLoading) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (!canView) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">
