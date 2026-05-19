@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract, Asset, User } from "@/lib/types";
 import {
   BarChart, Bar, PieChart, Pie, Cell, FunnelChart, Funnel, LabelList,
-  XAxis, YAxis, Tooltip, ResponsiveContainer,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
 
 // Colors
@@ -296,6 +296,41 @@ export default function DashboardPage() {
 
   const teamChart = teamPerf.map(m => ({ name: m.name.split(" ")[0], done: m.done, pending: m.pending, late: m.late }));
 
+  // === QUARTERLY COMPARISON ===
+  function getQuarterOf(monthStr: string): 1 | 2 | 3 | 4 {
+    const m = parseInt(monthStr.slice(5, 7));
+    return (Math.floor(((m - fyStartMonth + 12) % 12) / 3) + 1) as 1 | 2 | 3 | 4;
+  }
+  // Current fiscal year range
+  const todayMonth = new Date().getMonth() + 1;
+  const fyYear = fyStartMonth <= todayMonth ? parseInt(thisYear) : parseInt(thisYear) - 1;
+  const fyStartStr = `${fyYear}-${String(fyStartMonth).padStart(2, "0")}`;
+  const fyEndMonthNum = ((fyStartMonth - 1 + 11) % 12) + 1;
+  const fyEndYear = fyYear + (fyStartMonth + 11 > 12 ? 1 : 0);
+  const fyEndStr = `${fyEndYear}-${String(fyEndMonthNum).padStart(2, "0")}`;
+  const fyQuotas = quotas.filter(q => q.month && q.month >= fyStartStr && q.month <= fyEndStr);
+  const quarterlyData = ([1, 2, 3, 4] as const).map(q => {
+    const qQuotas = fyQuotas.filter(qt => getQuarterOf(qt.month!) === q);
+    const tgt = qQuotas.reduce((s, x) => s + (x.quota_target || 0), 0);
+    const act = qQuotas.reduce((s, x) => s + (x.actual_sales || 0), 0);
+    const pft = qQuotas.reduce((s, x) => s + (x.actual_profit || 0), 0);
+    const pftTgt = qQuotas.reduce((s, x) => s + (x.profit_target || 0), 0);
+    const r = qRanges[`q${q}` as "q1" | "q2" | "q3" | "q4"];
+    const isPast = r.to < today;
+    const isCurrent = r.from <= today && r.to >= today;
+    return {
+      name: `Q${q}`, qNum: q, target: tgt, actual: act, profit: pft, profitTarget: pftTgt,
+      pct: tgt > 0 ? Math.round(act / tgt * 100) : 0,
+      gpPct: act > 0 ? Math.round(pft / act * 100) : 0,
+      range: `${r.from.slice(0, 7)} → ${r.to.slice(0, 7)}`,
+      isPast, isCurrent, hasData: qQuotas.length > 0,
+      // chart values in K THB
+      targetK: Math.round(tgt / 1000), actualK: Math.round(act / 1000),
+      profitK: Math.round(pft / 1000), profitTargetK: Math.round(pftTgt / 1000),
+    };
+  });
+  const fyLabel = fyStartMonth === 1 ? `${fyYear}` : `${fyYear}/${fyEndYear}`;
+
   // Alerts
   type AlertItem = { id: string; msg: string; level: "red" | "orange" | "green"; href: string };
   const alerts: AlertItem[] = [];
@@ -424,6 +459,109 @@ export default function DashboardPage() {
           <KPI label="Actual GP%" thai="margin จริง" value={gpPct > 0 ? `${gpPct.toFixed(1)}%` : "—"} sub={`${(actualProfit / 1000).toFixed(0)}K / ${(actual / 1000).toFixed(0)}K`} color={gpPct >= 20 ? "green" : gpPct >= 10 ? "amber" : gpPct > 0 ? "red" : "purple"} href="/reports" source="actual_profit ÷ actual_sales" />
           <KPI label="Approved QT Profit" thai="กำไรจาก QT อนุมัติ" value={approvedQuotProfit >= 1000 ? `${(approvedQuotProfit / 1000).toFixed(0)}K` : approvedQuotProfit > 0 ? `฿${approvedQuotProfit.toLocaleString()}` : "—"} sub="THB · pending bill" color="green" href="/quotations" source="Quotations status=approved · gross_profit" />
           <KPI label="Quotation Pipeline" thai="กำไรรอผล QT" value={pipelineQuotProfit >= 1000 ? `${(pipelineQuotProfit / 1000).toFixed(0)}K` : pipelineQuotProfit > 0 ? `฿${pipelineQuotProfit.toLocaleString()}` : "—"} sub="THB · draft + sent" color="blue" href="/quotations" source="Quotations status=draft|sent · gross_profit" />
+        </div>
+      </div>
+
+      {/* ═══════════════ QUARTERLY COMPARISON ═══════════════ */}
+      <div className="rounded-xl bg-card border border-border p-4 mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-amber-400">📊 Quarterly Performance</h3>
+              <span className="text-[10px] bg-amber-900/20 text-amber-400 border border-amber-800/40 rounded px-2 py-0.5">FY {fyLabel}</span>
+              <Link href="/settings/company" className="text-[9px] text-muted hover:text-accent">⚙ ตั้งไตรมาส</Link>
+            </div>
+            <p className="text-[10px] text-muted mt-0.5">เปรียบเทียบยอดขายและกำไรรายไตรมาส · ที่มา: SalesQuota</p>
+          </div>
+          <div className="flex items-center gap-3 text-[10px] text-muted">
+            <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-500/40 border border-blue-500"></span>เป้า</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-green-500"></span>ยอดขายจริง</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-purple-500"></span>กำไรจริง</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Grouped bar chart */}
+          <div>
+            <p className="text-[10px] text-muted mb-2">ยอดขาย (K THB) — เป้า vs จริง</p>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={quarterlyData} margin={{ left: 0, right: 5, top: 5 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}M` : `${v}K`} />
+                <Tooltip
+                  contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 11 }}
+                  formatter={(value, name) => [`${Number(value).toLocaleString()}K THB`, name === "targetK" ? "เป้าหมาย" : "ยอดขายจริง"]}
+                  labelFormatter={(label, payload) => {
+                    const d = payload?.[0]?.payload;
+                    return d ? `${label} · ${d.range} · ${d.pct}%` : label;
+                  }}
+                />
+                <Bar dataKey="targetK" name="เป้าหมาย" fill={C.blue} fillOpacity={0.35} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="actualK" name="ยอดขายจริง" radius={[3, 3, 0, 0]}>
+                  {quarterlyData.map((d, i) => (
+                    <Cell key={i} fill={d.isCurrent ? C.green : d.isPast && d.hasData ? C.cyan : d.isPast ? C.rose : "#334155"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Profit chart */}
+          <div>
+            <p className="text-[10px] text-muted mb-2">กำไร (K THB) — เป้า vs จริง</p>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={quarterlyData} margin={{ left: 0, right: 5, top: 5 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}M` : `${v}K`} />
+                <Tooltip
+                  contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 11 }}
+                  formatter={(value, name) => [`${Number(value).toLocaleString()}K THB`, name === "profitK" ? "กำไรจริง" : "เป้ากำไร"]}
+                  labelFormatter={(label, payload) => {
+                    const d = payload?.[0]?.payload;
+                    return d ? `${label} · GP ${d.gpPct}%` : label;
+                  }}
+                />
+                <Bar dataKey="profitTargetK" name="เป้ากำไร" fill={C.purple} fillOpacity={0.3} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="profitK" name="กำไรจริง" radius={[3, 3, 0, 0]}>
+                  {quarterlyData.map((d, i) => (
+                    <Cell key={i} fill={d.gpPct >= 20 ? C.green : d.gpPct >= 10 ? C.amber : d.hasData ? C.rose : "#334155"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Quarter summary cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
+          {quarterlyData.map(d => (
+            <div key={d.name}
+              className={`rounded-lg px-3 py-2 border ${d.isCurrent ? "bg-amber-900/15 border-amber-700/50" : "bg-background border-border"}`}>
+              <div className="flex items-center justify-between mb-1">
+                <p className={`text-xs font-bold ${d.isCurrent ? "text-amber-400" : "text-muted"}`}>
+                  {d.name}
+                  {d.isCurrent && <span className="ml-1 text-[9px] text-amber-500">◉ ตอนนี้</span>}
+                  {d.isPast && !d.isCurrent && <span className="ml-1 text-[9px] text-muted">✓ ผ่านแล้ว</span>}
+                </p>
+                <span className={`text-[10px] font-semibold ${d.pct >= 80 ? "text-green-400" : d.pct >= 50 ? "text-yellow-400" : d.pct > 0 ? "text-red-400" : "text-muted"}`}>
+                  {d.hasData ? `${d.pct}%` : "—"}
+                </span>
+              </div>
+              <p className="text-[9px] text-muted">{d.range}</p>
+              {d.hasData ? (
+                <>
+                  <div className="mt-1.5 h-1.5 rounded-full bg-border overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${d.pct >= 80 ? "bg-green-500" : d.pct >= 50 ? "bg-yellow-500" : "bg-red-500"}`}
+                      style={{ width: `${Math.min(d.pct, 100)}%` }} />
+                  </div>
+                  <p className="text-[9px] text-muted mt-1">{(d.actual / 1000).toFixed(0)}K / {(d.target / 1000).toFixed(0)}K</p>
+                  {d.profit > 0 && <p className="text-[9px] text-purple-400">GP {d.gpPct}% · {(d.profit / 1000).toFixed(0)}K</p>}
+                </>
+              ) : (
+                <p className="text-[9px] text-muted mt-1">ยังไม่มีข้อมูล quota</p>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
