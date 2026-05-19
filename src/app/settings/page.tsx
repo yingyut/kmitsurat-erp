@@ -65,6 +65,13 @@ const settingsLinks = [
     desc: "Import ข้อมูลจาก Excel/CSV สำหรับ Customers, Products, Vendors, Projects และ Backup/Restore ฐานข้อมูลทั้งหมด",
     icon: "💾",
   },
+  {
+    href: "/settings/activity-log",
+    title: "Activity Log",
+    thai: "บันทึกกิจกรรมในระบบ",
+    desc: "ดู Audit Trail — Login, สร้าง, แก้ไข, ลบ — กรองตาม Module, Action, ผู้ใช้, และช่วงวันที่",
+    icon: "📋",
+  },
 ];
 
 export default function SettingsPage() {

@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest } from "@/lib/types";
+import { useCurrentUser } from "@/lib/UserContext";
+import { isNewRole } from "@/lib/rbac";
 
 const actTypes = ["phone_call","visit","quotation_created","quotation_sent","follow_up","meeting","customer_update"] as const;
 const typeLabels: Record<string, string> = { phone_call: "โทร", visit: "เยี่ยม", quotation_created: "สร้าง QT", quotation_sent: "ส่ง QT", follow_up: "Follow-up", meeting: "ประชุม", customer_update: "Update" };
@@ -15,6 +17,7 @@ const currentMonth = new Date().toISOString().slice(0, 7);
 const nextWeekStr = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
 
 export default function SalesPage() {
+  const { currentUser, hasPermission } = useCurrentUser();
   const [tab, setTab] = useState<"dashboard" | "plan" | "activities" | "pipeline" | "requests">("dashboard");
   const [activities, setActivities] = useState<SalesActivity[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -97,9 +100,15 @@ export default function SalesPage() {
   async function saveActivity(isPlan = false) {
     if (!actForm.description.trim() && !actForm.expected_outcome?.trim()) return;
     setSaving(true);
-    const { salesActivities } = await import("@/lib/firestore");
+    const { salesActivities, logActivity } = await import("@/lib/firestore");
     const data = { ...actForm, is_plan: isPlan };
-    try { await salesActivities.add(data as unknown as Record<string, unknown>); resetActForm(); setShowForm(false); setShowPlanForm(false); await load(); }
+    try {
+      await salesActivities.add(data as unknown as Record<string, unknown>);
+      if (!isPlan) {
+        try { await logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "create", module: "sales", resource_name: actForm.customer_name || actForm.description.slice(0, 50), details: `บันทึกกิจกรรม: ${actForm.description.slice(0, 80)}` }); } catch {}
+      }
+      resetActForm(); setShowForm(false); setShowPlanForm(false); await load();
+    }
     catch (e) { console.error(e); } finally { setSaving(false); }
   }
 
@@ -162,13 +171,18 @@ export default function SalesPage() {
     const { projects: ps } = await import("@/lib/firestore"); await ps.update(id, { status }); await load();
   }
 
+  // Data isolation for new roles without view_all_projects
+  const ownSalesOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_projects");
+
   // Filtered lists
   const filteredActs = realActivities.filter(a => {
+    if (ownSalesOnly && a.assigned_to && a.assigned_to !== currentUser?.name) return false;
     const s = search.toLowerCase();
     const matchSearch = !s || a.description.toLowerCase().includes(s) || a.customer_name.toLowerCase().includes(s);
     return matchSearch && matchTimeFilter(a);
   });
   const filteredPipeline = projects.filter(p => {
+    if (ownSalesOnly && p.assigned_to && p.assigned_to !== currentUser?.name) return false;
     const s = search.toLowerCase();
     const matchSearch = !s || p.name.toLowerCase().includes(s) || p.customer_name.toLowerCase().includes(s);
     const matchStage = stageFilter === "all" || p.status === stageFilter;

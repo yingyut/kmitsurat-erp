@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { ServiceTicket, Customer, Project, JobRequest, User } from "@/lib/types";
+import { useCurrentUser } from "@/lib/UserContext";
+import { isNewRole } from "@/lib/rbac";
 
 const svcTypes = ["installation","site_survey","technical_survey","after_sales","repair","pm_service"] as const;
 const typeLabels: Record<string, string> = { installation: "Installation", site_survey: "Site Survey", technical_survey: "Technical Survey", after_sales: "After-Sales", repair: "Repair", pm_service: "PM Service" };
@@ -51,6 +53,7 @@ const statusLabel: Record<string, string> = { open: "เปิดใหม่", 
 const statusColor: Record<string, string> = { open: "bg-red-900/50 text-red-400", in_progress: "bg-yellow-900/50 text-yellow-400", resolved: "bg-green-900/50 text-green-400", closed: "bg-gray-700 text-gray-300" };
 
 export default function ServicePage() {
+  const { currentUser, hasPermission } = useCurrentUser();
   const [list, setList] = useState<ServiceTicket[]>([]);
   const [custs, setCusts] = useState<Customer[]>([]);
   const [projs, setProjs] = useState<Project[]>([]);
@@ -70,13 +73,17 @@ export default function ServicePage() {
       const [t, c, p, jr, u] = await Promise.all([fs.serviceTickets.list(), fs.customers.list(), fs.projects.list(), fs.jobRequests.list(), fs.users.list()]);
       setList(t); setCusts(c); setProjs(p);
       setIncomingReqs(jr.filter(j => j.request_to_team === "service"));
-      setSvcUsers(u.filter(x => x.active && x.role === "service"));
+      setSvcUsers(u.filter(x => x.active && (x.role === "service" || x.role === "Service Technician" || x.role === "Service Manager")));
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }
   useEffect(() => { setMounted(true); load(); }, []);
 
+  // Data isolation: new roles with only view_own_tickets see their own jobs only
+  const ownTicketsOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_tickets");
+  const baseTickets = ownTicketsOnly ? list.filter(t => t.technician === currentUser?.name) : list;
+
   // Filter
-  const filtered = list.filter((t) => {
+  const filtered = baseTickets.filter((t) => {
     const s = search.toLowerCase();
     const matchSearch = !s || t.issue.toLowerCase().includes(s) || t.customer_name.toLowerCase().includes(s);
     const matchStatus = statusFilter === "all" || t.status === statusFilter;
@@ -200,7 +207,11 @@ export default function ServicePage() {
       gross_profit: (form.service_value || 0) - (form.service_cost || 0),
       opened_at: now, // record creation timestamp for delay tracking
     };
-    try { await serviceTickets.add(payload as unknown as Record<string, unknown>); setForm(empty); setShowForm(false); await load(); } catch (e) { console.error(e); } finally { setSaving(false); }
+    try {
+      await serviceTickets.add(payload as unknown as Record<string, unknown>);
+      try { const { logActivity } = await import("@/lib/firestore"); await logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "create", module: "service", resource_name: form.issue, details: `สร้าง Ticket: ${form.customer_name}` }); } catch {}
+      setForm(empty); setShowForm(false); await load();
+    } catch (e) { console.error(e); } finally { setSaving(false); }
   }
   async function handleDelete(id: string) { if (!confirm("Delete?")) return; const { serviceTickets } = await import("@/lib/firestore"); await serviceTickets.remove(id); await load(); }
 

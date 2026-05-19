@@ -2,6 +2,8 @@
 import { useEffect, useState, lazy, Suspense } from "react";
 import Link from "next/link";
 import type { Customer, Project, Quotation, ServiceTicket } from "@/lib/types";
+import { useCurrentUser } from "@/lib/UserContext";
+import { isNewRole } from "@/lib/rbac";
 
 const ThailandMap = lazy(() => import("@/components/ThailandMap"));
 
@@ -15,6 +17,7 @@ const provinces = ["กรุงเทพ","กระบี่","กาญจน
 const emptyForm = { company_name: "", contact_name: "", phone: "", email: "", address: "", province: "สุราษฎร์ธานี", org_type: "private" as Customer["org_type"], notes: "" };
 
 export default function CustomersPage() {
+  const { currentUser, hasPermission } = useCurrentUser();
   const [list, setList] = useState<Customer[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [quotations, setQuotations] = useState<Quotation[]>([]);
@@ -47,8 +50,15 @@ export default function CustomersPage() {
 
   useEffect(() => { setMounted(true); load(); }, []);
 
+  // Data isolation for new roles without view_all_customers
+  const ownCustomersOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_customers");
+  const ownCustomerIds = ownCustomersOnly
+    ? new Set(projects.filter(p => p.assigned_to === currentUser?.name).map(p => p.customer_id).filter(Boolean))
+    : null;
+  const baseList = ownCustomersOnly ? list.filter(c => c.id && ownCustomerIds!.has(c.id)) : list;
+
   // Filters
-  const filtered = list.filter(c => {
+  const filtered = baseList.filter(c => {
     const matchSearch = search ? (c.company_name.toLowerCase().includes(search.toLowerCase()) || c.contact_name.toLowerCase().includes(search.toLowerCase()) || (c.province || "").includes(search)) : true;
     const matchProv = provinceFilter === "all" ? true : c.province === provinceFilter;
     const matchOrg = orgFilter === "all" ? true : c.org_type === orgFilter;
@@ -76,11 +86,11 @@ export default function CustomersPage() {
   });
 
   // Provinces that have customers
-  const usedProvinces = [...new Set(list.map(c => c.province).filter(Boolean))].sort();
+  const usedProvinces = [...new Set(baseList.map(c => c.province).filter(Boolean))].sort();
 
   // Province count for filter dropdown
   const provinceCount: Record<string, number> = {};
-  list.forEach(c => { if (c.province) provinceCount[c.province] = (provinceCount[c.province] || 0) + 1; });
+  baseList.forEach(c => { if (c.province) provinceCount[c.province] = (provinceCount[c.province] || 0) + 1; });
 
   // CRUD
   function openAdd() { setEditId(null); setForm(emptyForm); setShowForm(true); }
@@ -96,7 +106,13 @@ export default function CustomersPage() {
     const fs = await import("@/lib/firestore");
     try {
       if (editId) { await fs.customers.update(editId, form as unknown as Record<string, unknown>); }
-      else { await fs.customers.add(form as unknown as Record<string, unknown>); }
+      else {
+        const docRef = await fs.customers.add(form as unknown as Record<string, unknown>);
+        try {
+          const { logActivity } = await import("@/lib/firestore");
+          await logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "create", module: "customers", resource_id: (docRef as { id?: string }).id, resource_name: form.company_name, details: `สร้างลูกค้า: ${form.company_name}` });
+        } catch {}
+      }
       setForm(emptyForm); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }

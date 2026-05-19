@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import type { Project, Customer, User, ProjectType, ServiceContract } from "@/lib/types";
 import Link from "next/link";
+import { useCurrentUser } from "@/lib/UserContext";
+import { isNewRole } from "@/lib/rbac";
 
 const contractTypeMeta: Record<string, { label: string; icon: string; color: string }> = {
   product_warranty:      { label: "รับประกันสินค้า",     icon: "🛡️", color: "bg-blue-900/50 text-blue-400" },
@@ -30,6 +32,7 @@ const emptyForm = {
 };
 
 export default function ProjectsPage() {
+  const { currentUser, hasPermission } = useCurrentUser();
   const [list, setList] = useState<Project[]>([]);
   const [custs, setCusts] = useState<Customer[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -103,10 +106,15 @@ export default function ProjectsPage() {
 
   useEffect(() => { setMounted(true); load(); }, []);
 
-  const filtered = list.filter(p => {
+  // Data isolation: new roles with only view_own_projects see their own pipeline only
+  const ownProjectsOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_projects");
+  const baseList = ownProjectsOnly ? list.filter(p => p.assigned_to === currentUser?.name) : list;
+
+  const filtered = baseList.filter(p => {
     const matchSearch = search ? (p.name.toLowerCase().includes(search.toLowerCase()) || p.customer_name.toLowerCase().includes(search.toLowerCase())) : true;
     const matchStatus = statusFilter === "all" ? true : p.status === statusFilter;
-    return matchSearch && matchStatus;
+    const matchOwner = ownerFilter === "all" ? true : p.assigned_to === ownerFilter;
+    return matchSearch && matchStatus && matchOwner;
   });
 
   function selectCustomer(id: string) {
@@ -165,8 +173,12 @@ export default function ProjectsPage() {
     // Sync type field for backward compat
     const saveData = { ...form, type: form.job_types?.length ? form.job_types.join(", ") : form.type };
     try {
-      if (editId) { await fs.projects.update(editId, saveData as unknown as Record<string, unknown>); }
-      else { await fs.projects.add(saveData as unknown as Record<string, unknown>); }
+      if (editId) {
+        await fs.projects.update(editId, saveData as unknown as Record<string, unknown>);
+      } else {
+        await fs.projects.add(saveData as unknown as Record<string, unknown>);
+        try { await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "create", module: "projects", resource_name: form.name, details: `สร้างโปรเจกต์: ${form.name}` }); } catch {}
+      }
       setForm(emptyForm); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }

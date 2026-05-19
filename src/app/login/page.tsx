@@ -35,6 +35,10 @@ export default function LoginPage() {
       if (password !== correctPwd) { setError("รหัสผ่านไม่ถูกต้อง"); setLoading(false); return; }
       localStorage.setItem("kmit_current_user", user.name);
       localStorage.setItem("kmit_logged_in", "true");
+      try {
+        const { logActivity } = await import("@/lib/firestore");
+        await logActivity({ user_name: user.name, user_role: user.role, action: "login", module: "auth", details: `Login: ${username}` });
+      } catch {}
       window.location.href = "/dashboard";
     } catch (err) { setError("เกิดข้อผิดพลาด"); console.error(err); }
     finally { setLoading(false); }

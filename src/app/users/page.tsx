@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { User, Team } from "@/lib/types";
+import { ALL_PERMISSIONS, PERMISSION_META, PERM_CATEGORIES, ROLE_PERMISSIONS, isNewRole, type Permission } from "@/lib/rbac";
 
 const roles = [
   "admin", "sale", "presale", "service", "avenger",
@@ -94,6 +95,31 @@ export default function UsersPage() {
 
   // Detail view
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+
+  // Permission override modal
+  const [permOverrideUser, setPermOverrideUser] = useState<User | null>(null);
+  const [permOverrides, setPermOverrides] = useState<string[]>([]);
+
+  function openPermOverride(u: User) {
+    setPermOverrideUser(u);
+    setPermOverrides(u.permissions_override || []);
+  }
+
+  function toggleOverridePerm(perm: Permission) {
+    setPermOverrides(prev => prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm]);
+  }
+
+  async function savePermOverride() {
+    if (!permOverrideUser) return;
+    setSaving(true);
+    const fs = await import("@/lib/firestore");
+    try {
+      await fs.users.update(permOverrideUser.id!, { permissions_override: permOverrides });
+      setPermOverrideUser(null);
+      await load();
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  }
 
   async function load() {
     const fs = await import("@/lib/firestore");
@@ -439,7 +465,8 @@ export default function UsersPage() {
                       <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                         <div className="flex gap-2">
                           <button onClick={() => openEditUser(u)} title="แก้ไขข้อมูล" className="text-xs text-accent hover:underline">แก้ไข</button>
-                          <button onClick={async () => { if (!confirm(`รีเซ็ตรหัสผ่าน ${u.name} เป็น P@ssw0rd ?`)) return; const fs = await import("@/lib/firestore"); await fs.users.update(u.id!, { password: "P@ssw0rd" }); alert(`✅ รีเซ็ตรหัสผ่าน ${u.nickname || u.name} เป็น P@ssw0rd แล้ว`); }} title="รีเซ็ตรหัสผ่าน" className="text-xs text-warning hover:underline">🔑 Reset</button>
+                          <button onClick={() => openPermOverride(u)} title="กำหนดสิทธิ์พิเศษ" className="text-xs text-purple-400 hover:underline">🛡️</button>
+                          <button onClick={async () => { if (!confirm(`รีเซ็ตรหัสผ่าน ${u.name} เป็น P@ssw0rd ?`)) return; const fs = await import("@/lib/firestore"); await fs.users.update(u.id!, { password: "P@ssw0rd" }); alert(`✅ รีเซ็ตรหัสผ่าน ${u.nickname || u.name} เป็น P@ssw0rd แล้ว`); }} title="รีเซ็ตรหัสผ่าน" className="text-xs text-warning hover:underline">🔑</button>
                           <button onClick={() => deleteUser(u.id!, u.name)} title="ลบผู้ใช้" className="text-xs text-danger hover:underline">ลบ</button>
                         </div>
                       </td>
@@ -510,6 +537,68 @@ export default function UsersPage() {
         </>)}
 
       </>)}
+
+      {/* ========== PERMISSION OVERRIDE MODAL ========== */}
+      {permOverrideUser && (() => {
+        const rolePerms = new Set<string>(
+          isNewRole(permOverrideUser.role)
+            ? (ROLE_PERMISSIONS[permOverrideUser.role as keyof typeof ROLE_PERMISSIONS] ?? [])
+            : []
+        );
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="w-full max-w-2xl rounded-2xl bg-card border border-border shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
+                <div>
+                  <h2 className="text-base font-bold">สิทธิ์พิเศษ — {permOverrideUser.name}</h2>
+                  <p className="text-xs text-muted">Role: <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${roleColor[permOverrideUser.role] || "bg-gray-700"}`}>{permOverrideUser.role}</span> · สิทธิ์พิเศษจะ override เพิ่มเติมจาก role</p>
+                </div>
+                <button onClick={() => setPermOverrideUser(null)} className="text-muted hover:text-foreground text-lg">✕</button>
+              </div>
+
+              <div className="overflow-y-auto flex-1 p-5 space-y-5">
+                {PERM_CATEGORIES.map(cat => {
+                  const catPerms = ALL_PERMISSIONS.filter(p => PERMISSION_META[p]?.category === cat);
+                  if (catPerms.length === 0) return null;
+                  return (
+                    <div key={cat}>
+                      <h3 className="text-xs font-semibold text-muted uppercase mb-2">{cat}</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+                        {catPerms.map(perm => {
+                          const meta = PERMISSION_META[perm];
+                          const fromRole = rolePerms.has(perm);
+                          const inOverride = permOverrides.includes(perm);
+                          const checked = fromRole || inOverride;
+                          return (
+                            <label key={perm} className={`flex items-start gap-2.5 rounded-lg px-3 py-2 cursor-pointer transition-colors ${fromRole ? "bg-green-900/10 border border-green-800/30" : inOverride ? "bg-accent/10 border border-accent/30" : "bg-background border border-border hover:bg-card-hover"}`}>
+                              <input type="checkbox" checked={checked} disabled={fromRole} onChange={() => !fromRole && toggleOverridePerm(perm)} className="mt-0.5 shrink-0 accent-purple-500" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium leading-snug">{meta?.label ?? perm}</p>
+                                <p className="text-[10px] text-muted leading-snug">{meta?.thai}</p>
+                                {fromRole && <p className="text-[9px] text-green-400 mt-0.5">✓ จาก Role</p>}
+                                {!fromRole && inOverride && <p className="text-[9px] text-accent mt-0.5">✓ สิทธิ์พิเศษ</p>}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="px-5 py-4 border-t border-border flex items-center justify-between shrink-0">
+                <p className="text-xs text-muted">สิทธิ์พิเศษ: <span className="text-accent font-medium">{permOverrides.filter(p => !rolePerms.has(p)).length} รายการ</span></p>
+                <div className="flex gap-2">
+                  <button onClick={() => setPermOverrideUser(null)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+                  <button onClick={savePermOverride} disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : "บันทึกสิทธิ์"}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
