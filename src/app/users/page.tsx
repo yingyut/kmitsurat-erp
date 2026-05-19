@@ -540,9 +540,12 @@ export default function UsersPage() {
 
       {/* ========== PERMISSION OVERRIDE MODAL ========== */}
       {permOverrideUser && (() => {
+        const isLegacy = !isNewRole(permOverrideUser.role);
+        const isLegacyAdmin = permOverrideUser.role === "admin";
         const rolePerms = new Set<string>(
           isNewRole(permOverrideUser.role)
             ? (ROLE_PERMISSIONS[permOverrideUser.role as keyof typeof ROLE_PERMISSIONS] ?? [])
+            : isLegacyAdmin ? ALL_PERMISSIONS  // admin legacy = ได้ทั้งหมดอยู่แล้ว
             : []
         );
         return (
@@ -555,6 +558,13 @@ export default function UsersPage() {
                 </div>
                 <button onClick={() => setPermOverrideUser(null)} className="text-muted hover:text-foreground text-lg">✕</button>
               </div>
+              {isLegacy && (
+                <div className={`px-5 py-3 text-xs border-b border-border ${isLegacyAdmin ? "bg-cyan-900/20 text-cyan-300" : "bg-amber-900/20 text-amber-300"}`}>
+                  {isLegacyAdmin
+                    ? "⚡ Role นี้เป็น Legacy Admin — ระบบให้สิทธิ์ทั้งหมดอัตโนมัติ สิทธิ์พิเศษด้านล่างไม่จำเป็นต้องตั้ง"
+                    : "⚠️ Role นี้เป็น Legacy Role — Permission ถูกกำหนดใน Settings → Permissions (Legacy) สิทธิ์พิเศษนี้จะเพิ่ม permission แบบ granular เท่านั้น"}
+                </div>
+              )}
 
               <div className="overflow-y-auto flex-1 p-5 space-y-5">
                 {PERM_CATEGORIES.map(cat => {

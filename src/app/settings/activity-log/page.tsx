@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { ActivityLog } from "@/lib/types";
+import { useCurrentUser } from "@/lib/UserContext";
 
 const moduleLabels: Record<string, string> = {
   auth: "เข้าสู่ระบบ",
@@ -46,6 +47,7 @@ function formatTime(ts: unknown): string {
 }
 
 export default function ActivityLogPage() {
+  const { currentUser, hasPermission } = useCurrentUser();
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -91,13 +93,23 @@ export default function ActivityLogPage() {
     return matchSearch && matchModule && matchAction && matchUser && matchDate;
   });
 
+  const canView = currentUser?.role === "admin" || currentUser?.role === "Administrator"
+    || hasPermission("view_reports") || hasPermission("manage_system");
+
   if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
+  if (mounted && !currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
+  if (mounted && !canView) return <div className="p-6"><p className="text-danger text-sm">⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>;
 
   return (
     <div className="p-6">
-      <div className="mb-5">
-        <h1 className="text-xl font-bold" title="บันทึกกิจกรรมในระบบ">Activity Log</h1>
-        <p className="text-xs text-muted">บันทึกการใช้งานระบบ — Login, สร้าง, แก้ไข, ลบ</p>
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h1 className="text-xl font-bold" title="บันทึกกิจกรรมในระบบ">Activity Log</h1>
+          <p className="text-xs text-muted">บันทึกการใช้งานระบบ — Login, สร้าง, แก้ไข, ลบ</p>
+        </div>
+        <button onClick={() => { setLoading(true); load(); }} disabled={loading} title="โหลดข้อมูลใหม่" className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
+          {loading ? "..." : "↺ Refresh"}
+        </button>
       </div>
 
       {/* Filters */}
