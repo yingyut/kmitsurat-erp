@@ -100,6 +100,17 @@ export default function UsersPage() {
   // Detail view
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
+  // Custom confirm modal (replaces window.confirm — ไม่ทำงานใน Electron)
+  const [confirmModal, setConfirmModal] = useState<{ msg: string; onOk: () => void } | null>(null);
+  function askConfirm(msg: string, onOk: () => void) { setConfirmModal({ msg, onOk }); }
+
+  // Toast feedback (replaces window.alert)
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  function showToast(msg: string, ok = true) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  }
+
   // Permission override modal
   const [permOverrideUser, setPermOverrideUser] = useState<User | null>(null);
   const [permOverrides, setPermOverrides] = useState<string[]>([]);
@@ -131,7 +142,7 @@ export default function UsersPage() {
       await load();
     } catch (e) {
       console.error(e);
-      alert("❌ บันทึกไม่สำเร็จ กรุณาลองใหม่");
+      showToast("❌ บันทึกไม่สำเร็จ กรุณาลองใหม่", false);
     }
     finally { setSaving(false); }
   }
@@ -201,11 +212,8 @@ export default function UsersPage() {
     const ok = (name?: string) => !name || validNames.has(name);
     const fs = await import("@/lib/firestore");
     const [activities, quotas, presaleReqs, serviceTickets, projects] = await Promise.all([
-      fs.salesActivities.list(),
-      fs.salesQuotas.list(),
-      fs.presaleRequests.list(),
-      fs.serviceTickets.list(),
-      fs.projects.list(),
+      fs.salesActivities.list(), fs.salesQuotas.list(), fs.presaleRequests.list(),
+      fs.serviceTickets.list(), fs.projects.list(),
     ]);
     const orphanActivities = activities.filter(a => !ok(a.assigned_to));
     const orphanQuotas = quotas.filter(q => !ok(q.user_name));
@@ -214,71 +222,70 @@ export default function UsersPage() {
     const orphanProjects = projects.filter(p => !ok(p.assigned_to));
     const totalDelete = orphanActivities.length + orphanQuotas.length + orphanPresale.length + orphanService.length;
     if (totalDelete === 0 && orphanProjects.length === 0) {
-      alert("✓ ไม่พบข้อมูลที่อ้างถึง user เก่า — ระบบสะอาดอยู่แล้ว");
+      showToast("✓ ไม่พบข้อมูลที่อ้างถึง user เก่า — ระบบสะอาดอยู่แล้ว");
       return;
     }
     const msg = [
-      "พบข้อมูลที่อ้างถึง user ที่ไม่มีอยู่ในระบบแล้ว:",
-      "",
-      `📞 Sales Activities: ${orphanActivities.length} (ลบ)`,
-      `📈 Sales Quotas: ${orphanQuotas.length} (ลบ)`,
-      `📋 Presale Tasks: ${orphanPresale.length} (ลบ)`,
-      `🔧 Service Tickets: ${orphanService.length} (ลบ)`,
-      `📁 Projects: ${orphanProjects.length} (เคลียร์ assigned_to เท่านั้น — ไม่ลบ project)`,
-      "",
-      `รวมลบ ${totalDelete} records + อัปเดต ${orphanProjects.length} projects`,
-      "",
-      "ดำเนินการต่อ?",
+      "พบข้อมูลที่อ้างถึง user ที่ไม่มีอยู่ในระบบ:",
+      `📞 Sales Activities: ${orphanActivities.length}`,
+      `📈 Sales Quotas: ${orphanQuotas.length}`,
+      `📋 Presale Tasks: ${orphanPresale.length}`,
+      `🔧 Service Tickets: ${orphanService.length}`,
+      `📁 Projects unassign: ${orphanProjects.length}`,
+      `รวม ${totalDelete} records — ดำเนินการต่อ?`,
     ].join("\n");
-    if (!confirm(msg)) return;
-    setSaving(true);
-    try {
-      for (const a of orphanActivities) if (a.id) await fs.salesActivities.remove(a.id);
-      for (const q of orphanQuotas) if (q.id) await fs.salesQuotas.remove(q.id);
-      for (const r of orphanPresale) if (r.id) await fs.presaleRequests.remove(r.id);
-      for (const t of orphanService) if (t.id) await fs.serviceTickets.remove(t.id);
-      for (const p of orphanProjects) if (p.id) await fs.projects.update(p.id, { assigned_to: "" });
-      alert(`✓ ล้างข้อมูลเรียบร้อย\n\nลบ ${totalDelete} records + อัปเดต ${orphanProjects.length} projects`);
-      await load();
-    } catch (e) { console.error(e); alert("เกิดข้อผิดพลาด"); }
-    finally { setSaving(false); }
+    askConfirm(msg, async () => {
+      setSaving(true);
+      try {
+        for (const a of orphanActivities) if (a.id) await fs.salesActivities.remove(a.id);
+        for (const q of orphanQuotas) if (q.id) await fs.salesQuotas.remove(q.id);
+        for (const r of orphanPresale) if (r.id) await fs.presaleRequests.remove(r.id);
+        for (const t of orphanService) if (t.id) await fs.serviceTickets.remove(t.id);
+        for (const p of orphanProjects) if (p.id) await fs.projects.update(p.id, { assigned_to: "" });
+        showToast(`✓ ล้างเรียบร้อย — ลบ ${totalDelete} records + อัปเดต ${orphanProjects.length} projects`);
+        await load();
+      } catch (e) { console.error(e); showToast("เกิดข้อผิดพลาด", false); }
+      finally { setSaving(false); }
+    });
   }
 
   async function seedRealTeam() {
-    const msg = `ตั้งทีมจริงตามรายชื่อ — ${REAL_TEAM.length} คน:\n\n• พี่จอร์ด (CEO)\n• พี่แนน (Manager)\n• น้องก้อย (Office Admin)\n• ออย, แนนน้อย, อี๊ฟ, บีบี, จะจ๋า (Sales)\n• พี่กรด, พี่กอร์ฟ, น้องมีน (Pre-sale)\n• ปอน, ไผ่, โก้ด (Service)\n• System Admin\n\n⚠ ระบบจะลบผู้ใช้เดิม ${userList.length} คนทั้งหมดก่อน — ดำเนินการต่อ?`;
-    if (!confirm(msg)) return;
-    setSaving(true);
-    const fs = await import("@/lib/firestore");
-    try {
-      // 1. Remove existing users
-      for (const u of userList) {
-        if (u.id) await fs.users.remove(u.id);
-      }
-      // 2. Add real team
-      for (const t of REAL_TEAM) {
-        const computed = computeDisplayName(t).trim();
-        await fs.users.add({ ...t, name: computed } as unknown as Record<string, unknown>);
-      }
-      await load();
-    } catch (e) { console.error(e); }
-    finally { setSaving(false); }
+    const msg = `ตั้งทีมจริง ${REAL_TEAM.length} คน\n⚠ ลบผู้ใช้เดิม ${userList.length} คนทั้งหมดก่อน — ดำเนินการต่อ?`;
+    askConfirm(msg, async () => {
+      setSaving(true);
+      const fs = await import("@/lib/firestore");
+      try {
+        for (const u of userList) { if (u.id) await fs.users.remove(u.id); }
+        for (const t of REAL_TEAM) {
+          const computed = computeDisplayName(t).trim();
+          await fs.users.add({ ...t, name: computed } as unknown as Record<string, unknown>);
+        }
+        showToast(`✓ ตั้งทีมเรียบร้อย — เพิ่ม ${REAL_TEAM.length} คน`);
+        await load();
+      } catch (e) { console.error(e); showToast("เกิดข้อผิดพลาด", false); }
+      finally { setSaving(false); }
+    });
   }
 
-  async function deleteUser(id: string, name: string) {
-    if (!confirm(`ลบผู้ใช้ "${name}" ?\n\nโปรเจคที่ยังค้างอยู่ของ ${name} จะถูกปล่อยเป็น "ไม่มีเจ้าของ" และเปิดให้เซลล์ท่านอื่นขอรับงานได้`)) return;
-    const fs = await import("@/lib/firestore");
-    // Flag active projects belonging to this user as "open"
-    try {
-      const allProjects = await fs.projects.list();
-      const userProjects = allProjects.filter(p => p.assigned_to === name && !["won", "lost"].includes(p.status));
-      await Promise.all(userProjects.map(p =>
-        fs.projects.update(p.id!, { assigned_to_inactive: true, ownership_status: "open" as const })
-      ));
-    } catch (e) { console.error("project flag error", e); }
-    await fs.users.remove(id);
-    await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "users", action: "delete", resource_id: id, resource_name: name, details: `ลบผู้ใช้: ${name} (โปรเจคที่เกี่ยวข้องถูก flag เป็น open)` });
-    if (selectedUser?.id === id) setSelectedUser(null);
-    await load();
+  function deleteUser(id: string, name: string) {
+    askConfirm(
+      `ลบผู้ใช้ "${name}" ?\n\nโปรเจคค้างของ ${name} จะถูกปล่อยเป็น "ไม่มีเจ้าของ"`,
+      async () => {
+        const fs = await import("@/lib/firestore");
+        try {
+          const allProjects = await fs.projects.list();
+          const userProjects = allProjects.filter(p => p.assigned_to === name && !["won", "lost"].includes(p.status));
+          await Promise.all(userProjects.map(p =>
+            fs.projects.update(p.id!, { assigned_to_inactive: true, ownership_status: "open" as const })
+          ));
+        } catch (e) { console.error("project flag error", e); }
+        await fs.users.remove(id);
+        await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "users", action: "delete", resource_id: id, resource_name: name, details: `ลบผู้ใช้: ${name}` });
+        if (selectedUser?.id === id) setSelectedUser(null);
+        showToast(`✓ ลบ "${name}" เรียบร้อยแล้ว`);
+        await load();
+      }
+    );
   }
 
   // === Team CRUD ===
@@ -308,10 +315,13 @@ export default function UsersPage() {
     finally { setSaving(false); }
   }
 
-  async function deleteTeam(id: string, name: string) {
-    if (!confirm(`ลบทีม "${name}" ?`)) return;
-    const fs = await import("@/lib/firestore");
-    await fs.teams.remove(id); await load();
+  function deleteTeam(id: string, name: string) {
+    askConfirm(`ลบทีม "${name}" ?`, async () => {
+      const fs = await import("@/lib/firestore");
+      await fs.teams.remove(id);
+      showToast(`✓ ลบทีม "${name}" เรียบร้อยแล้ว`);
+      await load();
+    });
   }
 
   if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
@@ -497,7 +507,7 @@ export default function UsersPage() {
                         <div className="flex gap-2">
                           <button onClick={() => openEditUser(u)} title="แก้ไขข้อมูล" className="text-xs text-accent hover:underline">แก้ไข</button>
                           <button onClick={() => openPermOverride(u)} title="กำหนดสิทธิ์พิเศษ" className="text-xs text-purple-400 hover:underline">🛡️</button>
-                          <button onClick={async () => { if (!confirm(`รีเซ็ตรหัสผ่าน ${u.name} เป็น P@ssw0rd ?`)) return; const fs = await import("@/lib/firestore"); await fs.users.update(u.id!, { password: "P@ssw0rd" }); alert(`✅ รีเซ็ตรหัสผ่าน ${u.nickname || u.name} เป็น P@ssw0rd แล้ว`); }} title="รีเซ็ตรหัสผ่าน" className="text-xs text-warning hover:underline">🔑</button>
+                          <button onClick={() => askConfirm(`รีเซ็ตรหัสผ่าน ${u.name} เป็น P@ssw0rd ?`, async () => { const fs = await import("@/lib/firestore"); await fs.users.update(u.id!, { password: "P@ssw0rd" }); showToast(`✓ รีเซ็ตรหัสผ่าน ${u.nickname || u.name} เป็น P@ssw0rd แล้ว`); })} title="รีเซ็ตรหัสผ่าน" className="text-xs text-warning hover:underline">🔑</button>
                           <button onClick={() => deleteUser(u.id!, u.name)} title="ลบผู้ใช้" className="text-xs text-danger hover:underline">ลบ</button>
                         </div>
                       </td>
@@ -568,6 +578,26 @@ export default function UsersPage() {
         </>)}
 
       </>)}
+
+      {/* ========== TOAST ========== */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 rounded-xl px-4 py-3 text-sm font-medium shadow-xl border transition-all ${toast.ok ? "bg-green-900/90 border-green-700 text-green-200" : "bg-rose-900/90 border-rose-700 text-rose-200"}`}>
+          {toast.msg}
+        </div>
+      )}
+
+      {/* ========== CONFIRM MODAL ========== */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="rounded-2xl bg-card border border-border p-6 max-w-sm w-full shadow-2xl">
+            <p className="text-sm whitespace-pre-line mb-5 leading-relaxed">{confirmModal.msg}</p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setConfirmModal(null)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+              <button onClick={() => { const fn = confirmModal.onOk; setConfirmModal(null); fn(); }} className="rounded-lg bg-rose-700 hover:bg-rose-600 px-4 py-2 text-sm font-semibold text-white">ยืนยัน</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ========== PERMISSION OVERRIDE MODAL ========== */}
       {permOverrideUser && (() => {

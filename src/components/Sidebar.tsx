@@ -12,6 +12,7 @@ const sections: Section[] = [
   {
     items: [
       { href: "/dashboard", label: "Dashboard", thai: "แดชบอร์ดภาพรวม", icon: "📊" },
+      { href: "/todos", label: "Memo & Todo", thai: "บันทึกงาน / รายการสิ่งที่ต้องทำ", icon: "📝" },
     ],
   },
   {

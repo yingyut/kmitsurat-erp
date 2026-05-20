@@ -833,6 +833,31 @@ export interface PresaleCatalogItem {
   updated_at?: string;
 }
 
+// ============================================================
+// MEMO / TODO
+// ============================================================
+
+export type TodoPriority = "low" | "normal" | "high" | "urgent";
+export type TodoStatus = "pending" | "done";
+
+export interface Todo {
+  id?: string;
+  tenant_id: string;
+  user_name: string;          // เจ้าของ todo
+  title: string;              // ชื่องาน / memo
+  description?: string;       // รายละเอียด
+  status: TodoStatus;
+  priority: TodoPriority;
+  due_date?: string;          // YYYY-MM-DD
+  pinned?: boolean;
+  related_customer?: string;
+  related_project?: string;
+  created_by: string;         // ผู้สร้าง (อาจเป็น manager)
+  done_at?: string;           // เวลาที่ mark done
+  created_at?: unknown;
+  updated_at?: string;
+}
+
 export interface CompanySettings {
   id?: string;
   tenant_id: string;
