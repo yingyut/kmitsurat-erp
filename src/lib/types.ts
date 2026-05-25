@@ -25,6 +25,7 @@ export interface User {
   login_username?: string;
   password?: string;
   permissions_override?: string[];
+  extra_roles?: string[];  // บทบาทเพิ่มเติม — รวม permissions จากทุก role
 }
 
 export interface ActivityLog {

@@ -40,6 +40,8 @@ export const WIDGET_LABELS: Record<string, string> = {
   "svc-status": "สถานะ Service",
   "svc-overdue": "Ticket ค้าง",
   "svc-pm": "PM Schedule",
+  "svc-workload": "Ticket รายคน (ละเอียด)",
+  "svc-repeat": "ปัญหาซ้ำ / Skill Gap",
   "prj-kpis": "Projects KPI",
   "prj-funnel": "Pipeline Funnel",
   "prj-qt-status": "Quotation Status",
@@ -90,6 +92,8 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
     { id: "svc-status",       visible: true, span: "half" },
     { id: "svc-overdue",      visible: true, span: "half" },
     { id: "svc-pm",           visible: true, span: "half" },
+    { id: "svc-workload",     visible: true, span: "full" },
+    { id: "svc-repeat",       visible: true, span: "half" },
   ],
   projects: [
     { id: "prj-kpis",      visible: true, span: "full" },

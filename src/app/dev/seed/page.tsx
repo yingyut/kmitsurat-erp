@@ -16,13 +16,27 @@ const SEED_CUSTOMERS = [
 ];
 
 const SEED_USERS = [
-  { name: "จอร์ด เหมือนดาว", nickname: "พี่จอร์ด", email: "jord@kmitsurat.com", role: "sale", active: true, phone: "087-111-0001" },
-  { name: "พัชรี รักสกุล", first_name: "พัชรี", last_name: "รักสกุล", nickname: "น้องก้อย", email: "patcharee@kmitsurat.com", role: "Coordinator", active: true, phone: "087-111-0002", position: "ธุรการ", display_preference: "nickname" },
-  { name: "บิ๊ก สุขใจ", nickname: "บิ๊ก", email: "big@kmitsurat.com", role: "avenger", active: true, phone: "087-111-0003" },
-  { name: "มิ้ว ชัยวงศ์", nickname: "มิ้ว", email: "miew@kmitsurat.com", role: "presale", active: true, phone: "087-111-0004" },
-  { name: "อาร์ม วิไล", nickname: "อาร์ม", email: "arm@kmitsurat.com", role: "service", active: true, phone: "087-111-0005" },
-  { name: "ปั้น ศรีสว่าง", nickname: "ปั้น", email: "pun@kmitsurat.com", role: "service", active: true, phone: "087-111-0006" },
-  { name: "กุ้ง ทะเลไทย", nickname: "กุ้ง", email: "goong@kmitsurat.com", role: "service", active: true, phone: "087-111-0007" },
+  // ─── System Account ───────────────────────────────────────────────────────────
+  { name: "System Admin", nickname: "Admin", email: "admin@kmitsurat.com", login_username: "administrator", password: "P@ssw0rd!@", role: "admin", active: true, phone: "", position: "System Administrator", display_preference: "nickname" },
+  // ─── Management ───────────────────────────────────────────────────────────────
+  { name: "พี่จอร์ด",  nickname: "พี่จอร์ด",  email: "jord@kmitsurat.com",       role: "admin",       active: true, phone: "087-100-0001", position: "CEO / เจ้าของ",       display_preference: "nickname" },
+  { name: "พี่แนน",    nickname: "พี่แนน",    email: "nan@kmitsurat.com",        role: "admin",       active: true, phone: "087-100-0002", position: "ผู้จัดการสาขา",       display_preference: "nickname" },
+  // ─── Sales ─────────────────────────────────────────────────────────────────────
+  { name: "ออย",      nickname: "ออย",      email: "oy@kmitsurat.com",         role: "sale",        active: true, phone: "087-100-0003", position: "Sales", sales_code: "OY",  display_preference: "nickname" },
+  { name: "แนนน้อย",  nickname: "แนนน้อย",  email: "nannoi@kmitsurat.com",     role: "sale",        active: true, phone: "087-100-0004", position: "Sales", sales_code: "NN",  display_preference: "nickname" },
+  { name: "อี๊ฟ",     nickname: "อี๊ฟ",     email: "eve@kmitsurat.com",        role: "sale",        active: true, phone: "087-100-0005", position: "Sales", sales_code: "EVE", display_preference: "nickname" },
+  { name: "บีบี",     nickname: "บีบี",     email: "bb@kmitsurat.com",         role: "sale",        active: true, phone: "087-100-0006", position: "Sales", sales_code: "BB",  display_preference: "nickname" },
+  { name: "จะจ๋า",    nickname: "จะจ๋า",    email: "jaja@kmitsurat.com",       role: "sale",        active: true, phone: "087-100-0007", position: "Sales", sales_code: "JJ",  display_preference: "nickname" },
+  // ─── Presale ───────────────────────────────────────────────────────────────────
+  { name: "พี่กรด",   nickname: "พี่กรด",   email: "krod@kmitsurat.com",       role: "admin",       active: true, phone: "087-100-0008", position: "Pre-sale Lead",        display_preference: "nickname" },
+  { name: "พี่กอร์ฟ", nickname: "พี่กอร์ฟ", email: "golf@kmitsurat.com",       role: "presale",     active: true, phone: "087-100-0009", position: "Presales Engineer",    display_preference: "nickname" },
+  { name: "น้องมีน",  nickname: "น้องมีน",  email: "meen@kmitsurat.com",       role: "presale",     active: true, phone: "087-100-0010", position: "Presales Engineer",    display_preference: "nickname" },
+  // ─── Service ───────────────────────────────────────────────────────────────────
+  { name: "ปอน",      nickname: "ปอน",      email: "pon@kmitsurat.com",        role: "service",     active: true, phone: "087-100-0011", position: "Service Technician",   display_preference: "nickname" },
+  { name: "ไผ่",      nickname: "ไผ่",      email: "pai@kmitsurat.com",        role: "service",     active: true, phone: "087-100-0012", position: "Service Technician",   display_preference: "nickname" },
+  { name: "โก้ด",     nickname: "โก้ด",     email: "kode@kmitsurat.com",       role: "service",     active: true, phone: "087-100-0013", position: "Service Technician",   display_preference: "nickname" },
+  // ─── Coordinator ────────────────────────────────────────────────────────────────
+  { name: "น้องก้อย", first_name: "พัชรี", last_name: "รักสกุล", nickname: "น้องก้อย", email: "patcharee@kmitsurat.com", role: "Coordinator", active: true, phone: "087-100-0014", position: "ธุรการ", display_preference: "nickname" },
 ];
 
 const SEED_PROJECT_TYPES = [
@@ -63,96 +77,108 @@ const SEED_PRODUCTS = [
 
 // Projects — assigned across salespeople, mix of statuses
 const makeProjects = (customerIds: Record<string, string>) => [
-  { name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", customer_id: customerIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", type: "WiFi", value: 2850000, status: "negotiation", assigned_to: "จอร์ด เหมือนดาว", probability: 70, expected_close_date: "2026-06-30", notes: "ต้องการ 120 จุด AP ทั่วมหาวิทยาลัย", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "CCTV โรงพยาบาลสุราษฎร์ธานี", customer_id: customerIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", type: "CCTV", value: 1580000, status: "proposal", assigned_to: "จอร์ด เหมือนดาว", probability: 55, expected_close_date: "2026-07-15", notes: "กล้อง 80 ตัว ครอบคลุมทุกอาคาร", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "Network ห้าง Central สุราษฎร์ธานี", customer_id: customerIds["ห้างสรรพสินค้า Central สุราษฎร์ธานี"] || "", customer_name: "ห้างสรรพสินค้า Central สุราษฎร์ธานี", type: "Network", value: 3200000, status: "won", assigned_to: "จอร์ด เหมือนดาว", probability: 100, expected_close_date: "2026-03-31", notes: "ปิดงานแล้ว ลูกค้าพอใจมาก", win_loss_reason: "ราคาดี บริการหลังการขายดี", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "Server Room บริษัท เทคโนวิชั่น", customer_id: customerIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", type: "Server Room", value: 4500000, status: "won", assigned_to: "ก้อย รักสกุล", probability: 100, expected_close_date: "2026-02-28", notes: "ติดตั้ง Dell Server 3 ตัว NAS Synology", win_loss_reason: "มีประสบการณ์งาน Server", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "WiFi โรงแรม Centara Samui", customer_id: customerIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", type: "WiFi", value: 2100000, status: "opportunity", assigned_to: "ก้อย รักสกุล", probability: 40, expected_close_date: "2026-08-31", notes: "แทนที่ WiFi เดิมที่เก่าแล้ว 150+ ห้อง", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "Access Control เทศบาลเมืองสุราษฎร์ธานี", customer_id: customerIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", type: "Access Control", value: 980000, status: "lead", assigned_to: "ก้อย รักสกุล", probability: 25, expected_close_date: "2026-09-30", notes: "ระบบบัตร RFID อาคารสำนักงาน 3 อาคาร", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "Solar Cell โรงงาน ชุมพรน้ำมันปาล์ม", customer_id: customerIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", type: "Solar Cell", value: 8500000, status: "proposal", assigned_to: "บิ๊ก สุขใจ", probability: 60, expected_close_date: "2026-07-31", notes: "ติดตั้ง Solar 200kW บนหลังคาโรงงาน", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "Smart City เทศบาลสุราษฎร์ธานี Phase 2", customer_id: customerIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", type: "Smart City", value: 12000000, status: "negotiation", assigned_to: "บิ๊ก สุขใจ", probability: 65, expected_close_date: "2026-06-15", notes: "ขยายกล้อง CCTV + Sensor IoT เพิ่ม 200 จุด", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "Network โรงเรียนสุราษฎร์ธานี", customer_id: customerIds["โรงเรียนสุราษฎร์ธานี"] || "", customer_name: "โรงเรียนสุราษฎร์ธานี", type: "Network", value: 650000, status: "won", assigned_to: "บิ๊ก สุขใจ", probability: 100, expected_close_date: "2026-01-31", notes: "Fiber backbone + Switch ทุกอาคาร", win_loss_reason: "ราคาเหมาะสม", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "CCTV ห้าง Central เพิ่มเติม", customer_id: customerIds["ห้างสรรพสินค้า Central สุราษฎร์ธานี"] || "", customer_name: "ห้างสรรพสินค้า Central สุราษฎร์ธานี", type: "CCTV", value: 450000, status: "lost", assigned_to: "จอร์ด เหมือนดาว", probability: 0, expected_close_date: "2026-04-30", notes: "แพ้คู่แข่งเรื่องราคา", win_loss_reason: "ราคาสูงกว่าคู่แข่ง 15%", lost_competitor: "บริษัท CCTV Pro", re_engage: true, re_engage_date: "2026-10-01", re_engage_note: "รอสัญญาคู่แข่งหมด", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "WiFi มหาวิทยาลัยราชภัฏ Phase 2 (เพิ่มเติม)", customer_id: customerIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", type: "WiFi", value: 1200000, status: "lead", assigned_to: "จอร์ด เหมือนดาว", probability: 30, expected_close_date: "2026-09-30", notes: "ขยาย AP เพิ่มอีก 50 จุด", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
-  { name: "UPS Server Room โรงพยาบาลสุราษฎร์ธานี", customer_id: customerIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", type: "Server Room", value: 780000, status: "opportunity", assigned_to: "ก้อย รักสกุล", probability: 50, expected_close_date: "2026-08-15", notes: "UPS + PDU เพิ่มใน Server Room", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", customer_id: customerIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", type: "WiFi", value: 2850000, status: "negotiation", assigned_to: "ออย", probability: 70, expected_close_date: "2026-06-30", notes: "ต้องการ 120 จุด AP ทั่วมหาวิทยาลัย", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "CCTV โรงพยาบาลสุราษฎร์ธานี", customer_id: customerIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", type: "CCTV", value: 1580000, status: "proposal", assigned_to: "แนนน้อย", probability: 55, expected_close_date: "2026-07-15", notes: "กล้อง 80 ตัว ครอบคลุมทุกอาคาร", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "Network ห้าง Central สุราษฎร์ธานี", customer_id: customerIds["ห้างสรรพสินค้า Central สุราษฎร์ธานี"] || "", customer_name: "ห้างสรรพสินค้า Central สุราษฎร์ธานี", type: "Network", value: 3200000, status: "won", assigned_to: "ออย", probability: 100, expected_close_date: "2026-03-31", notes: "ปิดงานแล้ว ลูกค้าพอใจมาก", win_loss_reason: "ราคาดี บริการหลังการขายดี", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "Server Room บริษัท เทคโนวิชั่น", customer_id: customerIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", type: "Server Room", value: 4500000, status: "won", assigned_to: "อี๊ฟ", probability: 100, expected_close_date: "2026-02-28", notes: "ติดตั้ง Dell Server 3 ตัว NAS Synology", win_loss_reason: "มีประสบการณ์งาน Server", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "WiFi โรงแรม Centara Samui", customer_id: customerIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", type: "WiFi", value: 2100000, status: "opportunity", assigned_to: "บีบี", probability: 40, expected_close_date: "2026-08-31", notes: "แทนที่ WiFi เดิมที่เก่าแล้ว 150+ ห้อง", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "Access Control เทศบาลเมืองสุราษฎร์ธานี", customer_id: customerIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", type: "Access Control", value: 980000, status: "lead", assigned_to: "บีบี", probability: 25, expected_close_date: "2026-09-30", notes: "ระบบบัตร RFID อาคารสำนักงาน 3 อาคาร", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "Solar Cell โรงงาน ชุมพรน้ำมันปาล์ม", customer_id: customerIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", type: "Solar Cell", value: 8500000, status: "proposal", assigned_to: "จะจ๋า", probability: 60, expected_close_date: "2026-07-31", notes: "ติดตั้ง Solar 200kW บนหลังคาโรงงาน", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "Smart City เทศบาลสุราษฎร์ธานี Phase 2", customer_id: customerIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", type: "Smart City", value: 12000000, status: "negotiation", assigned_to: "จะจ๋า", probability: 65, expected_close_date: "2026-06-15", notes: "ขยายกล้อง CCTV + Sensor IoT เพิ่ม 200 จุด", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "Network โรงเรียนสุราษฎร์ธานี", customer_id: customerIds["โรงเรียนสุราษฎร์ธานี"] || "", customer_name: "โรงเรียนสุราษฎร์ธานี", type: "Network", value: 650000, status: "won", assigned_to: "แนนน้อย", probability: 100, expected_close_date: "2026-01-31", notes: "Fiber backbone + Switch ทุกอาคาร", win_loss_reason: "ราคาเหมาะสม", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "CCTV ห้าง Central เพิ่มเติม", customer_id: customerIds["ห้างสรรพสินค้า Central สุราษฎร์ธานี"] || "", customer_name: "ห้างสรรพสินค้า Central สุราษฎร์ธานี", type: "CCTV", value: 450000, status: "lost", assigned_to: "อี๊ฟ", probability: 0, expected_close_date: "2026-04-30", notes: "แพ้คู่แข่งเรื่องราคา", win_loss_reason: "ราคาสูงกว่าคู่แข่ง 15%", lost_competitor: "บริษัท CCTV Pro", re_engage: true, re_engage_date: "2026-10-01", re_engage_note: "รอสัญญาคู่แข่งหมด", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "WiFi มหาวิทยาลัยราชภัฏ Phase 2 (เพิ่มเติม)", customer_id: customerIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", type: "WiFi", value: 1200000, status: "lead", assigned_to: "ออย", probability: 30, expected_close_date: "2026-09-30", notes: "ขยาย AP เพิ่มอีก 50 จุด", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
+  { name: "UPS Server Room โรงพยาบาลสุราษฎร์ธานี", customer_id: customerIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", type: "Server Room", value: 780000, status: "opportunity", assigned_to: "อี๊ฟ", probability: 50, expected_close_date: "2026-08-15", notes: "UPS + PDU เพิ่มใน Server Room", win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" },
 ];
 
-// Sales Quotas — 3 salespeople × 5 months (Jan–May 2026)
+// Sales Quotas — 5 salespeople × 5 months (Jan–May 2026)
 const SEED_QUOTAS = [
-  // จอร์ด
-  { user_name: "จอร์ด เหมือนดาว", role: "sale", month: "2026-01", quota_target: 2000000, actual_sales: 3200000, profit_target: 320000, actual_profit: 512000, remaining: 0, percent: 160, profit_percent: 160, won_deals: 1, total_activities: 18 },
-  { user_name: "จอร์ด เหมือนดาว", role: "sale", month: "2026-02", quota_target: 2000000, actual_sales: 1450000, profit_target: 320000, actual_profit: 218000, remaining: 550000, percent: 73, profit_percent: 68, won_deals: 0, total_activities: 22 },
-  { user_name: "จอร์ด เหมือนดาว", role: "sale", month: "2026-03", quota_target: 2000000, actual_sales: 2350000, profit_target: 320000, actual_profit: 376000, remaining: 0, percent: 118, profit_percent: 118, won_deals: 1, total_activities: 20 },
-  { user_name: "จอร์ด เหมือนดาว", role: "sale", month: "2026-04", quota_target: 2000000, actual_sales: 980000, profit_target: 320000, actual_profit: 142000, remaining: 1020000, percent: 49, profit_percent: 44, won_deals: 0, total_activities: 14 },
-  { user_name: "จอร์ด เหมือนดาว", role: "sale", month: "2026-05", quota_target: 2000000, actual_sales: 720000, profit_target: 320000, actual_profit: 108000, remaining: 1280000, percent: 36, profit_percent: 34, won_deals: 0, total_activities: 9 },
-  // ก้อย
-  { user_name: "ก้อย รักสกุล", role: "sale", month: "2026-01", quota_target: 1500000, actual_sales: 1800000, profit_target: 240000, actual_profit: 288000, remaining: 0, percent: 120, profit_percent: 120, won_deals: 1, total_activities: 15 },
-  { user_name: "ก้อย รักสกุล", role: "sale", month: "2026-02", quota_target: 1500000, actual_sales: 4500000, profit_target: 240000, actual_profit: 720000, remaining: 0, percent: 300, profit_percent: 300, won_deals: 1, total_activities: 12 },
-  { user_name: "ก้อย รักสกุล", role: "sale", month: "2026-03", quota_target: 1500000, actual_sales: 850000, profit_target: 240000, actual_profit: 120000, remaining: 650000, percent: 57, profit_percent: 50, won_deals: 0, total_activities: 16 },
-  { user_name: "ก้อย รักสกุล", role: "sale", month: "2026-04", quota_target: 1500000, actual_sales: 1250000, profit_target: 240000, actual_profit: 187500, remaining: 250000, percent: 83, profit_percent: 78, won_deals: 0, total_activities: 19 },
-  { user_name: "ก้อย รักสกุล", role: "sale", month: "2026-05", quota_target: 1500000, actual_sales: 580000, profit_target: 240000, actual_profit: 87000, remaining: 920000, percent: 39, profit_percent: 36, won_deals: 0, total_activities: 8 },
-  // บิ๊ก
-  { user_name: "บิ๊ก สุขใจ", role: "avenger", month: "2026-01", quota_target: 1200000, actual_sales: 650000, profit_target: 192000, actual_profit: 97500, remaining: 550000, percent: 54, profit_percent: 51, won_deals: 1, total_activities: 10 },
-  { user_name: "บิ๊ก สุขใจ", role: "avenger", month: "2026-02", quota_target: 1200000, actual_sales: 1100000, profit_target: 192000, actual_profit: 165000, remaining: 100000, percent: 92, profit_percent: 86, won_deals: 0, total_activities: 14 },
-  { user_name: "บิ๊ก สุขใจ", role: "avenger", month: "2026-03", quota_target: 1200000, actual_sales: 1480000, profit_target: 192000, actual_profit: 222000, remaining: 0, percent: 123, profit_percent: 116, won_deals: 0, total_activities: 13 },
-  { user_name: "บิ๊ก สุขใจ", role: "avenger", month: "2026-04", quota_target: 1200000, actual_sales: 890000, profit_target: 192000, actual_profit: 133500, remaining: 310000, percent: 74, profit_percent: 70, won_deals: 0, total_activities: 11 },
-  { user_name: "บิ๊ก สุขใจ", role: "avenger", month: "2026-05", quota_target: 1200000, actual_sales: 430000, profit_target: 192000, actual_profit: 64500, remaining: 770000, percent: 36, profit_percent: 34, won_deals: 0, total_activities: 6 },
+  // ออย
+  { user_name: "ออย", role: "sale", month: "2026-01", quota_target: 2000000, actual_sales: 2400000, profit_target: 320000, actual_profit: 384000, remaining: 0, percent: 120, profit_percent: 120, won_deals: 1, total_activities: 18 },
+  { user_name: "ออย", role: "sale", month: "2026-02", quota_target: 2000000, actual_sales: 1650000, profit_target: 320000, actual_profit: 264000, remaining: 350000, percent: 83, profit_percent: 83, won_deals: 0, total_activities: 22 },
+  { user_name: "ออย", role: "sale", month: "2026-03", quota_target: 2000000, actual_sales: 2850000, profit_target: 320000, actual_profit: 456000, remaining: 0, percent: 143, profit_percent: 143, won_deals: 2, total_activities: 20 },
+  { user_name: "ออย", role: "sale", month: "2026-04", quota_target: 2000000, actual_sales: 1100000, profit_target: 320000, actual_profit: 176000, remaining: 900000, percent: 55, profit_percent: 55, won_deals: 0, total_activities: 16 },
+  { user_name: "ออย", role: "sale", month: "2026-05", quota_target: 2000000, actual_sales: 820000, profit_target: 320000, actual_profit: 131000, remaining: 1180000, percent: 41, profit_percent: 41, won_deals: 0, total_activities: 10 },
+  // แนนน้อย
+  { user_name: "แนนน้อย", role: "sale", month: "2026-01", quota_target: 2000000, actual_sales: 1800000, profit_target: 320000, actual_profit: 288000, remaining: 200000, percent: 90, profit_percent: 90, won_deals: 1, total_activities: 15 },
+  { user_name: "แนนน้อย", role: "sale", month: "2026-02", quota_target: 2000000, actual_sales: 2350000, profit_target: 320000, actual_profit: 376000, remaining: 0, percent: 118, profit_percent: 118, won_deals: 1, total_activities: 17 },
+  { user_name: "แนนน้อย", role: "sale", month: "2026-03", quota_target: 2000000, actual_sales: 950000, profit_target: 320000, actual_profit: 152000, remaining: 1050000, percent: 48, profit_percent: 48, won_deals: 0, total_activities: 12 },
+  { user_name: "แนนน้อย", role: "sale", month: "2026-04", quota_target: 2000000, actual_sales: 2600000, profit_target: 320000, actual_profit: 416000, remaining: 0, percent: 130, profit_percent: 130, won_deals: 2, total_activities: 19 },
+  { user_name: "แนนน้อย", role: "sale", month: "2026-05", quota_target: 2000000, actual_sales: 640000, profit_target: 320000, actual_profit: 102000, remaining: 1360000, percent: 32, profit_percent: 32, won_deals: 0, total_activities: 9 },
+  // อี๊ฟ
+  { user_name: "อี๊ฟ", role: "sale", month: "2026-01", quota_target: 2000000, actual_sales: 1420000, profit_target: 320000, actual_profit: 227000, remaining: 580000, percent: 71, profit_percent: 71, won_deals: 0, total_activities: 14 },
+  { user_name: "อี๊ฟ", role: "sale", month: "2026-02", quota_target: 2000000, actual_sales: 2800000, profit_target: 320000, actual_profit: 448000, remaining: 0, percent: 140, profit_percent: 140, won_deals: 2, total_activities: 20 },
+  { user_name: "อี๊ฟ", role: "sale", month: "2026-03", quota_target: 2000000, actual_sales: 1750000, profit_target: 320000, actual_profit: 280000, remaining: 250000, percent: 88, profit_percent: 88, won_deals: 1, total_activities: 18 },
+  { user_name: "อี๊ฟ", role: "sale", month: "2026-04", quota_target: 2000000, actual_sales: 1350000, profit_target: 320000, actual_profit: 216000, remaining: 650000, percent: 68, profit_percent: 68, won_deals: 0, total_activities: 13 },
+  { user_name: "อี๊ฟ", role: "sale", month: "2026-05", quota_target: 2000000, actual_sales: 580000, profit_target: 320000, actual_profit: 93000, remaining: 1420000, percent: 29, profit_percent: 29, won_deals: 0, total_activities: 8 },
+  // บีบี
+  { user_name: "บีบี", role: "sale", month: "2026-01", quota_target: 2000000, actual_sales: 720000, profit_target: 320000, actual_profit: 115000, remaining: 1280000, percent: 36, profit_percent: 36, won_deals: 0, total_activities: 11 },
+  { user_name: "บีบี", role: "sale", month: "2026-02", quota_target: 2000000, actual_sales: 1540000, profit_target: 320000, actual_profit: 246000, remaining: 460000, percent: 77, profit_percent: 77, won_deals: 1, total_activities: 16 },
+  { user_name: "บีบี", role: "sale", month: "2026-03", quota_target: 2000000, actual_sales: 1950000, profit_target: 320000, actual_profit: 312000, remaining: 50000, percent: 98, profit_percent: 98, won_deals: 1, total_activities: 15 },
+  { user_name: "บีบี", role: "sale", month: "2026-04", quota_target: 2000000, actual_sales: 2200000, profit_target: 320000, actual_profit: 352000, remaining: 0, percent: 110, profit_percent: 110, won_deals: 1, total_activities: 14 },
+  { user_name: "บีบี", role: "sale", month: "2026-05", quota_target: 2000000, actual_sales: 450000, profit_target: 320000, actual_profit: 72000, remaining: 1550000, percent: 23, profit_percent: 23, won_deals: 0, total_activities: 7 },
+  // จะจ๋า
+  { user_name: "จะจ๋า", role: "sale", month: "2026-01", quota_target: 1500000, actual_sales: 1200000, profit_target: 240000, actual_profit: 192000, remaining: 300000, percent: 80, profit_percent: 80, won_deals: 1, total_activities: 12 },
+  { user_name: "จะจ๋า", role: "sale", month: "2026-02", quota_target: 1500000, actual_sales: 1850000, profit_target: 240000, actual_profit: 296000, remaining: 0, percent: 123, profit_percent: 123, won_deals: 1, total_activities: 15 },
+  { user_name: "จะจ๋า", role: "sale", month: "2026-03", quota_target: 1500000, actual_sales: 750000, profit_target: 240000, actual_profit: 120000, remaining: 750000, percent: 50, profit_percent: 50, won_deals: 0, total_activities: 10 },
+  { user_name: "จะจ๋า", role: "sale", month: "2026-04", quota_target: 1500000, actual_sales: 1420000, profit_target: 240000, actual_profit: 227000, remaining: 80000, percent: 95, profit_percent: 95, won_deals: 1, total_activities: 13 },
+  { user_name: "จะจ๋า", role: "sale", month: "2026-05", quota_target: 1500000, actual_sales: 380000, profit_target: 240000, actual_profit: 61000, remaining: 1120000, percent: 25, profit_percent: 25, won_deals: 0, total_activities: 6 },
 ];
 
 // Sales Activities — mix of done and overdue
 const makeSalesActivities = (custIds: Record<string, string>) => [
-  { type: "meeting", customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", assigned_to: "จอร์ด เหมือนดาว", description: "นำเสนอ Solution WiFi 120 จุด AP ครอบคลุมทุกอาคาร", status: "done", next_follow_up: "2026-05-10", result: "interested" },
-  { type: "phone_call", customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "CCTV โรงพยาบาล", assigned_to: "จอร์ด เหมือนดาว", description: "ติดตาม TOR CCTV โรงพยาบาล ขอเอกสาร spec เพิ่มเติม", status: "in_progress", next_follow_up: "2026-05-08", result: "pending" },
-  { type: "visit", customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", assigned_to: "จอร์ด เหมือนดาว", description: "เข้าพบ อ.ประเสริฐ สำรวจพื้นที่ติดตั้ง AP อาคารใหม่", status: "new", next_follow_up: "2026-05-12", result: "pending" },
-  { type: "follow_up", customer_id: custIds["ห้างสรรพสินค้า Central สุราษฎร์ธานี"] || "", customer_name: "ห้างสรรพสินค้า Central สุราษฎร์ธานี", project_id: "", project_name: "Network ห้าง Central", assigned_to: "จอร์ด เหมือนดาว", description: "ส่งใบเสนอราคา Network Upgrade เพิ่มเติม รอลูกค้าอนุมัติ", status: "in_progress", next_follow_up: "2026-05-05", result: "pending" },
-  { type: "phone_call", customer_id: custIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", project_id: "", project_name: "Server Room", assigned_to: "ก้อย รักสกุล", description: "ติดตามผล Server Room ที่ติดตั้งเสร็จแล้ว — ถาม feedback", status: "done", next_follow_up: "2026-05-15", result: "success" },
-  { type: "meeting", customer_id: custIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", project_id: "", project_name: "WiFi โรงแรม Centara", assigned_to: "ก้อย รักสกุล", description: "นำเสนอโซลูชัน WiFi 6 โรงแรม ลูกค้าขอดูตัวอย่างงาน", status: "in_progress", next_follow_up: "2026-05-07", result: "interested" },
-  { type: "visit", customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "UPS Server Room โรงพยาบาล", assigned_to: "ก้อย รักสกุล", description: "สำรวจ Server Room โรงพยาบาล วัดขนาด Rack วางแผน UPS", status: "new", next_follow_up: "2026-05-13", result: "pending" },
-  { type: "follow_up", customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Access Control เทศบาล", assigned_to: "ก้อย รักสกุล", description: "ส่งเอกสาร TOR Access Control รอการพิจารณา — เกินกำหนดแล้ว", status: "in_progress", next_follow_up: "2026-05-01", result: "pending" },
-  { type: "phone_call", customer_id: custIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", project_id: "", project_name: "Solar Cell โรงงาน", assigned_to: "บิ๊ก สุขใจ", description: "ติดตามโครงการ Solar 200kW ลูกค้ากำลัง approve งบ", status: "in_progress", next_follow_up: "2026-05-03", result: "pending" },
-  { type: "meeting", customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Smart City Phase 2", assigned_to: "บิ๊ก สุขใจ", description: "ประชุมทีม Smart City ร่วมกับ กฟน. นำเสนอ Design ระบบ IoT", status: "done", next_follow_up: "2026-05-19", result: "success" },
-  { type: "visit", customer_id: custIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", project_id: "", project_name: "Solar Cell โรงงาน", assigned_to: "บิ๊ก สุขใจ", description: "สำรวจพื้นที่หลังคาโรงงาน วัดพื้นที่ติดตั้ง Solar แผง 500 ตร.ม.", status: "done", next_follow_up: "2026-05-09", result: "success" },
-  { type: "phone_call", customer_id: custIds["โรงเรียนสุราษฎร์ธานี"] || "", customer_name: "โรงเรียนสุราษฎร์ธานี", project_id: "", project_name: "Network โรงเรียน", assigned_to: "บิ๊ก สุขใจ", description: "ติดตาม after sales โรงเรียน ถามปัญหาหลังติดตั้ง", status: "in_progress", next_follow_up: "2026-05-06", result: "pending" },
+  { type: "meeting", customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", assigned_to: "ออย", description: "นำเสนอ Solution WiFi 120 จุด AP ครอบคลุมทุกอาคาร", status: "done", next_follow_up: "2026-05-10", result: "interested" },
+  { type: "phone_call", customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "CCTV โรงพยาบาล", assigned_to: "แนนน้อย", description: "ติดตาม TOR CCTV โรงพยาบาล ขอเอกสาร spec เพิ่มเติม", status: "in_progress", next_follow_up: "2026-05-08", result: "pending" },
+  { type: "visit", customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", assigned_to: "ออย", description: "เข้าพบ อ.ประเสริฐ สำรวจพื้นที่ติดตั้ง AP อาคารใหม่", status: "new", next_follow_up: "2026-05-12", result: "pending" },
+  { type: "follow_up", customer_id: custIds["ห้างสรรพสินค้า Central สุราษฎร์ธานี"] || "", customer_name: "ห้างสรรพสินค้า Central สุราษฎร์ธานี", project_id: "", project_name: "Network ห้าง Central", assigned_to: "ออย", description: "ส่งใบเสนอราคา Network Upgrade เพิ่มเติม รอลูกค้าอนุมัติ", status: "in_progress", next_follow_up: "2026-05-05", result: "pending" },
+  { type: "phone_call", customer_id: custIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", project_id: "", project_name: "Server Room", assigned_to: "อี๊ฟ", description: "ติดตามผล Server Room ที่ติดตั้งเสร็จแล้ว — ถาม feedback", status: "done", next_follow_up: "2026-05-15", result: "success" },
+  { type: "meeting", customer_id: custIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", project_id: "", project_name: "WiFi โรงแรม Centara", assigned_to: "บีบี", description: "นำเสนอโซลูชัน WiFi 6 โรงแรม ลูกค้าขอดูตัวอย่างงาน", status: "in_progress", next_follow_up: "2026-05-07", result: "interested" },
+  { type: "visit", customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "UPS Server Room โรงพยาบาล", assigned_to: "อี๊ฟ", description: "สำรวจ Server Room โรงพยาบาล วัดขนาด Rack วางแผน UPS", status: "new", next_follow_up: "2026-05-13", result: "pending" },
+  { type: "follow_up", customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Access Control เทศบาล", assigned_to: "บีบี", description: "ส่งเอกสาร TOR Access Control รอการพิจารณา — เกินกำหนดแล้ว", status: "in_progress", next_follow_up: "2026-05-01", result: "pending" },
+  { type: "phone_call", customer_id: custIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", project_id: "", project_name: "Solar Cell โรงงาน", assigned_to: "จะจ๋า", description: "ติดตามโครงการ Solar 200kW ลูกค้ากำลัง approve งบ", status: "in_progress", next_follow_up: "2026-05-03", result: "pending" },
+  { type: "meeting", customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Smart City Phase 2", assigned_to: "จะจ๋า", description: "ประชุมทีม Smart City ร่วมกับ กฟน. นำเสนอ Design ระบบ IoT", status: "done", next_follow_up: "2026-05-19", result: "success" },
+  { type: "visit", customer_id: custIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", project_id: "", project_name: "Solar Cell โรงงาน", assigned_to: "จะจ๋า", description: "สำรวจพื้นที่หลังคาโรงงาน วัดพื้นที่ติดตั้ง Solar แผง 500 ตร.ม.", status: "done", next_follow_up: "2026-05-09", result: "success" },
+  { type: "phone_call", customer_id: custIds["โรงเรียนสุราษฎร์ธานี"] || "", customer_name: "โรงเรียนสุราษฎร์ธานี", project_id: "", project_name: "Network โรงเรียน", assigned_to: "แนนน้อย", description: "ติดตาม after sales โรงเรียน ถามปัญหาหลังติดตั้ง", status: "in_progress", next_follow_up: "2026-05-06", result: "pending" },
 ];
 
 // Presale Requests
 const makePresale = (custIds: Record<string, string>) => [
-  { activity_id: "", customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", type: "boq", requirement: "จัดทำ BOQ WiFi 120 AP ครอบคลุม 8 อาคาร พร้อมค่าแรงติดตั้ง", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-05-25", status: "in_progress" },
-  { activity_id: "", customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "CCTV โรงพยาบาล", type: "solution_design", requirement: "ออกแบบระบบ CCTV 80 ตัว ครอบคลุมทุกอาคาร รองรับ 24/7 Recording 30 วัน", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-05-28", status: "pending" },
-  { activity_id: "", customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Smart City Phase 2", type: "technical_proposal", requirement: "จัดทำข้อเสนอทางเทคนิค Smart City ระบบ CCTV + IoT + Dashboard", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-05-15", status: "in_progress" },
-  { activity_id: "", customer_id: custIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", project_id: "", project_name: "Solar Cell โรงงาน", type: "site_survey", requirement: "สำรวจพื้นที่หลังคาโรงงาน วัดและทำแบบร่าง Solar 200kW", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-05-08", status: "completed" },
-  { activity_id: "", customer_id: custIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", project_id: "", project_name: "WiFi โรงแรม Centara", type: "boq", requirement: "BOQ WiFi 6 ครอบคลุม 150+ ห้องพัก Pool area Lobby", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-06-05", status: "pending" },
-  { activity_id: "", customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "UPS Server Room โรงพยาบาล", type: "boq", requirement: "BOQ UPS 3 ตัว + PDU + จัดเรียง Rack ใหม่", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-04-30", status: "completed" },
-  { activity_id: "", customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 2", type: "solution_design", requirement: "ออกแบบขยาย WiFi เพิ่ม 50 AP อาคารคณะใหม่", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-06-30", status: "pending" },
-  { activity_id: "", customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Access Control เทศบาล", type: "technical_proposal", requirement: "ข้อเสนอ Access Control บัตร RFID + Face Recognition 3 อาคาร", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-05-05", status: "in_progress" },
+  { activity_id: "", customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", type: "boq", requirement: "จัดทำ BOQ WiFi 120 AP ครอบคลุม 8 อาคาร พร้อมค่าแรงติดตั้ง", assigned_to: "พี่กอร์ฟ", due_date: "2026-05-25", status: "in_progress" },
+  { activity_id: "", customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "CCTV โรงพยาบาล", type: "solution_design", requirement: "ออกแบบระบบ CCTV 80 ตัว ครอบคลุมทุกอาคาร รองรับ 24/7 Recording 30 วัน", assigned_to: "น้องมีน", due_date: "2026-05-28", status: "pending" },
+  { activity_id: "", customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Smart City Phase 2", type: "technical_proposal", requirement: "จัดทำข้อเสนอทางเทคนิค Smart City ระบบ CCTV + IoT + Dashboard", assigned_to: "พี่กอร์ฟ", due_date: "2026-05-15", status: "in_progress" },
+  { activity_id: "", customer_id: custIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", project_id: "", project_name: "Solar Cell โรงงาน", type: "site_survey", requirement: "สำรวจพื้นที่หลังคาโรงงาน วัดและทำแบบร่าง Solar 200kW", assigned_to: "น้องมีน", due_date: "2026-05-08", status: "completed" },
+  { activity_id: "", customer_id: custIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", project_id: "", project_name: "WiFi โรงแรม Centara", type: "boq", requirement: "BOQ WiFi 6 ครอบคลุม 150+ ห้องพัก Pool area Lobby", assigned_to: "พี่กอร์ฟ", due_date: "2026-06-05", status: "pending" },
+  { activity_id: "", customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "UPS Server Room โรงพยาบาล", type: "boq", requirement: "BOQ UPS 3 ตัว + PDU + จัดเรียง Rack ใหม่", assigned_to: "น้องมีน", due_date: "2026-04-30", status: "completed" },
+  { activity_id: "", customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 2", type: "solution_design", requirement: "ออกแบบขยาย WiFi เพิ่ม 50 AP อาคารคณะใหม่", assigned_to: "พี่กอร์ฟ", due_date: "2026-06-30", status: "pending" },
+  { activity_id: "", customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Access Control เทศบาล", type: "technical_proposal", requirement: "ข้อเสนอ Access Control บัตร RFID + Face Recognition 3 อาคาร", assigned_to: "น้องมีน", due_date: "2026-05-05", status: "in_progress" },
   // เพิ่มเติม 5 งาน — สถานะสลับกัน
-  { activity_id: "", customer_id: custIds["โรงเรียนสุราษฎร์ธานี"] || "", customer_name: "โรงเรียนสุราษฎร์ธานี", project_id: "", project_name: "Network โรงเรียน", type: "boq", requirement: "จัดทำ BOQ ขยาย Fiber Backbone อาคาร 5 และ 6 พร้อม Switch 48 Port", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-04-20", status: "completed" },
-  { activity_id: "", customer_id: custIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", project_id: "", project_name: "Server Room Expansion", type: "solution_design", requirement: "ออกแบบขยาย Server Room เพิ่ม Rack 2 ตู้ + UPS + PDU และ Cooling", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-06-10", status: "in_progress" },
-  { activity_id: "", customer_id: custIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", project_id: "", project_name: "IPTV โรงแรม", type: "technical_proposal", requirement: "ข้อเสนอระบบ IPTV + WiFi ห้องพัก 200 ห้อง รองรับ 4K Streaming", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-05-30", status: "pending" },
-  { activity_id: "", customer_id: custIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", project_id: "", project_name: "CCTV โรงงานชุมพร", type: "boq", requirement: "BOQ กล้อง CCTV 40 ตัวรอบโรงงาน + NVR 32CH + Storage 60 วัน", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-03-31", status: "completed" },
-  { activity_id: "", customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", type: "site_survey", requirement: "สำรวจพื้นที่เพิ่มเติม คณะวิทยาศาสตร์ + หอพักนักศึกษา วัดค่า Signal และ Coverage", assigned_to: "มิ้ว ชัยวงศ์", due_date: "2026-06-20", status: "pending" },
+  { activity_id: "", customer_id: custIds["โรงเรียนสุราษฎร์ธานี"] || "", customer_name: "โรงเรียนสุราษฎร์ธานี", project_id: "", project_name: "Network โรงเรียน", type: "boq", requirement: "จัดทำ BOQ ขยาย Fiber Backbone อาคาร 5 และ 6 พร้อม Switch 48 Port", assigned_to: "พี่กอร์ฟ", due_date: "2026-04-20", status: "completed" },
+  { activity_id: "", customer_id: custIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", project_id: "", project_name: "Server Room Expansion", type: "solution_design", requirement: "ออกแบบขยาย Server Room เพิ่ม Rack 2 ตู้ + UPS + PDU และ Cooling", assigned_to: "น้องมีน", due_date: "2026-06-10", status: "in_progress" },
+  { activity_id: "", customer_id: custIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", project_id: "", project_name: "IPTV โรงแรม", type: "technical_proposal", requirement: "ข้อเสนอระบบ IPTV + WiFi ห้องพัก 200 ห้อง รองรับ 4K Streaming", assigned_to: "พี่กอร์ฟ", due_date: "2026-05-30", status: "pending" },
+  { activity_id: "", customer_id: custIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", project_id: "", project_name: "CCTV โรงงานชุมพร", type: "boq", requirement: "BOQ กล้อง CCTV 40 ตัวรอบโรงงาน + NVR 32CH + Storage 60 วัน", assigned_to: "น้องมีน", due_date: "2026-03-31", status: "completed" },
+  { activity_id: "", customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", type: "site_survey", requirement: "สำรวจพื้นที่เพิ่มเติม คณะวิทยาศาสตร์ + หอพักนักศึกษา วัดค่า Signal และ Coverage", assigned_to: "พี่กอร์ฟ", due_date: "2026-06-20", status: "pending" },
 ];
 
 // Service Tickets — mix of open, in_progress, resolved
 const makeServiceTickets = (custIds: Record<string, string>) => [
-  { customer_id: custIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", project_id: "", project_name: "Server Room", type: "repair", issue: "Server ตัวที่ 2 ขึ้น Alert อุณหภูมิสูง Fan เสียง ผิดปกติ", technician: "อาร์ม วิไล", service_date: "2026-05-18", status: "in_progress" },
-  { customer_id: custIds["ห้างสรรพสินค้า Central สุราษฎร์ธานี"] || "", customer_name: "ห้างสรรพสินค้า Central สุราษฎร์ธานี", project_id: "", project_name: "Network ห้าง Central", type: "after_sales", issue: "Switch ชั้น 3 Port ตาย 4 Port ลูกค้าขอ RMA", technician: "อาร์ม วิไล", service_date: "2026-05-20", status: "open" },
-  { customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "CCTV โรงพยาบาล", type: "repair", issue: "กล้อง CCTV อาคาร A ชั้น 4 หลุดจากระบบ 3 ตัว", technician: "ปั้น ศรีสว่าง", service_date: "2026-05-12", status: "resolved" },
-  { customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", type: "repair", issue: "AP อาคารวิทยาศาสตร์ ออฟไลน์ 5 ตัว หลังไฟดับ", technician: "อาร์ม วิไล", service_date: "2026-05-14", status: "resolved" },
-  { customer_id: custIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", project_id: "", project_name: "", type: "pm_service", issue: "PM ประจำไตรมาส WiFi และ Switch ทั้งอาคาร", technician: "กุ้ง ทะเลไทย", service_date: "2026-05-22", status: "open" },
-  { customer_id: custIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", project_id: "", project_name: "Network โรงงาน", type: "repair", issue: "Firewall Fortinet Reboot เองกลางดึก Log แสดง CPU overload", technician: "ปั้น ศรีสว่าง", service_date: "2026-05-03", status: "resolved" },
-  { customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Smart City Phase 2", type: "after_sales", issue: "Camera Smart City 10 ตัว ย่านถ.ตลาดใหม่ offline ต้องตรวจสอบสาย Fiber", technician: "กุ้ง ทะเลไทย", service_date: "2026-05-07", status: "closed" },
-  { customer_id: custIds["โรงเรียนสุราษฎร์ธานี"] || "", customer_name: "โรงเรียนสุราษฎร์ธานี", project_id: "", project_name: "Network โรงเรียน", type: "repair", issue: "Switch อาคาร 4 ไฟ Link ไม่ติด หลังน้ำท่วม ต้องเปลี่ยนใหม่", technician: "อาร์ม วิไล", service_date: "2026-04-28", status: "closed" },
-  { customer_id: custIds["ห้างสรรพสินค้า Central สุราษฎร์ธานี"] || "", customer_name: "ห้างสรรพสินค้า Central สุราษฎร์ธานี", project_id: "", project_name: "Network ห้าง Central", type: "pm_service", issue: "PM ประจำปี ตรวจเช็คระบบ Network ทุกชั้น วัดสัญญาณ WiFi", technician: "ปั้น ศรีสว่าง", service_date: "2026-04-15", status: "resolved" },
-  { customer_id: custIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", project_id: "", project_name: "Server Room", type: "pm_service", issue: "PM Server 3 ตัว + NAS + UPS ประจำไตรมาส", technician: "อาร์ม วิไล", service_date: "2026-04-10", status: "closed" },
-  { customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "", type: "installation", issue: "ติดตั้ง UPS เพิ่ม 2 ตัวใน Server Room ชั้น 3", technician: "กุ้ง ทะเลไทย", service_date: "2026-05-16", status: "resolved" },
-  { customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", type: "after_sales", issue: "ลูกค้าขอขยาย Coverage AP เพิ่ม 5 จุดที่อาคารกีฬา", technician: "ปั้น ศรีสว่าง", service_date: "2026-05-10", status: "in_progress" },
+  { customer_id: custIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", project_id: "", project_name: "Server Room", type: "repair", issue: "Server ตัวที่ 2 ขึ้น Alert อุณหภูมิสูง Fan เสียง ผิดปกติ", technician: "ปอน", service_date: "2026-05-18", status: "in_progress" },
+  { customer_id: custIds["ห้างสรรพสินค้า Central สุราษฎร์ธานี"] || "", customer_name: "ห้างสรรพสินค้า Central สุราษฎร์ธานี", project_id: "", project_name: "Network ห้าง Central", type: "after_sales", issue: "Switch ชั้น 3 Port ตาย 4 Port ลูกค้าขอ RMA", technician: "ปอน", service_date: "2026-05-20", status: "open" },
+  { customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "CCTV โรงพยาบาล", type: "repair", issue: "กล้อง CCTV อาคาร A ชั้น 4 หลุดจากระบบ 3 ตัว", technician: "ไผ่", service_date: "2026-05-12", status: "resolved" },
+  { customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", type: "repair", issue: "AP อาคารวิทยาศาสตร์ ออฟไลน์ 5 ตัว หลังไฟดับ", technician: "ปอน", service_date: "2026-05-14", status: "resolved" },
+  { customer_id: custIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", project_id: "", project_name: "", type: "pm_service", issue: "PM ประจำไตรมาส WiFi และ Switch ทั้งอาคาร", technician: "โก้ด", service_date: "2026-05-22", status: "open" },
+  { customer_id: custIds["บริษัท ชุมพรน้ำมันปาล์ม จำกัด"] || "", customer_name: "บริษัท ชุมพรน้ำมันปาล์ม จำกัด", project_id: "", project_name: "Network โรงงาน", type: "repair", issue: "Firewall Fortinet Reboot เองกลางดึก Log แสดง CPU overload", technician: "ไผ่", service_date: "2026-05-03", status: "resolved" },
+  { customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Smart City Phase 2", type: "after_sales", issue: "Camera Smart City 10 ตัว ย่านถ.ตลาดใหม่ offline ต้องตรวจสอบสาย Fiber", technician: "โก้ด", service_date: "2026-05-07", status: "closed" },
+  { customer_id: custIds["โรงเรียนสุราษฎร์ธานี"] || "", customer_name: "โรงเรียนสุราษฎร์ธานี", project_id: "", project_name: "Network โรงเรียน", type: "repair", issue: "Switch อาคาร 4 ไฟ Link ไม่ติด หลังน้ำท่วม ต้องเปลี่ยนใหม่", technician: "ปอน", service_date: "2026-04-28", status: "closed" },
+  { customer_id: custIds["ห้างสรรพสินค้า Central สุราษฎร์ธานี"] || "", customer_name: "ห้างสรรพสินค้า Central สุราษฎร์ธานี", project_id: "", project_name: "Network ห้าง Central", type: "pm_service", issue: "PM ประจำปี ตรวจเช็คระบบ Network ทุกชั้น วัดสัญญาณ WiFi", technician: "ไผ่", service_date: "2026-04-15", status: "resolved" },
+  { customer_id: custIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", project_id: "", project_name: "Server Room", type: "pm_service", issue: "PM Server 3 ตัว + NAS + UPS ประจำไตรมาส", technician: "ปอน", service_date: "2026-04-10", status: "closed" },
+  { customer_id: custIds["โรงพยาบาลสุราษฎร์ธานี"] || "", customer_name: "โรงพยาบาลสุราษฎร์ธานี", project_id: "", project_name: "", type: "installation", issue: "ติดตั้ง UPS เพิ่ม 2 ตัวใน Server Room ชั้น 3", technician: "โก้ด", service_date: "2026-05-16", status: "resolved" },
+  { customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", type: "after_sales", issue: "ลูกค้าขอขยาย Coverage AP เพิ่ม 5 จุดที่อาคารกีฬา", technician: "ไผ่", service_date: "2026-05-10", status: "in_progress" },
   // เพิ่มเติม 5 tickets — สถานะสลับกัน
-  { customer_id: custIds["โรงเรียนสุราษฎร์ธานี"] || "", customer_name: "โรงเรียนสุราษฎร์ธานี", project_id: "", project_name: "Network โรงเรียน", type: "repair", issue: "AP อาคาร 3 ไม่มีสัญญาณ หลังฝนตกหนัก ต้องตรวจสอบ POE Switch", technician: "กุ้ง ทะเลไทย", service_date: "2026-05-19", status: "resolved" },
-  { customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", type: "pm_service", issue: "PM WiFi ประจำไตรมาส Q2/2026 ตรวจเช็ค AP ทั้ง 120 จุด อัปเดต Firmware", technician: "อาร์ม วิไล", service_date: "2026-05-23", status: "open" },
-  { customer_id: custIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", project_id: "", project_name: "Server Room", type: "repair", issue: "HDD ใน NAS Synology ขึ้น Warning Sector Error ต้องสำรองข้อมูลและเปลี่ยน Drive", technician: "ปั้น ศรีสว่าง", service_date: "2026-05-08", status: "resolved" },
-  { customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Smart City Phase 2", type: "installation", issue: "ติดตั้ง Camera Smart City เพิ่มอีก 15 จุด ย่านถ.ดอนนก และ ถ.ชนเกษม", technician: "กุ้ง ทะเลไทย", service_date: "2026-05-21", status: "in_progress" },
-  { customer_id: custIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", project_id: "", project_name: "", type: "repair", issue: "WiFi ห้อง Pool Villa ไม่มีสัญญาณ 8 ห้อง ตรวจพบ Uplink Switch ขาด Power", technician: "อาร์ม วิไล", service_date: "2026-05-06", status: "closed" },
+  { customer_id: custIds["โรงเรียนสุราษฎร์ธานี"] || "", customer_name: "โรงเรียนสุราษฎร์ธานี", project_id: "", project_name: "Network โรงเรียน", type: "repair", issue: "AP อาคาร 3 ไม่มีสัญญาณ หลังฝนตกหนัก ต้องตรวจสอบ POE Switch", technician: "โก้ด", service_date: "2026-05-19", status: "resolved" },
+  { customer_id: custIds["มหาวิทยาลัยราชภัฏสุราษฎร์ธานี"] || "", customer_name: "มหาวิทยาลัยราชภัฏสุราษฎร์ธานี", project_id: "", project_name: "WiFi มหาวิทยาลัยราชภัฏ Phase 1", type: "pm_service", issue: "PM WiFi ประจำไตรมาส Q2/2026 ตรวจเช็ค AP ทั้ง 120 จุด อัปเดต Firmware", technician: "ปอน", service_date: "2026-05-23", status: "open" },
+  { customer_id: custIds["บริษัท เทคโนวิชั่น จำกัด"] || "", customer_name: "บริษัท เทคโนวิชั่น จำกัด", project_id: "", project_name: "Server Room", type: "repair", issue: "HDD ใน NAS Synology ขึ้น Warning Sector Error ต้องสำรองข้อมูลและเปลี่ยน Drive", technician: "ไผ่", service_date: "2026-05-08", status: "resolved" },
+  { customer_id: custIds["เทศบาลเมืองสุราษฎร์ธานี"] || "", customer_name: "เทศบาลเมืองสุราษฎร์ธานี", project_id: "", project_name: "Smart City Phase 2", type: "installation", issue: "ติดตั้ง Camera Smart City เพิ่มอีก 15 จุด ย่านถ.ดอนนก และ ถ.ชนเกษม", technician: "โก้ด", service_date: "2026-05-21", status: "in_progress" },
+  { customer_id: custIds["โรงแรม Centara Villas Samui"] || "", customer_name: "โรงแรม Centara Villas Samui", project_id: "", project_name: "", type: "repair", issue: "WiFi ห้อง Pool Villa ไม่มีสัญญาณ 8 ห้อง ตรวจพบ Uplink Switch ขาด Power", technician: "ปอน", service_date: "2026-05-06", status: "closed" },
 ];
 
 // Service Contracts — 3 expiring within 30 days, 1 expired
@@ -256,21 +282,83 @@ export default function SeedPage() {
     setRunning(false);
   }
 
+  async function wipeCollection(
+    col: { list: () => Promise<Array<{ id?: string }>>; remove: (id: string) => Promise<unknown> },
+    label: string
+  ) {
+    const items = await col.list();
+    if (items.length > 0) {
+      for (const item of items) { if (item.id) await col.remove(item.id); }
+      addLog(`  🗑️ ลบ ${items.length} ${label}`);
+    }
+  }
+
+  async function restoreUsers() {
+    setRunning(true);
+    setLogs([]);
+    addLog("👤 Restore Users ทีมงานทั้งหมด...");
+    try {
+      const fs = await import("@/lib/firestore");
+      const existingUsers = await fs.users.list();
+      const existingEmails = new Set(existingUsers.map(u => u.email?.toLowerCase()));
+      let added = 0;
+      for (const u of SEED_USERS) {
+        if (existingEmails.has(u.email.toLowerCase())) {
+          addLog(`  ⏭ ${u.nickname} — มีอยู่แล้ว`);
+        } else {
+          await fs.users.add(u as Record<string, unknown>);
+          addLog(`  ✓ เพิ่ม ${u.nickname} (${u.role}) — ${u.position}`);
+          added++;
+        }
+      }
+      addLog(`✅ เสร็จ — เพิ่ม ${added} คน, มีอยู่แล้ว ${SEED_USERS.length - added} คน`);
+      setDone(true);
+    } catch (e) {
+      addLog(`❌ Error: ${String(e)}`, false);
+    }
+    setRunning(false);
+  }
+
   async function seedAll() {
     setRunning(true);
     setDone(false);
     setLogs([]);
-    addLog("🌱 เริ่ม Seed ข้อมูลตัวอย่าง...");
+    addLog("🧹 ล้างข้อมูลเก่า...");
 
     try {
       const fs = await import("@/lib/firestore");
 
-      // 1. Users
+      // Wipe all relevant collections first (ไม่ลบ users — จัดการแยกผ่านหน้า Users)
+      await wipeCollection(fs.customers as Parameters<typeof wipeCollection>[0], "customers");
+      await wipeCollection(fs.projects as Parameters<typeof wipeCollection>[0], "projects");
+      await wipeCollection(fs.salesQuotas as Parameters<typeof wipeCollection>[0], "quotas");
+      await wipeCollection(fs.salesActivities as Parameters<typeof wipeCollection>[0], "activities");
+      await wipeCollection(fs.presaleRequests as Parameters<typeof wipeCollection>[0], "presale requests");
+      await wipeCollection(fs.serviceTickets as Parameters<typeof wipeCollection>[0], "service tickets");
+      await wipeCollection(fs.serviceContracts as Parameters<typeof wipeCollection>[0], "contracts");
+      await wipeCollection(fs.assets as Parameters<typeof wipeCollection>[0], "assets");
+      await wipeCollection(fs.quotations as Parameters<typeof wipeCollection>[0], "quotations");
+      await wipeCollection(fs.products as Parameters<typeof wipeCollection>[0], "products");
+      await wipeCollection(fs.productCategories as Parameters<typeof wipeCollection>[0], "product categories");
+      await wipeCollection(fs.projectTypes as Parameters<typeof wipeCollection>[0], "project types");
+      addLog("✅ ล้างเสร็จ — เริ่ม Seed ใหม่...");
+      addLog("");
+
+      // 1. Users — เพิ่มเฉพาะคนที่ยังไม่มี email ในระบบ
       addLog("─── 👤 Users");
+      const existingUsers = await fs.users.list();
+      const existingEmails = new Set(existingUsers.map(u => u.email?.toLowerCase()));
+      let addedUsers = 0;
       for (const u of SEED_USERS) {
-        await fs.users.add(u as Record<string, unknown>);
-        addLog(`  ✓ ${u.nickname} (${u.role})`);
+        if (existingEmails.has(u.email.toLowerCase())) {
+          addLog(`  ⏭ ข้าม ${u.nickname} (มีอยู่แล้ว)`);
+        } else {
+          await fs.users.add(u as Record<string, unknown>);
+          addLog(`  ✓ ${u.nickname} (${u.role})`);
+          addedUsers++;
+        }
       }
+      addLog(`  → เพิ่มใหม่ ${addedUsers} คน, ข้าม ${SEED_USERS.length - addedUsers} คน`);
 
       // 2. Project Types
       addLog("─── 🏷️ Project Types");
@@ -397,10 +485,10 @@ export default function SeedPage() {
         <p className="text-sm font-semibold mb-3">ข้อมูลที่จะเพิ่ม</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-muted">
           {[
-            ["👤 Users", "7 คน (Sale, Avenger, Presale, Service)"],
+            ["👤 Users", "14 คน (Sale, Presale, Service, Coordinator)"],
             ["🏢 Customers", "8 บริษัท (รพ., มหาวิทยาลัย, เอกชน...)"],
             ["📁 Projects", "12 โปรเจค (lead → won/lost)"],
-            ["🎯 Sales Quotas", "3 คน × 5 เดือน (ม.ค.–พ.ค.)"],
+            ["🎯 Sales Quotas", "5 คน × 5 เดือน (ม.ค.–พ.ค.)"],
             ["📞 Activities", "12 กิจกรรมขาย (บางรายการ overdue)"],
             ["⚙️ Presale", "13 requests (BOQ, Design, Survey)"],
             ["🔧 Service", "17 tickets (open/resolved/closed)"],
@@ -419,6 +507,10 @@ export default function SeedPage() {
       </div>
 
       <div className="flex gap-3 mb-6 flex-wrap">
+        <button onClick={restoreUsers} disabled={running}
+          className="rounded-xl bg-indigo-700 hover:bg-indigo-600 text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-40 transition-colors">
+          👤 Restore Users ทีมงาน
+        </button>
         <button onClick={deletePresaleBig} disabled={running}
           className="rounded-xl bg-orange-700 hover:bg-orange-600 text-white px-5 py-2.5 text-sm font-semibold disabled:opacity-40 transition-colors">
           🗑️ ลบ Presale ของบิ๊ก

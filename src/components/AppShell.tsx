@@ -12,8 +12,8 @@ function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
-    // Allow login page without auth
-    if (pathname === "/login") { setChecked(true); return; }
+    // Allow login and dev tools without auth
+    if (pathname === "/login" || pathname.startsWith("/dev")) { setChecked(true); return; }
     // Redirect to login if not logged in
     if (!isLoggedIn) { window.location.href = "/login"; return; }
     setChecked(true);
@@ -26,6 +26,7 @@ function AuthGate({ children }: { children: ReactNode }) {
 function AppContent({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isLogin = pathname === "/login";
+  const isDev = pathname.startsWith("/dev");
 
   useEffect(() => {
     try {
@@ -34,8 +35,8 @@ function AppContent({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
-  // Login page — no sidebar
-  if (isLogin) return <>{children}</>;
+  // Login / dev pages — no sidebar
+  if (isLogin || isDev) return <>{children}</>;
 
   return (
     <>

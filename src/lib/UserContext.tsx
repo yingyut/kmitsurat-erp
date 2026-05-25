@@ -92,7 +92,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   function hasAccess(path: string): boolean {
-    return canAccess(currentUser?.role, path);
+    if (canAccess(currentUser?.role, path)) return true;
+    // Check extra_roles
+    return (currentUser?.extra_roles ?? []).some(r => canAccess(r, path));
   }
 
   function hasPermission(perm: Permission): boolean {
@@ -102,16 +104,21 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (role === "admin" || role === "Administrator") return true;
     // Per-user override
     if (currentUser?.permissions_override?.includes(perm)) return true;
-    // New roles
-    if (isNewRole(role)) return checkPermission(role, perm);
-    // Legacy roles: grant selected finance-neutral permissions
+    // Check primary role
     const legacyGranted: Partial<Record<string, Permission[]>> = {
       sale:    ["view_dashboard","view_own_projects","view_own_customers","create_customer","view_quote","create_quote"],
       avenger: ["view_dashboard","view_own_projects","view_own_customers","create_customer","view_quote","create_quote"],
       presale: ["view_dashboard","view_presale","manage_presale","use_presale_tools","view_quote","create_quote","view_products","view_vendors","view_catalog","view_own_customers","view_own_projects"],
       service: ["view_dashboard","view_own_tickets","create_ticket","view_own_customers","view_products","view_contracts"],
     };
-    return (legacyGranted[role] ?? []).includes(perm);
+    const primaryOk = isNewRole(role) ? checkPermission(role, perm) : (legacyGranted[role] ?? []).includes(perm);
+    if (primaryOk) return true;
+    // Check extra_roles
+    return (currentUser?.extra_roles ?? []).some(r => {
+      if (r === "admin" || r === "Administrator") return true;
+      if (isNewRole(r)) return checkPermission(r, perm);
+      return (legacyGranted[r] ?? []).includes(perm);
+    });
   }
 
   return (

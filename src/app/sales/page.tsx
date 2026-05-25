@@ -29,6 +29,8 @@ export default function SalesPage() {
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [reassigningId, setReassigningId] = useState<string | null>(null);
+  const [reassignTarget, setReassignTarget] = useState("");
 
   // Forms
   const [showForm, setShowForm] = useState(false);
@@ -134,6 +136,18 @@ export default function SalesPage() {
     const { salesActivities } = await import("@/lib/firestore"); await salesActivities.remove(id); await load();
   }
 
+  async function reassignActivity(id: string, newAssignee: string, oldAssignee: string) {
+    if (!newAssignee) return;
+    setSaving(true);
+    try {
+      const { salesActivities, logActivity } = await import("@/lib/firestore");
+      await salesActivities.update(id, { assigned_to: newAssignee });
+      await logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "update", module: "sales", resource_id: id, details: `โยกงานจาก ${oldAssignee || "ไม่ระบุ"} → ${newAssignee}` });
+      setReassigningId(null); setReassignTarget("");
+      await load();
+    } catch (e) { console.error(e); } finally { setSaving(false); }
+  }
+
   // Convert Plan → Activity
   async function convertPlanToActivity(plan: SalesActivity) {
     const { salesActivities } = await import("@/lib/firestore");
@@ -183,6 +197,7 @@ export default function SalesPage() {
 
   // Data isolation for new roles without view_all_projects
   const ownSalesOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_projects");
+  const canReassign = hasPermission("assign_job");
 
   // Filtered lists
   const filteredActs = realActivities.filter(a => {
@@ -587,11 +602,17 @@ export default function SalesPage() {
         {filteredActs.length === 0 ? <p className="text-muted text-sm">ไม่พบกิจกรรม</p> : (
           <div className="space-y-1.5">{filteredActs.map(a => {
             const isOverdue = (a.next_follow_up && a.next_follow_up < today || a.next_action_date && a.next_action_date < today) && a.status !== "done";
+            const isReassigning = reassigningId === a.id;
             return (
               <div key={a.id} className={`rounded-xl bg-card border p-3 ${isOverdue ? "border-red-800/50" : "border-border"}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm">{a.description}</p>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="text-sm">{a.description}</p>
+                      {a.assigned_to && (
+                        <span className="text-[10px] rounded-full bg-indigo-900/50 text-indigo-300 px-2 py-0.5 shrink-0">👤 {a.assigned_to}</span>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-1.5 mt-1 text-[10px]">
                       <span className="rounded bg-card-hover px-1.5 py-0.5">{typeLabels[a.type]}</span>
                       {a.customer_type === "prospect"
@@ -607,10 +628,34 @@ export default function SalesPage() {
                       {a.next_action_by && <span className="text-muted">โดย {a.next_action_by}</span>}
                       {a.converted_to_project_id && <span className="text-green-400">→ Pipeline</span>}
                     </div>
+                    {isReassigning && (
+                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border">
+                        <span className="text-[10px] text-muted shrink-0">โยกงานให้:</span>
+                        <select value={reassignTarget} onChange={e => setReassignTarget(e.target.value)}
+                          className="flex-1 rounded-lg bg-background border border-accent/50 px-2 py-1 text-xs focus:outline-none focus:border-accent">
+                          <option value="">— เลือกเซลล์ —</option>
+                          {users.filter(u => ["sale","avenger"].includes(u.role) && u.active).map(u => (
+                            <option key={u.id} value={u.name}>{u.name}</option>
+                          ))}
+                        </select>
+                        <button onClick={() => reassignActivity(a.id!, reassignTarget, a.assigned_to || "")}
+                          disabled={!reassignTarget || saving}
+                          className="text-[10px] bg-accent text-white rounded px-2 py-1 hover:bg-accent-hover disabled:opacity-50">
+                          {saving ? "..." : "ยืนยัน"}
+                        </button>
+                        <button onClick={() => { setReassigningId(null); setReassignTarget(""); }}
+                          className="text-[10px] text-muted hover:text-foreground">ยกเลิก</button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <select value={a.status} onChange={e => updateActivity(a.id!, { status: e.target.value })} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${a.status === "done" ? "bg-green-900/50 text-green-400" : a.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}><option value="new">New</option><option value="in_progress">ทำอยู่</option><option value="done">เสร็จ</option></select>
                     {!a.converted_to_project_id && a.status !== "done" && <button onClick={() => convertActivityToPipeline(a)} title="สร้างดีล → Pipeline" className="text-[10px] bg-blue-800/50 text-blue-400 rounded px-2 py-1 hover:bg-blue-800">→ ดีล</button>}
+                    {canReassign && !isReassigning && (
+                      <button onClick={() => { setReassigningId(a.id!); setReassignTarget(a.assigned_to || ""); }}
+                        title="โยกงานให้เซลล์คนอื่น"
+                        className="text-[10px] bg-amber-900/50 text-amber-400 rounded px-2 py-1 hover:bg-amber-800">โยก</button>
+                    )}
                     <button onClick={() => deleteActivity(a.id!)} className="text-[10px] text-danger hover:underline">ลบ</button>
                   </div>
                 </div>

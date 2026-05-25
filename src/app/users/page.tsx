@@ -53,6 +53,7 @@ function computeDisplayName(form: { first_name?: string; last_name?: string; nic
 const emptyUser = {
   name: "", first_name: "", last_name: "", nickname: "", display_preference: "nickname" as DisplayPref,
   email: "", role: "sale" as User["role"], position: "", department: "", phone: "", bio: "", active: true, sales_code: "", login_username: "",
+  extra_roles: [] as string[],
 };
 
 const REAL_TEAM: Array<typeof emptyUser> = [
@@ -182,6 +183,7 @@ export default function UsersPage() {
       position: user.position || "", department: user.department || "",
       phone: user.phone || "", bio: user.bio || "", active: user.active,
       sales_code: user.sales_code || "", login_username: user.login_username || "",
+      extra_roles: user.extra_roles || [],
     });
     setShowUserForm(true);
     setSelectedUser(null);
@@ -406,10 +408,27 @@ export default function UsersPage() {
                 <p className="text-xs text-muted uppercase mb-2 mt-3">ข้อมูลทั่วไป</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
                   <div>
-                    <label className="text-[10px] text-muted">Role</label>
-                    <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value as User["role"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                    <label className="text-[10px] text-muted">Role หลัก</label>
+                    <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value as User["role"], extra_roles: userForm.extra_roles.filter(r => r !== e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
                       {roles.map((r) => <option key={r} value={r}>{r} - {roleLabels[r]}</option>)}
                     </select>
+                  </div>
+                  <div className="col-span-full">
+                    <label className="text-[10px] text-muted">บทบาทเพิ่มเติม (เลือกได้หลายอัน)</label>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {roles.filter(r => r !== userForm.role).map(r => {
+                        const checked = userForm.extra_roles.includes(r);
+                        return (
+                          <label key={r} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border cursor-pointer text-xs transition-colors ${checked ? "border-accent bg-accent/20 text-accent" : "border-border text-muted hover:border-accent/50"}`}>
+                            <input type="checkbox" className="sr-only" checked={checked} onChange={e => {
+                              const next = e.target.checked ? [...userForm.extra_roles, r] : userForm.extra_roles.filter(x => x !== r);
+                              setUserForm({ ...userForm, extra_roles: next });
+                            }} />
+                            {roleLabels[r] || r}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] text-muted">ตำแหน่ง</label>
@@ -462,6 +481,12 @@ export default function UsersPage() {
                       <span title="อีเมล">📧 {selectedUser.email}</span>
                       {selectedUser.phone && <span title="เบอร์โทร">📞 {selectedUser.phone}</span>}
                     </div>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${roleColor[selectedUser.role] || "bg-gray-700"}`}>{roleLabels[selectedUser.role] || selectedUser.role}</span>
+                      {(selectedUser.extra_roles ?? []).map(r => (
+                        <span key={r} className={`rounded-full px-2 py-0.5 text-[10px] font-medium opacity-75 ${roleColor[r] || "bg-gray-700/50 text-gray-400"}`}>{roleLabels[r] || r}</span>
+                      ))}
+                    </div>
                     {selectedUser.bio && <p className="text-xs text-muted mt-2 max-w-lg">{selectedUser.bio}</p>}
                   </div>
                 </div>
@@ -499,7 +524,14 @@ export default function UsersPage() {
                       <td className="px-4 py-2.5 font-medium">{u.name}</td>
                       <td className="px-4 py-2.5 text-muted">{u.position || "-"}</td>
                       <td className="px-4 py-2.5 text-muted">{u.department || "-"}</td>
-                      <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${roleColor[u.role] || "bg-gray-700"}`}>{u.role}</span></td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex flex-wrap gap-1">
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${roleColor[u.role] || "bg-gray-700"}`}>{roleLabels[u.role] || u.role}</span>
+                          {(u.extra_roles ?? []).map(r => (
+                            <span key={r} className={`rounded-full px-2 py-0.5 text-[10px] font-medium opacity-75 ${roleColor[r] || "bg-gray-700/50 text-gray-400"}`}>{roleLabels[r] || r}</span>
+                          ))}
+                        </div>
+                      </td>
                       <td className="px-4 py-2.5 text-muted text-xs">{u.email}</td>
                       <td className="px-4 py-2.5 text-muted text-xs">{u.phone || "-"}</td>
                       <td className="px-4 py-2.5">{u.active ? <span className="text-green-400 text-xs">Active</span> : <span className="text-red-400 text-xs">Inactive</span>}</td>

@@ -1029,6 +1029,138 @@ export default function DashboardPage() {
       </Section>
     );
 
+    if (id === "svc-workload") {
+      const TYPE_LABEL: Record<string, string> = { repair:"ซ่อม", after_sales:"After Sales", pm_service:"PM", installation:"ติดตั้ง", site_survey:"Survey", technical_survey:"Tech Survey" };
+      const STATUS_STYLE: Record<string, string> = { open:"bg-blue-900/50 text-blue-300", in_progress:"bg-amber-900/50 text-amber-300", resolved:"bg-green-900/50 text-green-300", closed:"bg-neutral-800 text-neutral-400" };
+      const STATUS_TH: Record<string, string> = { open:"รอ", in_progress:"ทำ", resolved:"เสร็จ", closed:"ปิด" };
+      const elapsedDays = (t: ServiceTicket) => {
+        const start = t.opened_at || t.service_date;
+        const end = ["resolved","closed"].includes(t.status) ? (t.resolved_at || t.closed_at || t.service_date) : undefined;
+        const from = new Date(start); from.setHours(0,0,0,0);
+        const to = end ? new Date(end) : new Date(); to.setHours(0,0,0,0);
+        return Math.max(0, Math.floor((to.getTime()-from.getTime())/86400000));
+      };
+      const activeTechs = techWorkload.filter(t=>!t.isPool);
+      return (
+        <Section title="📋 Ticket รายคน (ละเอียด)" action={<Link href="/service" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>}>
+          {activeTechs.length===0?<p className="text-xs text-muted py-3 text-center">ยังไม่มีข้อมูล</p>:(
+            <div className="space-y-5">
+              {activeTechs.map(tech=>{
+                const myTickets = service.filter(t=>t.technician===tech.fullName).sort((a,b)=>{
+                  const order = ["open","in_progress","resolved","closed"];
+                  return order.indexOf(a.status)-order.indexOf(b.status);
+                });
+                return (
+                  <div key={tech.fullName}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-semibold">{tech.name}</span>
+                      <span className="text-[10px] text-muted">{tech.open+tech.inProg} active · {tech.done} เสร็จ</span>
+                    </div>
+                    {myTickets.length===0?<p className="text-xs text-muted pl-2">ไม่มีงาน</p>:(
+                      <div className="rounded-xl overflow-hidden border border-border">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-card-hover text-muted text-[10px] uppercase tracking-wide">
+                              <th className="text-left px-3 py-2">ลูกค้า</th>
+                              <th className="text-left px-3 py-2 hidden sm:table-cell">ปัญหา</th>
+                              <th className="text-center px-3 py-2">ประเภท</th>
+                              <th className="text-center px-3 py-2">สถานะ</th>
+                              <th className="text-center px-3 py-2">วันที่ผ่าน</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {myTickets.map((t,i)=>{
+                              const days = elapsedDays(t);
+                              const isActive = ["open","in_progress"].includes(t.status);
+                              return (
+                                <tr key={i} className="hover:bg-card-hover transition-colors">
+                                  <td className="px-3 py-2 font-medium truncate max-w-[120px]">{t.customer_name}</td>
+                                  <td className="px-3 py-2 text-muted truncate max-w-[180px] hidden sm:table-cell">{t.issue?.slice(0,50)||"—"}</td>
+                                  <td className="px-3 py-2 text-center text-muted">{TYPE_LABEL[t.type]||t.type}</td>
+                                  <td className="px-3 py-2 text-center"><span className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS_STYLE[t.status]||""}`}>{STATUS_TH[t.status]||t.status}</span></td>
+                                  <td className={`px-3 py-2 text-center font-medium ${isActive&&days>7?"text-rose-400":isActive&&days>3?"text-amber-400":"text-muted"}`}>{days} วัน</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Section>
+      );
+    }
+
+    if (id === "svc-repeat") {
+      // ลูกค้าที่เปิด ticket ซ้ำ
+      const custCount = service.reduce<Record<string, { name: string; count: number; open: number; types: string[] }>>((acc, t) => {
+        const k = t.customer_name || "—";
+        if (!acc[k]) acc[k] = { name: k, count: 0, open: 0, types: [] };
+        acc[k].count++;
+        if (["open","in_progress"].includes(t.status)) acc[k].open++;
+        if (t.type && !acc[k].types.includes(t.type)) acc[k].types.push(t.type);
+        return acc;
+      }, {});
+      const repeatCusts = Object.values(custCount).filter(c=>c.count>1).sort((a,b)=>b.open-a.open||b.count-a.count);
+      // ช่างที่มี ticket ค้างนาน (active > 7 วัน)
+      const techProblems = techWorkload.filter(t=>!t.isPool).map(t=>{
+        const myActive = service.filter(s=>s.technician===t.fullName&&["open","in_progress"].includes(s.status));
+        const longRunning = myActive.filter(s=>{
+          const d = new Date(s.opened_at||s.service_date); d.setHours(0,0,0,0);
+          const now = new Date(); now.setHours(0,0,0,0);
+          return Math.floor((now.getTime()-d.getTime())/86400000) > 7;
+        });
+        return { name: t.name, active: myActive.length, longRunning: longRunning.length };
+      }).filter(t=>t.active>0||t.longRunning>0);
+      return (
+        <Section title="🔁 ปัญหาซ้ำ & Skill Gap">
+          <div className="space-y-4">
+            <div>
+              <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">ลูกค้าเปิด Ticket ซ้ำ</p>
+              {repeatCusts.length===0?<p className="text-xs text-muted">ไม่มีลูกค้าเปิดซ้ำ</p>:(
+                <div className="space-y-1.5">
+                  {repeatCusts.slice(0,8).map(c=>(
+                    <div key={c.name} className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{c.name}</p>
+                        <p className="text-[10px] text-muted">{c.types.join(", ")}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-bold">{c.count} ticket</p>
+                        {c.open>0&&<p className="text-[10px] text-amber-400">ค้างอยู่ {c.open}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="border-t border-border pt-3">
+              <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">ช่างที่มีงานค้างนาน ({">"}7 วัน)</p>
+              {techProblems.length===0?<p className="text-xs text-muted text-center py-2">✅ ไม่มีงานค้างนาน</p>:(
+                <div className="space-y-1.5">
+                  {techProblems.map(t=>(
+                    <div key={t.name} className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover">
+                      <div className="flex-1">
+                        <p className="text-xs font-medium">{t.name}</p>
+                        <p className="text-[10px] text-muted">Active {t.active} งาน</p>
+                      </div>
+                      <div className={`text-xs font-bold px-2 py-0.5 rounded-full ${t.longRunning>0?"bg-rose-900/50 text-rose-300":"bg-green-900/50 text-green-300"}`}>
+                        {t.longRunning>0?`ค้างนาน ${t.longRunning}`:"ปกติ"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </Section>
+      );
+    }
+
     // ── PROJECTS ───────────────────────────────────────────────────────────────
     if (id === "prj-kpis") return (
       <div>
