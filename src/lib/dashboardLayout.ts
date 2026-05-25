@@ -1,4 +1,4 @@
-export type WidgetSpan = "full" | "half";
+export type WidgetSpan = "full" | "half" | "third";
 
 export interface WidgetConfig {
   id: string;
@@ -9,7 +9,15 @@ export interface WidgetConfig {
 export type DashView = "executive" | "sales" | "presale" | "service" | "projects" | "coordinator";
 
 export const WIDGET_LABELS: Record<string, string> = {
-  "exec-kpis": "KPI หลัก",
+  // Individual executive KPI cards
+  "exec-kpi-revenue":    "รายได้รวม",
+  "exec-kpi-target-pct": "บรรลุเป้า %",
+  "exec-kpi-profit":     "กำไร GP",
+  "exec-kpi-pipe-val":   "Pipeline มูลค่า",
+  "exec-kpi-overdue":    "งานค้าง",
+  "exec-kpi-sla":        "SLA On-time",
+  // Legacy combined KPI widget
+  "exec-kpis": "KPI หลัก (รวม)",
   "exec-quarterly": "ผลงานรายไตรมาส",
   "exec-pipeline": "Sales Pipeline",
   "exec-sales-table": "ยอดขายรายบุคคล",
@@ -47,13 +55,19 @@ export const WIDGET_LABELS: Record<string, string> = {
 
 export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
   executive: [
-    { id: "exec-kpis",        visible: true, span: "full" },
-    { id: "exec-quarterly",   visible: true, span: "half" },
-    { id: "exec-pipeline",    visible: true, span: "half" },
-    { id: "exec-sales-table", visible: true, span: "full" },
-    { id: "exec-presale",     visible: true, span: "half" },
-    { id: "exec-service",     visible: true, span: "half" },
-    { id: "exec-contracts",   visible: true, span: "half" },
+    { id: "exec-kpi-revenue",    visible: true,  span: "third" },
+    { id: "exec-kpi-target-pct", visible: true,  span: "third" },
+    { id: "exec-kpi-profit",     visible: true,  span: "third" },
+    { id: "exec-kpi-pipe-val",   visible: true,  span: "third" },
+    { id: "exec-kpi-overdue",    visible: true,  span: "third" },
+    { id: "exec-kpi-sla",        visible: true,  span: "third" },
+    { id: "exec-kpis",           visible: false, span: "full"  },
+    { id: "exec-quarterly",      visible: true,  span: "half"  },
+    { id: "exec-pipeline",       visible: true,  span: "half"  },
+    { id: "exec-sales-table",    visible: true,  span: "full"  },
+    { id: "exec-presale",        visible: true,  span: "half"  },
+    { id: "exec-service",        visible: true,  span: "half"  },
+    { id: "exec-contracts",      visible: true,  span: "half"  },
   ],
   sales: [
     { id: "sales-person-cards", visible: true, span: "full" },

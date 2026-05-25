@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, createContext, useContext } from "react";
 import Link from "next/link";
 import { useCurrentUser } from "@/lib/UserContext";
 import {
   DEFAULT_LAYOUTS, ALL_VIEWS, WIDGET_LABELS, getRoleDefaultView,
   loadLayout, saveLayout, resetLayout,
-  type DashView, type WidgetConfig,
+  type DashView, type WidgetConfig, type WidgetSpan,
 } from "@/lib/dashboardLayout";
 import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract, Asset, User, JobRequest } from "@/lib/types";
 import {
@@ -23,6 +23,9 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 const C = { blue: "#3b82f6", purple: "#8b5cf6", rose: "#f43f5e", green: "#22c55e", amber: "#f59e0b", cyan: "#06b6d4", orange: "#f97316" };
+
+// Context สำหรับส่ง hide callback จาก SortableWidget → Section/KpiCardWidget
+const HideCtx = createContext<(() => void) | null>(null);
 type Filter = "today" | "week" | "month" | "q1" | "q2" | "q3" | "q4" | "year" | "custom";
 
 function quarterRange(qNum: 1 | 2 | 3 | 4, fyStart: number) {
@@ -81,76 +84,97 @@ function Section({ title, action, children, defaultOpen = true }: {
   title: string; action?: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const onHide = useContext(HideCtx);
   return (
     <div className="rounded-2xl bg-card border border-border overflow-hidden h-full">
-      <button onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-card-hover transition-colors text-left">
-        <span className="text-sm font-semibold">{title}</span>
-        <div className="flex items-center gap-3">{action}<span className="text-muted text-sm">{open ? "▲" : "▼"}</span></div>
-      </button>
+      <div className="flex items-center px-4 py-3 hover:bg-card-hover transition-colors gap-2">
+        <button onClick={() => setOpen(v => !v)} className="flex-1 text-left min-w-0">
+          <span className="text-sm font-semibold">{title}</span>
+        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {action}
+          {onHide && (
+            <button
+              onClick={e => { e.stopPropagation(); onHide(); }}
+              title="ซ่อน"
+              className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[11px] text-muted hover:text-rose-400 hover:bg-rose-950/40 transition-all"
+            >✕</button>
+          )}
+          <button onClick={() => setOpen(v => !v)} className="text-muted text-xs w-5 h-5 flex items-center justify-center hover:text-foreground transition-colors">
+            {open ? "▲" : "▼"}
+          </button>
+        </div>
+      </div>
       {open && <div className="px-5 pb-5 pt-1">{children}</div>}
+    </div>
+  );
+}
+
+// KpiCardWidget — wrapper สำหรับ widget ที่ไม่ใช้ Section (KPI cards แยก)
+function KpiCardWidget({ children }: { children: React.ReactNode }) {
+  const onHide = useContext(HideCtx);
+  return (
+    <div className="relative h-full">
+      {onHide && (
+        <button
+          onClick={e => { e.stopPropagation(); onHide(); }}
+          title="ซ่อน"
+          className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[11px] text-muted hover:text-rose-400 hover:bg-rose-950/40 bg-background/70 transition-all"
+        >✕</button>
+      )}
+      {children}
     </div>
   );
 }
 
 // ── Sortable Widget Wrapper ────────────────────────────────────────────────────
 function SortableWidget({ id, span, editMode, onToggleVisible, onToggleSpan, label, children }: {
-  id: string; span: "full" | "half"; editMode: boolean;
+  id: string; span: WidgetSpan; editMode: boolean;
   onToggleVisible: () => void; onToggleSpan: () => void;
   label: string; children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const colSpan = span === "full" ? "span 6" : span === "third" ? "span 2" : "span 3";
   return (
-    <div
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        gridColumn: span === "full" ? "span 2" : "span 1",
-        opacity: isDragging ? 0.5 : 1,
-        zIndex: isDragging ? 50 : "auto",
-      }}
-      className="group relative"
-    >
-      {/* ✕ ซ่อน — hover เห็นได้เสมอ ไม่ต้องเข้า edit mode */}
-      <button
-        onPointerDown={e => e.stopPropagation()}
-        onClick={onToggleVisible}
-        title="ซ่อน widget นี้"
-        className="absolute top-2.5 right-2.5 z-30 w-5 h-5 rounded-md flex items-center justify-center text-[10px]
-          bg-background/80 border border-border text-muted
-          opacity-0 group-hover:opacity-100
-          hover:text-rose-400 hover:border-rose-700/60 hover:bg-rose-950/40
-          transition-all duration-150"
+    <HideCtx.Provider value={onToggleVisible}>
+      <div
+        ref={setNodeRef}
+        style={{
+          transform: CSS.Transform.toString(transform),
+          transition,
+          gridColumn: colSpan,
+          opacity: isDragging ? 0.5 : 1,
+          zIndex: isDragging ? 50 : "auto",
+        }}
+        className="group relative"
       >
-        ✕
-      </button>
-
-      {editMode && (
-        /* Drag handle bar — จับลากเพื่อสลับตำแหน่ง */
-        <div
-          {...listeners} {...attributes}
-          className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-t-2xl
-            bg-accent/10 border border-accent/30 border-b-0
-            cursor-grab active:cursor-grabbing select-none"
-          style={{ touchAction: "none" }}
-        >
-          <div className="flex items-center gap-2 text-accent text-[11px] font-medium min-w-0">
-            <span className="text-base leading-none shrink-0">⠿</span>
-            <span className="truncate">{label}</span>
-          </div>
-          <button
-            onPointerDown={e => e.stopPropagation()}
-            onClick={onToggleSpan}
-            title={span === "full" ? "ย่อเหลือครึ่ง" : "ขยายเต็ม"}
-            className="px-2 py-0.5 rounded-md bg-background/80 border border-border text-muted hover:text-foreground text-[10px] transition-colors shrink-0"
+        {editMode && (
+          <div
+            {...listeners} {...attributes}
+            className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-t-2xl
+              bg-accent/10 border border-accent/30 border-b-0
+              cursor-grab active:cursor-grabbing select-none"
+            style={{ touchAction: "none" }}
           >
-            {span === "full" ? "½" : "⬛"}
-          </button>
-        </div>
-      )}
-      <div className={editMode ? "rounded-b-2xl rounded-tr-2xl ring-1 ring-accent/30 overflow-hidden" : ""}>{children}</div>
-    </div>
+            <div className="flex items-center gap-1.5 text-accent text-[11px] font-medium min-w-0">
+              <span className="text-sm leading-none shrink-0">⠿</span>
+              <span className="truncate">{label}</span>
+            </div>
+            {span !== "third" && (
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={onToggleSpan}
+                title={span === "full" ? "ย่อเหลือครึ่ง" : "ขยายเต็ม"}
+                className="px-2 py-0.5 rounded-md bg-background/80 border border-border text-muted hover:text-foreground text-[10px] transition-colors shrink-0"
+              >
+                {span === "full" ? "½" : "⬛"}
+              </button>
+            )}
+          </div>
+        )}
+        <div className={editMode ? "rounded-b-2xl rounded-tr-2xl ring-1 ring-accent/30 overflow-hidden" : ""}>{children}</div>
+      </div>
+    </HideCtx.Provider>
   );
 }
 
@@ -446,7 +470,11 @@ export default function DashboardPage() {
 
   const toggleSpan = useCallback((id: string) => {
     setLayouts(prev => {
-      const curr = prev[view].map(w => w.id === id ? { ...w, span: w.span === "full" ? "half" : "full" as "full"|"half" } : w);
+      const curr = prev[view].map(w => {
+        if (w.id !== id) return w;
+        const next: WidgetSpan = w.span === "full" ? "half" : w.span === "half" ? "third" : "full";
+        return { ...w, span: next };
+      });
       saveLayout(uid, view, curr);
       return { ...prev, [view]: curr };
     });
@@ -460,7 +488,39 @@ export default function DashboardPage() {
   const renderWidget = useCallback((id: string): React.ReactNode => {
     const maxTechTotal = Math.max(...techWorkload.map(x => x.total), 1);
 
-    // ── EXECUTIVE ──────────────────────────────────────────────────────────────
+    // ── EXECUTIVE KPI CARDS (แยกราย — drag/hide ได้อิสระ) ───────────────────
+    if (id === "exec-kpi-revenue") return (
+      <KpiCardWidget>
+        <KpiCard label="รายได้รวม" value={`${(actual/1e6).toFixed(1)}M`} sub={`THB · ${filterLabel}`} color="green" href="/sales" pct={targetPct} />
+      </KpiCardWidget>
+    );
+    if (id === "exec-kpi-target-pct") return (
+      <KpiCardWidget>
+        <KpiCard label="บรรลุเป้า" value={`${targetPct.toFixed(0)}%`} sub={`${(actual/1000).toFixed(0)}K / ${(target/1000).toFixed(0)}K`} color={targetPct>=80?"green":targetPct>=50?"amber":"red"} pct={targetPct} href="/reports" />
+      </KpiCardWidget>
+    );
+    if (id === "exec-kpi-profit") return (
+      <KpiCardWidget>
+        <KpiCard label="กำไรรวม (GP)" value={actualProfit>0?`${(actualProfit/1e6).toFixed(2)}M`:"—"} sub={`GP ${gpPct.toFixed(1)}%`} color={gpPct>=20?"green":gpPct>=10?"amber":actualProfit>0?"red":"muted"} pct={profitPct} href="/reports" />
+      </KpiCardWidget>
+    );
+    if (id === "exec-kpi-pipe-val") return (
+      <KpiCardWidget>
+        <KpiCard label="Pipeline มูลค่า" value={pipeline>0?`${(pipeline/1e6).toFixed(1)}M`:"—"} sub={`${wonCount}/${totalDeals} deals · ${convRate.toFixed(0)}%`} color="purple" href="/projects" />
+      </KpiCardWidget>
+    );
+    if (id === "exec-kpi-overdue") return (
+      <KpiCardWidget>
+        <KpiCard label="งานค้างทั้งหมด" value={String(overdueJobs)} sub={`Sales ${salesOverdue.length} · Pre ${presaleOverdue.length} · Svc ${svcOverdue.length}`} color={overdueJobs>0?"red":"green"} alert={overdueJobs>0} href="/service" />
+      </KpiCardWidget>
+    );
+    if (id === "exec-kpi-sla") return (
+      <KpiCardWidget>
+        <KpiCard label="SLA On-time" value={`${slaOnTime.toFixed(0)}%`} sub={`${allSvcResolved}/${allSvcTotal} tickets`} color={slaOnTime>=90?"green":slaOnTime>=70?"amber":"red"} pct={slaOnTime} href="/service" />
+      </KpiCardWidget>
+    );
+
+    // ── EXECUTIVE (legacy combined KPI) ────────────────────────────────────────
     if (id === "exec-kpis") return (
       <div>
         <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">ตัวชี้วัดหลัก · {filterLabel}</p>
@@ -1367,7 +1427,7 @@ export default function DashboardPage() {
         {/* ── WIDGET GRID ────────────────────────────────────────────────── */}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={visibleWidgets.map(w=>w.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-2 gap-5">
+            <div className="grid grid-cols-6 gap-4">
               {visibleWidgets.map(w=>(
                 <SortableWidget
                   key={w.id} id={w.id} span={w.span} editMode={editMode}
