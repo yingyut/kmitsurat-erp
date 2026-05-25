@@ -8,7 +8,7 @@ const roles = [
   "admin", "sale", "presale", "service", "avenger",
   "Administrator", "Branch Manager", "Sales Manager", "Sales Executive",
   "Presales Manager", "Presales Engineer", "Service Manager",
-  "Service Technician", "Operations Coordinator",
+  "Service Technician", "Operations Coordinator", "Coordinator",
 ] as const;
 const roleLabels: Record<string, string> = {
   admin: "Admin (Legacy)", sale: "Sales (Legacy)", presale: "Presale (Legacy)", service: "Service (Legacy)", avenger: "Avenger (Legacy)",
@@ -16,7 +16,7 @@ const roleLabels: Record<string, string> = {
   "Sales Manager": "ผู้จัดการฝ่ายขาย",     "Sales Executive": "เจ้าหน้าที่ขาย",
   "Presales Manager": "ผู้จัดการพรีเซลล์", "Presales Engineer": "วิศวกรพรีเซลล์",
   "Service Manager": "ผู้จัดการงานบริการ", "Service Technician": "ช่างบริการ",
-  "Operations Coordinator": "ผู้ประสานงาน",
+  "Operations Coordinator": "ผู้ประสานงาน", "Coordinator": "ธุรการ",
 };
 const roleColor: Record<string, string> = {
   admin: "bg-cyan-900/50 text-cyan-400",      sale: "bg-blue-900/50 text-blue-400",
@@ -27,7 +27,7 @@ const roleColor: Record<string, string> = {
   "Sales Manager": "bg-blue-900/50 text-blue-400",    "Sales Executive": "bg-blue-800/50 text-blue-300",
   "Presales Manager": "bg-indigo-900/50 text-indigo-400", "Presales Engineer": "bg-indigo-800/50 text-indigo-300",
   "Service Manager": "bg-rose-900/50 text-rose-400",  "Service Technician": "bg-rose-800/50 text-rose-300",
-  "Operations Coordinator": "bg-green-900/50 text-green-400",
+  "Operations Coordinator": "bg-green-900/50 text-green-400", "Coordinator": "bg-amber-900/50 text-amber-400",
 };
 const teamTypes = ["sales", "presale", "service", "avenger", "admin"] as const;
 
@@ -58,7 +58,7 @@ const emptyUser = {
 const REAL_TEAM: Array<typeof emptyUser> = [
   { ...emptyUser, nickname: "พี่จอร์ด",  role: "admin",   position: "CEO",                 display_preference: "nickname" },
   { ...emptyUser, nickname: "พี่แนน",     role: "admin",   position: "Manager",             display_preference: "nickname" },
-  { ...emptyUser, nickname: "น้องก้อย",  role: "admin",   position: "Office Admin",        display_preference: "nickname" },
+  { ...emptyUser, first_name: "พัชรี", nickname: "น้องก้อย", role: "Coordinator" as User["role"], position: "ธุรการ", display_preference: "nickname" },
   { ...emptyUser, nickname: "ออย",       role: "sale",    position: "Sales",  sales_code: "OY",  display_preference: "nickname" },
   { ...emptyUser, nickname: "แนนน้อย",   role: "sale",    position: "Sales",  sales_code: "NN",  display_preference: "nickname" },
   { ...emptyUser, nickname: "อี๊ฟ",       role: "sale",    position: "Sales",  sales_code: "EVE", display_preference: "nickname" },

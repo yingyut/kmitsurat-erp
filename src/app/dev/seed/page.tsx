@@ -17,7 +17,7 @@ const SEED_CUSTOMERS = [
 
 const SEED_USERS = [
   { name: "จอร์ด เหมือนดาว", nickname: "พี่จอร์ด", email: "jord@kmitsurat.com", role: "sale", active: true, phone: "087-111-0001" },
-  { name: "ก้อย รักสกุล", nickname: "น้องก้อย", email: "koy@kmitsurat.com", role: "sale", active: true, phone: "087-111-0002" },
+  { name: "พัชรี รักสกุล", first_name: "พัชรี", last_name: "รักสกุล", nickname: "น้องก้อย", email: "patcharee@kmitsurat.com", role: "Coordinator", active: true, phone: "087-111-0002", position: "ธุรการ", display_preference: "nickname" },
   { name: "บิ๊ก สุขใจ", nickname: "บิ๊ก", email: "big@kmitsurat.com", role: "avenger", active: true, phone: "087-111-0003" },
   { name: "มิ้ว ชัยวงศ์", nickname: "มิ้ว", email: "miew@kmitsurat.com", role: "presale", active: true, phone: "087-111-0004" },
   { name: "อาร์ม วิไล", nickname: "อาร์ม", email: "arm@kmitsurat.com", role: "service", active: true, phone: "087-111-0005" },
