@@ -37,6 +37,7 @@ export default function SalesPage() {
   const [showQuotaForm, setShowQuotaForm] = useState(false);
   const [stageFilter, setStageFilter] = useState("all");
   const [timeFilter, setTimeFilter] = useState<"all"|"today"|"week"|"overdue">("all");
+  const [actValidate, setActValidate] = useState(false);
 
   // Activity/Plan form
   const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing" | "prospect", project_id: "", project_name: "", assigned_to: "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "" });
@@ -210,7 +211,7 @@ export default function SalesPage() {
         </div>
         <div className="flex gap-2">
           {tab === "plan" && <button onClick={() => { resetActForm(); setActForm(f => ({ ...f, is_plan: true, plan_date: today })); setShowPlanForm(!showPlanForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showPlanForm ? "Cancel" : "+ วางแผน"}</button>}
-          {tab === "activities" && <button onClick={() => { resetActForm(); setShowForm(!showForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ บันทึกกิจกรรม"}</button>}
+          {tab === "activities" && <button onClick={() => { resetActForm(); setActValidate(false); setShowForm(!showForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ บันทึกกิจกรรม"}</button>}
           {tab === "requests" && <button onClick={() => setShowReqForm(!showReqForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showReqForm ? "Cancel" : "+ Job Request"}</button>}
           {tab === "pipeline" && <Link href="/quotations" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">→ สร้าง QT</Link>}
         </div>
@@ -540,7 +541,13 @@ export default function SalesPage() {
               <div><label className="text-[10px] text-muted">ติดต่อใคร</label><input placeholder="ชื่อ / ตำแหน่งผู้ติดต่อ" value={actForm.contact_person || ""} onChange={e => setActForm({ ...actForm, contact_person: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
               <div><label className="text-[10px] text-muted">ผลลัพธ์</label><select value={actForm.result || ""} onChange={e => setActForm({ ...actForm, result: e.target.value as SalesActivity["result"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— เลือก —</option><option value="success">สำเร็จ</option><option value="interested">สนใจ</option><option value="no_answer">ไม่รับสาย</option><option value="rejected">ปฏิเสธ</option><option value="pending">รอผล</option></select></div>
               <div><label className="text-[10px] text-muted">Next Follow-up</label><input type="date" value={actForm.next_follow_up} onChange={e => setActForm({ ...actForm, next_follow_up: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-              <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียด *</label><textarea placeholder="สิ่งที่ทำ / ผลการพูดคุย" value={actForm.description} onChange={e => setActForm({ ...actForm, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-16 resize-y" /></div>
+              <div className="col-span-full">
+                <label className="text-[10px] text-muted">รายละเอียด <span className="text-red-400">*</span></label>
+                <textarea placeholder="สิ่งที่ทำ / ผลการพูดคุย" value={actForm.description}
+                  onChange={e => { setActForm({ ...actForm, description: e.target.value }); setActValidate(false); }}
+                  className={`w-full rounded-lg bg-background border px-3 py-2 text-sm focus:outline-none mt-1 min-h-16 resize-y ${actValidate && !actForm.description.trim() ? "border-red-500 focus:border-red-500" : "border-border focus:border-accent"}`} />
+                {actValidate && !actForm.description.trim() && <p className="text-[10px] text-red-400 mt-1">กรุณากรอกรายละเอียด ว่าทำอะไร / คุยอะไรกับลูกค้า</p>}
+              </div>
 
               {/* ── Next Action section ── */}
               <div>
@@ -561,8 +568,8 @@ export default function SalesPage() {
               <div><label className="text-[10px] text-muted">Next Action โดยใคร</label><select value={actForm.next_action_by || ""} onChange={e => setActForm({ ...actForm, next_action_by: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— เลือก —</option>{users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => saveActivity(false)} disabled={saving || !actForm.description.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึก"}</button>
-              <button onClick={() => setShowForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+              <button onClick={() => { if (!actForm.description.trim()) { setActValidate(true); return; } saveActivity(false); }} disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึก"}</button>
+              <button onClick={() => { setShowForm(false); setActValidate(false); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
             </div>
           </div>
         )}

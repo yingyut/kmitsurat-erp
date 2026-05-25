@@ -1,6 +1,7 @@
 import {
   collection, addDoc, getDocs, getDoc, updateDoc, deleteDoc,
-  doc, query, orderBy, where, serverTimestamp,
+  doc, query, orderBy, where, serverTimestamp, onSnapshot,
+  type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -100,6 +101,14 @@ function svc<T extends { id?: string }>(col: string, sortField = "created_at") {
     get: (id: string) => getDoc_<T>(col, id),
     update: (id: string, data: Record<string, unknown>) => updateDoc_(col, id, data),
     remove: (id: string) => deleteDoc_(col, id),
+    subscribe: (callback: (items: T[]) => void, onError?: (e: Error) => void): Unsubscribe => {
+      const q = query(collection(db, col), where("tenant_id", "==", TENANT));
+      return onSnapshot(
+        q,
+        (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T)),
+        (err) => { console.error(`[firestore] ${col} snapshot error:`, err); onError?.(err); }
+      );
+    },
   };
 }
 
