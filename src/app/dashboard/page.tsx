@@ -113,26 +113,33 @@ function SortableWidget({ id, span, editMode, onToggleVisible, onToggleSpan, lab
       className="relative"
     >
       {editMode && (
-        <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
+        <>
+          {/* Drag overlay — covers whole widget header area for grab */}
           <div
             {...listeners} {...attributes}
-            className="cursor-grab active:cursor-grabbing flex items-center gap-1 px-2 py-1 rounded-lg bg-background/90 border border-border text-muted hover:text-foreground hover:border-accent/50 transition-colors text-[10px] select-none"
-            title="ลาก"
-          >
-            <span className="text-base leading-none">⠿</span>
-            <span className="hidden sm:inline">{label}</span>
+            className="absolute inset-0 z-10 cursor-grab active:cursor-grabbing rounded-2xl"
+            style={{ touchAction: "none" }}
+          />
+          {/* Controls float top-right, above the drag overlay */}
+          <div className="absolute top-2 right-2 z-20 flex items-center gap-1 pointer-events-none">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-background/90 border border-accent/40 text-accent text-[10px] select-none">
+              <span className="text-base leading-none">⠿</span>
+              <span className="hidden sm:inline font-medium">{label}</span>
+            </div>
+            <button onClick={e => { e.stopPropagation(); onToggleSpan(); }}
+              title={span === "full" ? "ย่อ 1/2" : "ขยาย Full"}
+              className="pointer-events-auto px-2 py-1 rounded-lg bg-background/90 border border-border text-muted hover:text-foreground text-[10px] transition-colors">
+              {span === "full" ? "½" : "⬛"}
+            </button>
+            <button onClick={e => { e.stopPropagation(); onToggleVisible(); }}
+              title="ซ่อน widget นี้"
+              className="pointer-events-auto px-2 py-1 rounded-lg bg-background/90 border border-rose-800/50 text-rose-400 hover:bg-rose-950/30 text-[10px] transition-colors">
+              ✕
+            </button>
           </div>
-          <button onClick={onToggleSpan} title={span === "full" ? "ย่อ 1/2" : "ขยาย Full"}
-            className="px-2 py-1 rounded-lg bg-background/90 border border-border text-muted hover:text-foreground text-[10px] transition-colors">
-            {span === "full" ? "½" : "⬛"}
-          </button>
-          <button onClick={onToggleVisible} title="ซ่อน widget นี้"
-            className="px-2 py-1 rounded-lg bg-background/90 border border-rose-800/50 text-rose-400 hover:bg-rose-950/30 text-[10px] transition-colors">
-            ✕
-          </button>
-        </div>
+        </>
       )}
-      <div className={editMode ? "ring-2 ring-accent/20 rounded-2xl" : ""}>{children}</div>
+      <div className={editMode ? "ring-2 ring-accent/40 rounded-2xl" : ""}>{children}</div>
     </div>
   );
 }
