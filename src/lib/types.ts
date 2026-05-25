@@ -12,7 +12,7 @@ export interface User {
   role: "admin" | "sale" | "presale" | "service" | "avenger"
       | "Administrator" | "Branch Manager" | "Sales Manager" | "Sales Executive"
       | "Presales Manager" | "Presales Engineer" | "Service Manager"
-      | "Service Technician" | "Operations Coordinator";
+      | "Service Technician" | "Operations Coordinator" | "Coordinator";
   team_id?: string;
   branch_id?: string;
   department?: string;

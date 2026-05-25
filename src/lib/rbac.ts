@@ -53,6 +53,7 @@ export const NEW_ROLES = [
   "Service Manager",
   "Service Technician",
   "Operations Coordinator",
+  "Coordinator",
 ] as const;
 
 export type NewRoleName = typeof NEW_ROLES[number];
@@ -161,6 +162,19 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
     "view_presale",       "view_quote",
     "view_assets",        "manage_assets",
   ],
+
+  "Coordinator": [
+    "view_dashboard",
+    "view_all_tickets",   "create_ticket",      "close_ticket",
+    "assign_job",
+    "view_all_customers", "create_customer",
+    "view_all_projects",
+    "view_quote",
+    "view_contracts",     "manage_contracts",
+    "view_presale",
+    "view_assets",
+    "view_reports",
+  ],
 };
 
 // ─── Utility functions ───────────────────────────────────────────────────────────
@@ -206,6 +220,7 @@ export const ROLE_LABELS: Record<string, string> = {
   "Service Manager":        "ผู้จัดการงานบริการ",
   "Service Technician":     "ช่างบริการ",
   "Operations Coordinator": "ผู้ประสานงาน",
+  "Coordinator":            "ธุรการ",
 };
 
 export const ROLE_COLOR: Record<string, string> = {
@@ -223,6 +238,7 @@ export const ROLE_COLOR: Record<string, string> = {
   "Service Technician":     "bg-rose-800/50 text-rose-300",
   "service":                "bg-rose-900/50 text-rose-400",
   "Operations Coordinator": "bg-green-900/50 text-green-400",
+  "Coordinator":            "bg-amber-900/50 text-amber-400",
 };
 
 export type PermCategory = "Dashboard" | "Sales" | "Service" | "Presale" | "CRM" | "Finance" | "Operations" | "Master Data" | "Admin";

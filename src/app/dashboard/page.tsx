@@ -3,11 +3,11 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useCurrentUser } from "@/lib/UserContext";
 import {
-  DEFAULT_LAYOUTS, WIDGET_LABELS, getRoleDefaultView,
+  DEFAULT_LAYOUTS, ALL_VIEWS, WIDGET_LABELS, getRoleDefaultView,
   loadLayout, saveLayout, resetLayout,
   type DashView, type WidgetConfig,
 } from "@/lib/dashboardLayout";
-import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract, Asset, User } from "@/lib/types";
+import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract, Asset, User, JobRequest } from "@/lib/types";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -162,12 +162,13 @@ export default function DashboardPage() {
   const [contracts, setContracts] = useState<ServiceContract[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [jobRequests, setJobRequests] = useState<JobRequest[]>([]);
 
   // ── Realtime Firestore subscriptions ─────────────────────────────────────────
   useEffect(() => {
     setMounted(true);
     const received = new Set<string>();
-    const total = ["projects","sales","presale","service","quotas","quots","contracts","assets","users"];
+    const total = ["projects","sales","presale","service","quotas","quots","contracts","assets","users","jobRequests"];
     const onFirst = (name: string) => {
       received.add(name);
       if (total.every(n => received.has(n))) setLoading(false);
@@ -187,6 +188,7 @@ export default function DashboardPage() {
       unsubs.push(fs.serviceContracts.subscribe(d => { setContracts(d); onFirst("contracts"); }));
       unsubs.push(fs.assets.subscribe(d => { setAssets(d); onFirst("assets"); }));
       unsubs.push(fs.users.subscribe(d => { setUsers(d.filter(x => x.active)); onFirst("users"); }));
+      unsubs.push(fs.jobRequests.subscribe(d => { setJobRequests(d); onFirst("jobRequests"); }));
     })();
     return () => unsubs.forEach(u => u());
   }, []);
@@ -198,7 +200,7 @@ export default function DashboardPage() {
     const defaultView = getRoleDefaultView(currentUser.role);
     setView(defaultView);
     const all = {} as Record<DashView, WidgetConfig[]>;
-    for (const v of ["executive","sales","presale","service","projects"] as DashView[]) {
+    for (const v of ALL_VIEWS) {
       all[v] = loadLayout(uid, v);
     }
     setLayouts(all);
@@ -988,6 +990,210 @@ export default function DashboardPage() {
       </Section>
     );
 
+    // ── COORDINATOR ───────────────────────────────────────────────────────────
+    const today2 = new Date().toISOString().slice(0, 10);
+    const in30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    const in60 = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+    const in90 = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
+    const pendingJobs = jobRequests.filter(j => j.status === "pending");
+    const inProgJobs  = jobRequests.filter(j => j.status === "in_progress" || j.status === "accepted");
+    const svcOpenAll  = service.filter(s => s.status === "open");
+    const svcInProgAll= service.filter(s => s.status === "in_progress");
+    const svcResolvedAll = service.filter(s => s.status === "resolved" || s.status === "closed");
+    const expiring30 = contracts.filter(c => c.end_date && c.end_date >= today2 && c.end_date <= in30);
+    const expiring60 = contracts.filter(c => c.end_date && c.end_date > in30 && c.end_date <= in60);
+    const expiring90 = contracts.filter(c => c.end_date && c.end_date > in60 && c.end_date <= in90);
+    const PRIO_COLOR: Record<string, string> = {
+      urgent: "text-rose-400",  high: "text-amber-400",
+      medium: "text-blue-400",  low: "text-muted",
+    };
+    const PRIO_LABEL: Record<string, string> = {
+      urgent: "ด่วนมาก", high: "ด่วน", medium: "ปกติ", low: "ต่ำ",
+    };
+    const SVC_TYPE_LABEL: Record<string, string> = {
+      installation: "ติดตั้ง", site_survey: "Survey", technical_survey: "Technical",
+      after_sales: "After Sale", repair: "ซ่อม", pm_service: "PM",
+    };
+
+    if (id === "coord-kpis") return (
+      <Section title="ภาพรวมธุรการ">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <KpiCard label="รับเรื่องรอดำเนินการ"  value={String(pendingJobs.length)}    color={pendingJobs.length > 0 ? "amber" : "muted"} href="/service" alert={pendingJobs.length > 0} />
+          <KpiCard label="งานอยู่ระหว่างดำเนินการ" value={String(inProgJobs.length)}   color="blue"   href="/service" />
+          <KpiCard label="Ticket เปิดอยู่"         value={String(svcOpenAll.length + svcInProgAll.length)} color="purple" href="/service" />
+          <KpiCard label="Ticket เสร็จแล้ว"        value={String(svcResolvedAll.length)} color="green"  href="/service" />
+          <KpiCard label="สัญญาใกล้หมด ≤30 วัน"   value={String(expiring30.length)}    color={expiring30.length > 0 ? "red" : "muted"} href="/contracts" alert={expiring30.length > 0} />
+        </div>
+      </Section>
+    );
+
+    if (id === "coord-inbox") return (
+      <Section title="กล่องรับเรื่อง" action={<Link href="/service" className="text-xs text-accent hover:underline">+ เปิด Ticket ใหม่</Link>}>
+        {pendingJobs.length === 0 && inProgJobs.length === 0 ? (
+          <p className="text-sm text-muted text-center py-6">ไม่มีงานค้างในระบบ</p>
+        ) : (
+          <div className="space-y-2">
+            {[...pendingJobs, ...inProgJobs].slice(0, 10).map(j => (
+              <div key={j.id} className="flex items-center gap-3 rounded-xl bg-background border border-border px-3 py-2">
+                <div className={`text-[10px] font-bold w-16 shrink-0 ${PRIO_COLOR[j.priority] ?? "text-muted"}`}>
+                  {PRIO_LABEL[j.priority] ?? j.priority}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{j.title}</p>
+                  <p className="text-[11px] text-muted truncate">{j.customer_name} · {j.request_to_team === "presale" ? "Presale" : "Service"}</p>
+                </div>
+                <div className={`text-[10px] px-2 py-0.5 rounded-full shrink-0 font-medium
+                  ${j.status === "pending" ? "bg-amber-900/40 text-amber-300" : "bg-blue-900/40 text-blue-300"}`}>
+                  {j.status === "pending" ? "รอดำเนินการ" : "กำลังดำเนินการ"}
+                </div>
+                {j.due_date && (
+                  <p className={`text-[10px] shrink-0 ${j.due_date < today2 ? "text-rose-400 font-bold" : "text-muted"}`}>
+                    {j.due_date < today2 ? "เกิน!" : ""} {j.due_date}
+                  </p>
+                )}
+              </div>
+            ))}
+            {(pendingJobs.length + inProgJobs.length) > 10 && (
+              <p className="text-[11px] text-muted text-center pt-1">และอีก {(pendingJobs.length + inProgJobs.length) - 10} รายการ</p>
+            )}
+          </div>
+        )}
+      </Section>
+    );
+
+    if (id === "coord-tickets") return (
+      <Section title="Ticket ทั้งหมด" action={<Link href="/service" className="text-xs text-accent hover:underline">ดูทั้งหมด →</Link>}>
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="rounded-xl bg-background border border-border p-3 text-center">
+            <p className="text-2xl font-bold text-blue-400">{svcOpenAll.length}</p>
+            <p className="text-[11px] text-muted mt-0.5">รอดำเนินการ</p>
+          </div>
+          <div className="rounded-xl bg-background border border-border p-3 text-center">
+            <p className="text-2xl font-bold text-amber-400">{svcInProgAll.length}</p>
+            <p className="text-[11px] text-muted mt-0.5">กำลังดำเนินการ</p>
+          </div>
+          <div className="rounded-xl bg-background border border-border p-3 text-center">
+            <p className="text-2xl font-bold text-green-400">{svcResolvedAll.length}</p>
+            <p className="text-[11px] text-muted mt-0.5">เสร็จแล้ว</p>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          {[...svcOpenAll, ...svcInProgAll].slice(0, 8).map(t => (
+            <div key={t.id} className="flex items-center gap-2 rounded-lg bg-background border border-border px-3 py-1.5">
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0
+                ${t.status === "open" ? "bg-blue-900/40 text-blue-300" : "bg-amber-900/40 text-amber-300"}`}>
+                {t.status === "open" ? "เปิด" : "กำลังทำ"}
+              </span>
+              <span className="text-[10px] text-muted shrink-0">{SVC_TYPE_LABEL[t.type] ?? t.type}</span>
+              <p className="text-sm flex-1 truncate">{t.issue}</p>
+              <p className="text-[10px] text-muted shrink-0 truncate max-w-[100px]">{t.customer_name}</p>
+              {t.technician && <p className="text-[10px] text-muted shrink-0">{t.technician.split(" ")[0]}</p>}
+            </div>
+          ))}
+          {svcOpenAll.length + svcInProgAll.length === 0 && (
+            <p className="text-sm text-muted text-center py-4">ไม่มี Ticket เปิดอยู่</p>
+          )}
+        </div>
+      </Section>
+    );
+
+    if (id === "coord-contracts") return (
+      <Section title="สัญญาใกล้หมดอายุ" action={<Link href="/contracts" className="text-xs text-accent hover:underline">ดูทั้งหมด →</Link>}>
+        {expiring30.length === 0 && expiring60.length === 0 && expiring90.length === 0 ? (
+          <p className="text-sm text-muted text-center py-6">ไม่มีสัญญาที่ใกล้หมดใน 90 วัน</p>
+        ) : (
+          <div className="space-y-2">
+            {expiring30.length > 0 && (
+              <div>
+                <p className="text-[10px] text-rose-400 font-semibold mb-1.5">หมดภายใน 30 วัน ({expiring30.length})</p>
+                {expiring30.map(c => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-rose-950/20 border border-rose-800/30 px-3 py-1.5 mb-1">
+                    <p className="text-sm flex-1 truncate font-medium">{c.customer_name}</p>
+                    <p className="text-[11px] text-rose-300 shrink-0">{c.end_date}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {expiring60.length > 0 && (
+              <div>
+                <p className="text-[10px] text-amber-400 font-semibold mb-1.5">หมดภายใน 31–60 วัน ({expiring60.length})</p>
+                {expiring60.map(c => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-amber-950/20 border border-amber-800/30 px-3 py-1.5 mb-1">
+                    <p className="text-sm flex-1 truncate">{c.customer_name}</p>
+                    <p className="text-[11px] text-amber-300 shrink-0">{c.end_date}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {expiring90.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted font-semibold mb-1.5">หมดภายใน 61–90 วัน ({expiring90.length})</p>
+                {expiring90.slice(0, 5).map(c => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-background border border-border px-3 py-1.5 mb-1">
+                    <p className="text-sm flex-1 truncate">{c.customer_name}</p>
+                    <p className="text-[11px] text-muted shrink-0">{c.end_date}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </Section>
+    );
+
+    if (id === "coord-satisfaction") {
+      const last30Resolved = svcResolvedAll.filter(t => t.resolved_at && String(t.resolved_at).slice(0,10) >= new Date(Date.now() - 30*86400000).toISOString().slice(0,10));
+      const byTech: Record<string, { name: string; done: number }> = {};
+      service.forEach(t => {
+        if (!t.technician) return;
+        const name = t.technician.split(" ")[0];
+        if (!byTech[name]) byTech[name] = { name, done: 0 };
+        if (t.status === "resolved" || t.status === "closed") byTech[name].done++;
+      });
+      const techRows = Object.values(byTech).sort((a, b) => b.done - a.done).slice(0, 6);
+      return (
+        <Section title="สรุปงานที่เสร็จ — 30 วันล่าสุด">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-[11px] text-muted uppercase tracking-wide mb-2">งานปิดในช่วง 30 วัน</p>
+              <p className="text-3xl font-bold text-green-400">{last30Resolved.length}</p>
+              <p className="text-[11px] text-muted mt-1">จากทั้งหมด {svcResolvedAll.length} รายการที่ปิดแล้ว</p>
+              <div className="mt-3 space-y-1">
+                {(["installation","repair","pm_service","after_sales"] as const).map(type => {
+                  const cnt = last30Resolved.filter(t => t.type === type).length;
+                  if (!cnt) return null;
+                  return (
+                    <div key={type} className="flex items-center gap-2">
+                      <p className="text-[11px] text-muted w-24 shrink-0">{SVC_TYPE_LABEL[type]}</p>
+                      <div className="flex-1 h-1.5 rounded-full bg-background overflow-hidden">
+                        <div className="h-full rounded-full bg-green-600" style={{ width: `${(cnt/Math.max(last30Resolved.length,1))*100}%` }} />
+                      </div>
+                      <p className="text-[11px] text-muted w-5 text-right">{cnt}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <p className="text-[11px] text-muted uppercase tracking-wide mb-2">ผลงานของช่าง (รวม)</p>
+              <div className="space-y-1.5">
+                {techRows.map(t => (
+                  <div key={t.name} className="flex items-center gap-2">
+                    <p className="text-sm w-20 shrink-0 font-medium">{t.name}</p>
+                    <div className="flex-1 h-2 rounded-full bg-background overflow-hidden">
+                      <div className="h-full rounded-full bg-blue-600" style={{ width: `${(t.done/Math.max(techRows[0]?.done,1))*100}%` }} />
+                    </div>
+                    <p className="text-[11px] text-muted w-6 text-right">{t.done}</p>
+                  </div>
+                ))}
+                {techRows.length === 0 && <p className="text-sm text-muted">ยังไม่มีข้อมูล</p>}
+              </div>
+            </div>
+          </div>
+        </Section>
+      );
+    }
+
     return null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -999,6 +1205,7 @@ export default function DashboardPage() {
     prTotal, prPending, prInProg, prDone, pmOverdue, pmDue30, filtPresale, filtSales, filtService,
     fyYear, fyEndYear, activeContracts.length, wonCount, totalDeals, convRate,
     topExpiring, service.length, svcOpen, svcInProg, svcDone,
+    jobRequests, contracts,
   ]);
 
   if (!mounted) return <div className="p-6 text-muted text-sm">Loading...</div>;
@@ -1006,7 +1213,7 @@ export default function DashboardPage() {
   const currentLayout = layouts[view];
   const visibleWidgets = currentLayout.filter(w => w.visible);
   const hiddenWidgets = currentLayout.filter(w => !w.visible);
-  const viewLabel = view==="executive"?"📊 Executive":view==="sales"?"💰 Sales":view==="presale"?"⚙️ Presale":view==="service"?"🔧 Service":"🔽 Projects";
+  const viewLabel = view==="executive"?"📊 Executive":view==="sales"?"💰 Sales":view==="presale"?"⚙️ Presale":view==="service"?"🔧 Service":view==="coordinator"?"🗂️ ธุรการ":"🔽 Projects";
 
   return (
     <div className="p-5 max-w-[1400px] space-y-5">
@@ -1015,7 +1222,7 @@ export default function DashboardPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            {view==="executive"?"Executive Dashboard":view==="sales"?"Sales Dashboard":view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":"Projects Dashboard"}
+            {view==="executive"?"Executive Dashboard":view==="sales"?"Sales Dashboard":view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":"Projects Dashboard"}
           </h1>
           <p className="text-xs text-muted mt-0.5 flex items-center gap-2">
             <span>KMITSURAT — {filterLabel}</span>
@@ -1075,11 +1282,12 @@ export default function DashboardPage() {
       {isAdmin&&(
         <div className="flex gap-1 rounded-xl border border-border bg-card p-1 w-fit flex-wrap">
           {([
-            { id:"executive",label:"📊 Executive" },
-            { id:"sales",    label:"💰 Sales" },
-            { id:"presale",  label:"⚙️ Presale" },
-            { id:"service",  label:"🔧 Service" },
-            { id:"projects", label:"🔽 Projects" },
+            { id:"executive",   label:"📊 Executive" },
+            { id:"sales",       label:"💰 Sales" },
+            { id:"presale",     label:"⚙️ Presale" },
+            { id:"service",     label:"🔧 Service" },
+            { id:"projects",    label:"🔽 Projects" },
+            { id:"coordinator", label:"🗂️ ธุรการ" },
           ] as {id:DashView;label:string}[]).map(v=>(
             <button key={v.id} onClick={()=>{ setView(v.id); setEditMode(false); }}
               className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${view===v.id?"bg-accent text-white":"text-muted hover:text-foreground"}`}>
