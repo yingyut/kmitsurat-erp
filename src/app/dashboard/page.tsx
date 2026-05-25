@@ -110,36 +110,43 @@ function SortableWidget({ id, span, editMode, onToggleVisible, onToggleSpan, lab
         opacity: isDragging ? 0.5 : 1,
         zIndex: isDragging ? 50 : "auto",
       }}
+      className="group relative"
     >
+      {/* ✕ ซ่อน — hover เห็นได้เสมอ ไม่ต้องเข้า edit mode */}
+      <button
+        onPointerDown={e => e.stopPropagation()}
+        onClick={onToggleVisible}
+        title="ซ่อน widget นี้"
+        className="absolute top-2.5 right-2.5 z-30 w-5 h-5 rounded-md flex items-center justify-center text-[10px]
+          bg-background/80 border border-border text-muted
+          opacity-0 group-hover:opacity-100
+          hover:text-rose-400 hover:border-rose-700/60 hover:bg-rose-950/40
+          transition-all duration-150"
+      >
+        ✕
+      </button>
+
       {editMode && (
-        /* Drag handle bar — only this bar is draggable, content below stays interactive */
+        /* Drag handle bar — จับลากเพื่อสลับตำแหน่ง */
         <div
           {...listeners} {...attributes}
-          className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-t-2xl bg-accent/10 border border-accent/30 border-b-0 cursor-grab active:cursor-grabbing select-none"
+          className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-t-2xl
+            bg-accent/10 border border-accent/30 border-b-0
+            cursor-grab active:cursor-grabbing select-none"
           style={{ touchAction: "none" }}
         >
           <div className="flex items-center gap-2 text-accent text-[11px] font-medium min-w-0">
             <span className="text-base leading-none shrink-0">⠿</span>
             <span className="truncate">{label}</span>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onPointerDown={e => e.stopPropagation()}
-              onClick={onToggleSpan}
-              title={span === "full" ? "ย่อเหลือครึ่ง" : "ขยายเต็ม"}
-              className="px-2 py-0.5 rounded-md bg-background/80 border border-border text-muted hover:text-foreground text-[10px] transition-colors"
-            >
-              {span === "full" ? "½" : "⬛"}
-            </button>
-            <button
-              onPointerDown={e => e.stopPropagation()}
-              onClick={onToggleVisible}
-              title="ซ่อน"
-              className="px-2 py-0.5 rounded-md bg-background/80 border border-rose-800/50 text-rose-400 hover:bg-rose-950/30 text-[10px] transition-colors"
-            >
-              ✕
-            </button>
-          </div>
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={onToggleSpan}
+            title={span === "full" ? "ย่อเหลือครึ่ง" : "ขยายเต็ม"}
+            className="px-2 py-0.5 rounded-md bg-background/80 border border-border text-muted hover:text-foreground text-[10px] transition-colors shrink-0"
+          >
+            {span === "full" ? "½" : "⬛"}
+          </button>
         </div>
       )}
       <div className={editMode ? "rounded-b-2xl rounded-tr-2xl ring-1 ring-accent/30 overflow-hidden" : ""}>{children}</div>
@@ -1359,21 +1366,17 @@ export default function DashboardPage() {
 
         {/* ── WIDGET GRID ────────────────────────────────────────────────── */}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={currentLayout.map(w=>w.id)} strategy={rectSortingStrategy}>
+          <SortableContext items={visibleWidgets.map(w=>w.id)} strategy={rectSortingStrategy}>
             <div className="grid grid-cols-2 gap-5">
-              {currentLayout.map(w=>(
-                w.visible?(
-                  <SortableWidget
-                    key={w.id} id={w.id} span={w.span} editMode={editMode}
-                    label={WIDGET_LABELS[w.id]||w.id}
-                    onToggleVisible={()=>toggleVisible(w.id)}
-                    onToggleSpan={()=>toggleSpan(w.id)}
-                  >
-                    {renderWidget(w.id)}
-                  </SortableWidget>
-                ):(
-                  <div key={w.id} style={{ display:"none" }}/>
-                )
+              {visibleWidgets.map(w=>(
+                <SortableWidget
+                  key={w.id} id={w.id} span={w.span} editMode={editMode}
+                  label={WIDGET_LABELS[w.id]||w.id}
+                  onToggleVisible={()=>toggleVisible(w.id)}
+                  onToggleSpan={()=>toggleSpan(w.id)}
+                >
+                  {renderWidget(w.id)}
+                </SortableWidget>
               ))}
             </div>
           </SortableContext>
