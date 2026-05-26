@@ -19,15 +19,15 @@ const roleLabels: Record<string, string> = {
   "Operations Coordinator": "ผู้ประสานงาน", "Coordinator": "ธุรการ",
 };
 const roleColor: Record<string, string> = {
-  admin: "bg-cyan-900/50 text-cyan-400",      sale: "bg-blue-900/50 text-blue-400",
-  presale: "bg-purple-900/50 text-purple-400", service: "bg-rose-900/50 text-rose-400",
-  avenger: "bg-orange-900/50 text-orange-400",
-  "Administrator": "bg-cyan-900/50 text-cyan-400",
-  "Branch Manager": "bg-purple-900/50 text-purple-400",
-  "Sales Manager": "bg-blue-900/50 text-blue-400",    "Sales Executive": "bg-blue-800/50 text-blue-300",
-  "Presales Manager": "bg-indigo-900/50 text-indigo-400", "Presales Engineer": "bg-indigo-800/50 text-indigo-300",
-  "Service Manager": "bg-rose-900/50 text-rose-400",  "Service Technician": "bg-rose-800/50 text-rose-300",
-  "Operations Coordinator": "bg-green-900/50 text-green-400", "Coordinator": "bg-amber-900/50 text-amber-400",
+  admin: "bg-cyan-700 text-white",        sale: "bg-blue-700 text-white",
+  presale: "bg-purple-700 text-white",    service: "bg-rose-700 text-white",
+  avenger: "bg-orange-700 text-white",
+  "Administrator": "bg-cyan-700 text-white",
+  "Branch Manager": "bg-purple-700 text-white",
+  "Sales Manager": "bg-blue-700 text-white",       "Sales Executive": "bg-blue-600 text-white",
+  "Presales Manager": "bg-indigo-700 text-white",  "Presales Engineer": "bg-indigo-600 text-white",
+  "Service Manager": "bg-rose-700 text-white",     "Service Technician": "bg-rose-600 text-white",
+  "Operations Coordinator": "bg-green-700 text-white", "Coordinator": "bg-amber-700 text-white",
 };
 const teamTypes = ["sales", "presale", "service", "avenger", "admin"] as const;
 
@@ -52,10 +52,10 @@ function computeDisplayName(form: { first_name?: string; last_name?: string; nic
 
 type EmploymentStatus = NonNullable<User["employment_status"]>;
 const EMPLOYMENT_STATUS_OPTIONS: { value: EmploymentStatus; label: string; color: string }[] = [
-  { value: "active",     label: "ทำงานอยู่",  color: "bg-green-900/50 text-green-400" },
-  { value: "on_leave",   label: "ลาพัก",       color: "bg-amber-900/50 text-amber-400" },
-  { value: "resigned",   label: "ลาออก",       color: "bg-red-900/50 text-red-400" },
-  { value: "terminated", label: "เลิกจ้าง",    color: "bg-red-950/70 text-red-500" },
+  { value: "active",     label: "ทำงานอยู่",  color: "bg-green-700 text-white" },
+  { value: "on_leave",   label: "ลาพัก",       color: "bg-amber-600 text-white" },
+  { value: "resigned",   label: "ลาออก",       color: "bg-red-700 text-white" },
+  { value: "terminated", label: "เลิกจ้าง",    color: "bg-red-900 text-white" },
 ];
 
 const emptyUser = {
@@ -511,9 +511,9 @@ export default function UsersPage() {
                       {selectedUser.phone && <span title="เบอร์โทร">📞 {selectedUser.phone}</span>}
                     </div>
                     <div className="flex flex-wrap gap-1 mt-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${roleColor[selectedUser.role] || "bg-gray-700"}`}>{roleLabels[selectedUser.role] || selectedUser.role}</span>
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleColor[selectedUser.role] || "bg-gray-700 text-white"}`}>{roleLabels[selectedUser.role] || selectedUser.role}</span>
                       {(selectedUser.extra_roles ?? []).map(r => (
-                        <span key={r} className={`rounded-full px-2 py-0.5 text-[10px] font-medium opacity-75 ${roleColor[r] || "bg-gray-700/50 text-gray-400"}`}>{roleLabels[r] || r}</span>
+                        <span key={r} className={`rounded-full px-2.5 py-0.5 text-xs font-semibold opacity-80 ${roleColor[r] || "bg-gray-600 text-white"}`}>{roleLabels[r] || r}</span>
                       ))}
                     </div>
                     {selectedUser.bio && <p className="text-xs text-muted mt-2 max-w-lg">{selectedUser.bio}</p>}
@@ -563,9 +563,9 @@ export default function UsersPage() {
                       <td className="px-4 py-2.5 text-muted">{u.department || "-"}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1">
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${roleColor[u.role] || "bg-gray-700"}`}>{roleLabels[u.role] || u.role}</span>
+                          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleColor[u.role] || "bg-gray-700 text-white"}`}>{roleLabels[u.role] || u.role}</span>
                           {(u.extra_roles ?? []).map(r => (
-                            <span key={r} className={`rounded-full px-2 py-0.5 text-[10px] font-medium opacity-75 ${roleColor[r] || "bg-gray-700/50 text-gray-400"}`}>{roleLabels[r] || r}</span>
+                            <span key={r} className={`rounded-full px-2.5 py-0.5 text-xs font-semibold opacity-80 ${roleColor[r] || "bg-gray-600 text-white"}`}>{roleLabels[r] || r}</span>
                           ))}
                         </div>
                       </td>
@@ -575,7 +575,7 @@ export default function UsersPage() {
                         {(() => {
                           const es = u.employment_status || (u.active ? "active" : "resigned");
                           const opt = EMPLOYMENT_STATUS_OPTIONS.find(o => o.value === es) ?? EMPLOYMENT_STATUS_OPTIONS[0];
-                          return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${opt.color}`}>{opt.label}{u.resigned_at && ` · ${u.resigned_at}`}</span>;
+                          return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${opt.color}`}>{opt.label}</span>;
                         })()}
                       </td>
                       <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
@@ -690,7 +690,7 @@ export default function UsersPage() {
               <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
                 <div>
                   <h2 className="text-base font-bold">สิทธิ์พิเศษ — {permOverrideUser.name}</h2>
-                  <p className="text-xs text-muted">Role: <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${roleColor[permOverrideUser.role] || "bg-gray-700"}`}>{permOverrideUser.role}</span> · สิทธิ์พิเศษจะ override เพิ่มเติมจาก role</p>
+                  <p className="text-xs text-muted">Role: <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleColor[permOverrideUser.role] || "bg-gray-700 text-white"}`}>{permOverrideUser.role}</span> · สิทธิ์พิเศษจะ override เพิ่มเติมจาก role</p>
                 </div>
                 <button onClick={() => setPermOverrideUser(null)} className="text-muted hover:text-foreground text-lg">✕</button>
               </div>

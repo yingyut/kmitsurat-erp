@@ -27,9 +27,9 @@ function ownershipOf(p: Project): OwnershipStatus {
 const OWNERSHIP_BADGE: Record<OwnershipStatus, { label: string; cls: string } | null> = {
   active:           null,
   none:             null,
-  at_risk:          { label: "⚠ ขาดการอัปเดต", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
-  open:             { label: "🔓 ไม่มีเจ้าของ",  cls: "bg-red-500/10 text-red-400 border-red-500/20" },
-  pending_transfer: { label: "📋 รอโอนงาน",     cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+  at_risk:          { label: "⚠ ขาดการอัปเดต", cls: "bg-amber-600 text-white border-amber-700" },
+  open:             { label: "🔓 ไม่มีเจ้าของ",  cls: "bg-red-700 text-white border-red-800" },
+  pending_transfer: { label: "📋 รอโอนงาน",     cls: "bg-blue-700 text-white border-blue-800" },
 };
 
 function getProjDate(p: Project): Date | null {
@@ -41,9 +41,9 @@ function getProjDate(p: Project): Date | null {
 }
 
 const contractTypeMeta: Record<string, { label: string; icon: string; color: string }> = {
-  product_warranty:      { label: "รับประกันสินค้า",     icon: "🛡️", color: "bg-blue-900/50 text-blue-400" },
-  installation_warranty: { label: "รับประกันงานติดตั้ง", icon: "🔧", color: "bg-purple-900/50 text-purple-400" },
-  service_contract:      { label: "สัญญา MA",            icon: "📋", color: "bg-green-900/50 text-green-400" },
+  product_warranty:      { label: "รับประกันสินค้า",     icon: "🛡️", color: "bg-blue-700 text-white" },
+  installation_warranty: { label: "รับประกันงานติดตั้ง", icon: "🔧", color: "bg-purple-700 text-white" },
+  service_contract:      { label: "สัญญา MA",            icon: "📋", color: "bg-green-700 text-white" },
 };
 function daysUntilDate(date?: string): number | null {
   if (!date) return null;
@@ -55,7 +55,7 @@ function daysUntilDate(date?: string): number | null {
 
 const statuses = ["lead", "opportunity", "proposal", "negotiation", "won", "lost"] as const;
 const statusLabels: Record<string, string> = { lead: "Lead", opportunity: "Opportunity", proposal: "Proposal", negotiation: "Negotiation", won: "Won", lost: "Lost" };
-const statusColor: Record<string, string> = { lead: "bg-gray-700 text-gray-300", opportunity: "bg-blue-900/50 text-blue-400", proposal: "bg-purple-900/50 text-purple-400", negotiation: "bg-yellow-900/50 text-yellow-400", won: "bg-green-900/50 text-green-400", lost: "bg-red-900/50 text-red-400" };
+const statusColor: Record<string, string> = { lead: "bg-slate-500 text-white", opportunity: "bg-blue-700 text-white", proposal: "bg-purple-700 text-white", negotiation: "bg-amber-700 text-white", won: "bg-green-700 text-white", lost: "bg-red-700 text-white" };
 
 const emptyForm = {
   name: "", customer_id: "", customer_name: "", type: "", job_types: [] as string[], value: 0,
@@ -111,22 +111,29 @@ export default function ProjectsPage() {
   // Filtered customers for search
   const filteredCusts = custSearch ? custs.filter(c => c.company_name.toLowerCase().includes(custSearch.toLowerCase()) || c.contact_name.toLowerCase().includes(custSearch.toLowerCase())) : custs;
 
+  // Data isolation: legacy sale/avenger + new roles without view_all_projects see own pipeline only
+  const myRole = currentUser?.role ?? "";
+  const ownProjectsOnly = !!currentUser && !hasPermission("view_all_projects") &&
+    (myRole === "sale" || myRole === "avenger" || isNewRole(myRole));
+  const canManage = hasPermission("view_all_projects");
+  const baseList = ownProjectsOnly ? list.filter(p => p.assigned_to === currentUser?.name) : list;
+
   // Alerts
   const today = new Date().toISOString().slice(0, 10);
-  const reEngageAlerts = list.filter(p => p.re_engage && p.re_engage_date && p.re_engage_date <= today && p.status === "lost");
-  const reminderAlerts = list.filter(p => p.reminder_date && p.reminder_date <= today && !p.reminder_sent);
+  const reEngageAlerts = baseList.filter(p => p.re_engage && p.re_engage_date && p.re_engage_date <= today && p.status === "lost");
+  const reminderAlerts = baseList.filter(p => p.reminder_date && p.reminder_date <= today && !p.reminder_sent);
 
-  // Dashboard stats
+  // Dashboard stats — scoped to own data when ownProjectsOnly
   const isClosed = (s: string) => s === "won" || s === "lost";
   const stats = {
-    total: list.length,
-    totalValue: list.reduce((s, p) => s + (p.value || 0), 0),
-    active: list.filter(p => !isClosed(p.status)).length,
-    activeValue: list.filter(p => !isClosed(p.status)).reduce((s, p) => s + (p.value || 0), 0),
-    won: list.filter(p => p.status === "won").length,
-    wonValue: list.filter(p => p.status === "won").reduce((s, p) => s + (p.value || 0), 0),
-    lost: list.filter(p => p.status === "lost").length,
-    lostValue: list.filter(p => p.status === "lost").reduce((s, p) => s + (p.value || 0), 0),
+    total: baseList.length,
+    totalValue: baseList.reduce((s, p) => s + (p.value || 0), 0),
+    active: baseList.filter(p => !isClosed(p.status)).length,
+    activeValue: baseList.filter(p => !isClosed(p.status)).reduce((s, p) => s + (p.value || 0), 0),
+    won: baseList.filter(p => p.status === "won").length,
+    wonValue: baseList.filter(p => p.status === "won").reduce((s, p) => s + (p.value || 0), 0),
+    lost: baseList.filter(p => p.status === "lost").length,
+    lostValue: baseList.filter(p => p.status === "lost").reduce((s, p) => s + (p.value || 0), 0),
   };
   const closedCount = stats.won + stats.lost;
   const winRate = closedCount > 0 ? Math.round((stats.won / closedCount) * 100) : 0;
@@ -147,11 +154,6 @@ export default function ProjectsPage() {
   function contractCountForProject(projectId: string): number {
     return contractsForProject(projectId).length;
   }
-
-  // Data isolation: new roles with only view_own_projects see their own pipeline only
-  const ownProjectsOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_projects");
-  const canManage = hasPermission("view_all_projects");
-  const baseList = ownProjectsOnly ? list.filter(p => p.assigned_to === currentUser?.name) : list;
 
   useEffect(() => { setMounted(true); load(); }, []);
   useEffect(() => { if (ownProjectsOnly) setPipelineView("list"); }, [ownProjectsOnly]);
@@ -439,27 +441,27 @@ export default function ProjectsPage() {
                       <p className="font-semibold text-sm truncate">{s.name}</p>
                       <p className="text-xs text-muted">{s.total} deals · {OVERVIEW_DATE_LABELS[overviewDateMode]}</p>
                     </div>
-                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${s.winRate >= 60 ? "bg-green-500/10 text-green-400 border-green-500/20" : s.winRate >= 40 ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20" : "bg-muted/10 text-muted border-border"}`}>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.winRate >= 60 ? "bg-green-700 text-white" : s.winRate >= 40 ? "bg-amber-600 text-white" : "bg-slate-500 text-white"}`}>
                       {s.winRate}%
                     </span>
                   </div>
 
                   {/* Stats */}
                   <div className="grid grid-cols-3 gap-2 mb-4 text-center">
-                    <div className="rounded-lg bg-blue-500/5 border border-blue-500/10 py-2">
+                    <div className="rounded-lg bg-card-hover border border-border py-2">
                       <p className="text-lg font-bold text-blue-400 leading-tight">{s.active}</p>
-                      <p className="text-[10px] text-muted/70">Active</p>
-                      <p className="text-[10px] text-blue-400/70">฿{(s.activeValue / 1e6).toFixed(1)}M</p>
+                      <p className="text-[10px] text-muted">Active</p>
+                      <p className="text-[10px] text-muted">฿{(s.activeValue / 1e6).toFixed(1)}M</p>
                     </div>
-                    <div className="rounded-lg bg-green-500/5 border border-green-500/10 py-2">
+                    <div className="rounded-lg bg-card-hover border border-border py-2">
                       <p className="text-lg font-bold text-green-400 leading-tight">{s.won}</p>
-                      <p className="text-[10px] text-muted/70">Won</p>
-                      <p className="text-[10px] text-green-400/70">฿{(s.wonValue / 1e6).toFixed(1)}M</p>
+                      <p className="text-[10px] text-muted">Won</p>
+                      <p className="text-[10px] text-muted">฿{(s.wonValue / 1e6).toFixed(1)}M</p>
                     </div>
-                    <div className="rounded-lg bg-red-500/5 border border-red-500/10 py-2">
+                    <div className="rounded-lg bg-card-hover border border-border py-2">
                       <p className="text-lg font-bold text-red-400 leading-tight">{s.lost}</p>
-                      <p className="text-[10px] text-muted/70">Lost</p>
-                      <p className="text-[10px] text-red-400/70">฿{(s.lostValue / 1e6).toFixed(1)}M</p>
+                      <p className="text-[10px] text-muted">Lost</p>
+                      <p className="text-[10px] text-muted">฿{(s.lostValue / 1e6).toFixed(1)}M</p>
                     </div>
                   </div>
 

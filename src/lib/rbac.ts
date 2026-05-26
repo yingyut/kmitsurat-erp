@@ -224,21 +224,21 @@ export const ROLE_LABELS: Record<string, string> = {
 };
 
 export const ROLE_COLOR: Record<string, string> = {
-  "admin":                  "bg-cyan-900/50 text-cyan-400",
-  "Administrator":          "bg-cyan-900/50 text-cyan-400",
-  "Branch Manager":         "bg-purple-900/50 text-purple-400",
-  "Sales Manager":          "bg-blue-900/50 text-blue-400",
-  "Sales Executive":        "bg-blue-800/50 text-blue-300",
-  "sale":                   "bg-blue-900/50 text-blue-400",
-  "avenger":                "bg-orange-900/50 text-orange-400",
-  "Presales Manager":       "bg-indigo-900/50 text-indigo-400",
-  "Presales Engineer":      "bg-indigo-800/50 text-indigo-300",
-  "presale":                "bg-purple-900/50 text-purple-400",
-  "Service Manager":        "bg-rose-900/50 text-rose-400",
-  "Service Technician":     "bg-rose-800/50 text-rose-300",
-  "service":                "bg-rose-900/50 text-rose-400",
-  "Operations Coordinator": "bg-green-900/50 text-green-400",
-  "Coordinator":            "bg-amber-900/50 text-amber-400",
+  "admin":                  "bg-cyan-700 text-white",
+  "Administrator":          "bg-cyan-700 text-white",
+  "Branch Manager":         "bg-purple-700 text-white",
+  "Sales Manager":          "bg-blue-700 text-white",
+  "Sales Executive":        "bg-blue-600 text-white",
+  "sale":                   "bg-blue-700 text-white",
+  "avenger":                "bg-orange-700 text-white",
+  "Presales Manager":       "bg-indigo-700 text-white",
+  "Presales Engineer":      "bg-indigo-600 text-white",
+  "presale":                "bg-purple-700 text-white",
+  "Service Manager":        "bg-rose-700 text-white",
+  "Service Technician":     "bg-rose-600 text-white",
+  "service":                "bg-rose-700 text-white",
+  "Operations Coordinator": "bg-green-700 text-white",
+  "Coordinator":            "bg-amber-700 text-white",
 };
 
 export type PermCategory = "Dashboard" | "Sales" | "Service" | "Presale" | "CRM" | "Finance" | "Operations" | "Master Data" | "Admin";

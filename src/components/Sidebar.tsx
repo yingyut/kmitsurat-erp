@@ -19,8 +19,8 @@ const sections: Section[] = [
     title: "SALES",
     subtitle: "ก่อนปิดดีล",
     items: [
-      { href: "/projects", label: "Pipeline", thai: "โอกาสขาย / Sales Pipeline", icon: "🎯" },
       { href: "/sales", label: "Activities", thai: "กิจกรรมงานขาย / Job Requests", icon: "📞" },
+      { href: "/projects", label: "Pipeline", thai: "โอกาสขาย / Sales Pipeline", icon: "🎯" },
       { href: "/quotations", label: "Quotations", thai: "ใบเสนอราคา", icon: "💰" },
       { href: "/sales-workflow", label: "Sales Workflow", thai: "ติดตามสถานะ QT → PO → ส่งมอบ", icon: "🔄" },
       { href: "/sales-plan", label: "Sales Plan", thai: "แผนยอดขาย / Quota", icon: "📈" },
@@ -72,19 +72,19 @@ export default function Sidebar() {
   const { currentUser, logout, hasAccess } = useCurrentUser();
 
   return (
-    <aside className="fixed left-0 top-0 flex h-full w-52 flex-col bg-card border-r border-border/50 z-50">
+    <aside className="fixed left-0 top-0 flex h-full w-52 flex-col bg-sidebar border-r border-sidebar-hover/50 z-50">
       <div className="px-4 py-4" title="ระบบบริหารงาน KMITSURAT">
         <h1 className="text-base font-bold tracking-tight text-gradient">KMITSURAT</h1>
-        <p className="text-[10px] text-muted/60">Work Portal v1.6</p>
+        <p className="text-[10px] text-sidebar-muted/70">Work Portal v1.6</p>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 px-2 overflow-y-auto pb-3">
         {sections.map((section, i) => (
           <div key={i} className={i === 0 ? "" : "mt-3"}>
             {section.title && (
               <div className="px-3 pt-1 pb-1.5">
-                <p className="text-[9px] font-bold tracking-widest text-accent/40 uppercase" title={section.subtitle}>
+                <p className="text-[9px] font-bold tracking-widest text-sidebar-muted uppercase" title={section.subtitle}>
                   {section.title}
-                  {section.subtitle && <span className="ml-1.5 font-normal normal-case tracking-normal text-muted/50">· {section.subtitle}</span>}
+                  {section.subtitle && <span className="ml-1.5 font-normal normal-case tracking-normal text-sidebar-muted/70">· {section.subtitle}</span>}
                 </p>
               </div>
             )}
@@ -92,7 +92,7 @@ export default function Sidebar() {
               const active = isActive(item.href);
               return (
                 <Link key={item.href} href={item.href} title={item.thai}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all ${active ? "bg-accent/15 text-accent font-medium shadow-[0_0_12px_rgba(99,102,241,0.15)] border border-accent/20" : "text-muted/80 hover:bg-card-hover hover:text-foreground border border-transparent"}`}>
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all ${active ? "bg-accent/20 text-accent font-semibold border border-accent/30" : "text-sidebar-fg hover:bg-sidebar-hover border border-transparent"}`}>
                   <span className="text-sm">{item.icon}</span>
                   {item.label}
                 </Link>
@@ -101,17 +101,17 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="border-t border-border px-3 py-2.5">
+      <div className="border-t border-sidebar-hover/60 px-3 py-2.5">
         {currentUser && (
-          <button onClick={() => router.push("/profile")} className="flex items-center gap-2 mb-1.5 w-full rounded-lg hover:bg-card-hover px-1 py-1 transition-colors text-left" title="ดูโปรไฟล์ / เปลี่ยนรหัสผ่าน">
+          <button onClick={() => router.push("/profile")} className="flex items-center gap-2 mb-1.5 w-full rounded-lg hover:bg-sidebar-hover px-1 py-1 transition-colors text-left" title="ดูโปรไฟล์ / เปลี่ยนรหัสผ่าน">
             <div className="w-7 h-7 rounded-full bg-accent/20 flex items-center justify-center text-xs font-bold text-accent shrink-0">{(currentUser.nickname || currentUser.name || "?").charAt(0)}</div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-medium truncate">{currentUser.nickname || currentUser.name}</p>
-              <p className="text-[9px] text-muted truncate">{currentUser.role} · {currentUser.email || "คลิกเพื่อดูโปรไฟล์"}</p>
+              <p className="text-[10px] font-medium truncate text-sidebar-fg">{currentUser.nickname || currentUser.name}</p>
+              <p className="text-[9px] text-sidebar-muted truncate">{currentUser.role} · {currentUser.email || "คลิกเพื่อดูโปรไฟล์"}</p>
             </div>
           </button>
         )}
-        <button onClick={logout} className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-[10px] text-muted hover:text-danger hover:border-danger/30 transition-colors">🚪 ออกจากระบบ</button>
+        <button onClick={logout} className="w-full rounded-lg bg-sidebar-hover border border-sidebar-hover px-2 py-1.5 text-[10px] text-sidebar-fg hover:text-danger hover:border-danger/30 transition-colors">🚪 ออกจากระบบ</button>
       </div>
     </aside>
   );

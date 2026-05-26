@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Quotation, QuotationItem, Customer, Project, Product, User } from "@/lib/types";
 import { generateNumber } from "@/lib/numbering";
+import { useCurrentUser } from "@/lib/UserContext";
+import { isNewRole } from "@/lib/rbac";
 
 const emptyItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0, price_tier: "general" };
 
@@ -19,6 +21,7 @@ function priceForTier(p: Product, tier: "general" | "member" | "special"): numbe
 }
 
 export default function QuotationsPage() {
+  const { currentUser, hasPermission } = useCurrentUser();
   const [list, setList] = useState<Quotation[]>([]);
   const [custs, setCusts] = useState<Customer[]>([]);
   const [projs, setProjs] = useState<Project[]>([]);
@@ -56,28 +59,35 @@ export default function QuotationsPage() {
   }
   useEffect(() => { setMounted(true); load(); }, []);
 
+  // Own-data isolation: sale / avenger / Sales Executive (and any new role without view_all_projects) see only their own quotations
+  const myRole = currentUser?.role ?? "";
+  const ownOnly = !!currentUser && !hasPermission("view_all_projects") &&
+    (myRole === "sale" || myRole === "avenger" || isNewRole(myRole));
+
   // Filter
   const filtered = list.filter((q) => {
+    if (ownOnly && q.created_by !== currentUser?.name) return false;
     const s = search.toLowerCase();
     const matchSearch = !s || q.customer_name.toLowerCase().includes(s) || q.quotation_number.toLowerCase().includes(s);
     const matchStatus = statusFilter === "all" || q.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
-  // Dashboard stats (from full list) — use grand_total when available, else fallback to total_selling
+  // Dashboard stats — scoped to own data when ownOnly
   const valueOf = (q: Quotation) => q.grand_total || q.total_selling || 0;
-  const sumByStatus = (st: Quotation["status"]) => list.filter(q => q.status === st).reduce((s, q) => s + valueOf(q), 0);
+  const statBase = ownOnly ? list.filter(q => q.created_by === currentUser?.name) : list;
+  const sumByStatus = (st: Quotation["status"]) => statBase.filter(q => q.status === st).reduce((s, q) => s + valueOf(q), 0);
   const stats = {
-    total: list.length,
-    draft: list.filter(q => q.status === "draft").length,
-    sent: list.filter(q => q.status === "sent").length,
-    approved: list.filter(q => q.status === "approved").length,
-    rejected: list.filter(q => q.status === "rejected").length,
-    expired: list.filter(q => q.status === "expired").length,
-    totalSelling: list.reduce((s, q) => s + valueOf(q), 0),
+    total: statBase.length,
+    draft: statBase.filter(q => q.status === "draft").length,
+    sent: statBase.filter(q => q.status === "sent").length,
+    approved: statBase.filter(q => q.status === "approved").length,
+    rejected: statBase.filter(q => q.status === "rejected").length,
+    expired: statBase.filter(q => q.status === "expired").length,
+    totalSelling: statBase.reduce((s, q) => s + valueOf(q), 0),
     pendingValue: sumByStatus("draft") + sumByStatus("sent"),
     approvedValue: sumByStatus("approved"),
-    avgGP: list.length > 0 ? list.reduce((s, q) => s + (q.gp_percent || 0), 0) / list.length : 0,
+    avgGP: statBase.length > 0 ? statBase.reduce((s, q) => s + (q.gp_percent || 0), 0) / statBase.length : 0,
   };
 
   function selectProduct(idx: number, p: Product, tier: "general" | "member" | "special" = "general") {
@@ -264,7 +274,7 @@ export default function QuotationsPage() {
     ).slice(0, 12);
   }
 
-  const statusColor: Record<string, string> = { draft: "bg-gray-700", sent: "bg-blue-900/50 text-blue-400", approved: "bg-green-900/50 text-green-400", rejected: "bg-red-900/50 text-red-400", expired: "bg-yellow-900/50 text-yellow-400" };
+  const statusColor: Record<string, string> = { draft: "bg-slate-600 text-white", sent: "bg-blue-700 text-white", approved: "bg-green-700 text-white", rejected: "bg-red-700 text-white", expired: "bg-amber-700 text-white" };
 
   if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
 
@@ -565,17 +575,17 @@ export default function QuotationsPage() {
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <p className="text-sm font-medium">{q.quotation_number}</p>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[q.status] || "bg-gray-700"}`}>{statusLabel[q.status] || q.status}</span>
-                {q.version && q.version > 1 && <span className="text-[10px] text-purple-400">v{q.version}</span>}
+                {q.version && q.version > 1 && <span className="rounded-full bg-purple-700 text-white px-1.5 py-0.5 text-[10px] font-medium">v{q.version}</span>}
               </div>
               <p className="text-xs text-muted">{q.customer_name}{q.project_name && ` · ${q.project_name}`}</p>
               <p className="text-xs text-muted mt-0.5">
                 {(q.items?.length ?? 0)} รายการ
                 {" · "}<b className="text-foreground">{(q.grand_total || q.total_selling || 0).toLocaleString()} THB</b>
-                {" · "}GP: <span className="text-green-400">{(q.gp_percent || 0).toFixed(1)}%</span>
+                {" · "}GP: <span className="text-foreground font-semibold">{(q.gp_percent || 0).toFixed(1)}%</span>
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0 ml-3" onClick={e => e.stopPropagation()}>
-              <button onClick={() => handleRevise(q)} className="text-xs text-purple-400 hover:underline">Revise</button>
+              <button onClick={() => handleRevise(q)} className="text-xs text-accent hover:underline">Revise</button>
               <button onClick={() => handleDelete(q.id!)} className="text-xs text-danger hover:underline">ลบ</button>
             </div>
           </div>
@@ -596,12 +606,12 @@ export default function QuotationsPage() {
               <details key={i} className="rounded-lg bg-background border border-border">
                 <summary className="px-4 py-3 cursor-pointer hover:bg-card-hover transition-colors">
                   <div className="inline-flex items-center gap-3">
-                    <span className="rounded-full bg-purple-900/50 text-purple-400 px-2 py-0.5 text-[10px] font-medium">v{rev.version}</span>
+                    <span className="rounded-full bg-purple-700 text-white px-2 py-0.5 text-[10px] font-medium">v{rev.version}</span>
                     <span className="text-xs">{new Date(rev.date).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" })}</span>
                     <span className="text-xs text-muted">โดย {rev.user}</span>
                     <span className="text-xs text-muted">· {rev.reason}</span>
                     <span className="text-xs font-medium">{rev.grand_total.toLocaleString()} THB</span>
-                    <span className="text-xs text-green-400">GP {rev.gp_percent.toFixed(1)}%</span>
+                    <span className="text-xs font-semibold text-foreground">GP {rev.gp_percent.toFixed(1)}%</span>
                   </div>
                 </summary>
                 <div className="px-4 pb-3 border-t border-border pt-3">
@@ -618,7 +628,7 @@ export default function QuotationsPage() {
                     </div>
                     <div>
                       <p className="text-muted">GP%</p>
-                      <p className="font-semibold text-green-400">{rev.gp_percent.toFixed(1)}%</p>
+                      <p className="font-semibold">{rev.gp_percent.toFixed(1)}%</p>
                       {Math.abs(rev.gp_percent - viewRevisions.gp_percent) > 0.1 && (
                         <p className={`text-[10px] ${viewRevisions.gp_percent > rev.gp_percent ? "text-green-400" : "text-red-400"}`}>
                           ปัจจุบัน: {viewRevisions.gp_percent.toFixed(1)}%
@@ -681,7 +691,7 @@ export default function QuotationsPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-base font-bold">{selectedQ.quotation_number}</h2>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[selectedQ.status] || "bg-gray-700"}`}>{statusLabel[selectedQ.status] || selectedQ.status}</span>
-                  {selectedQ.version && selectedQ.version > 1 && <span className="text-[10px] text-purple-400">v{selectedQ.version}</span>}
+                  {selectedQ.version && selectedQ.version > 1 && <span className="rounded-full bg-purple-700 text-white px-1.5 py-0.5 text-[10px] font-medium">v{selectedQ.version}</span>}
                 </div>
                 <p className="text-xs text-muted mt-0.5">{selectedQ.customer_name}</p>
                 {selectedQ.project_name && <p className="text-[11px] text-muted">{selectedQ.project_name}</p>}
@@ -699,8 +709,8 @@ export default function QuotationsPage() {
                 </button>
               ))}
               <div className="ml-auto flex gap-2">
-                <button onClick={() => { handleRevise(selectedQ); }} className="rounded-lg border border-purple-700 text-purple-400 px-3 py-1 text-xs hover:bg-purple-900/30">Revise</button>
-                <button onClick={() => handleDelete(selectedQ.id!)} className="rounded-lg border border-rose-800 text-rose-400 px-3 py-1 text-xs hover:bg-rose-900/30">ลบ</button>
+                <button onClick={() => { handleRevise(selectedQ); }} className="rounded-lg border border-purple-600 text-purple-700 px-3 py-1 text-xs hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900/30">Revise</button>
+                <button onClick={() => handleDelete(selectedQ.id!)} className="rounded-lg border border-rose-600 text-rose-700 px-3 py-1 text-xs hover:bg-rose-100 dark:text-rose-400 dark:hover:bg-rose-900/30">ลบ</button>
               </div>
             </div>
 

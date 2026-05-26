@@ -241,7 +241,7 @@ export default function CustomerDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b border-border overflow-x-auto">
-        {(["overview", "quotations", "projects", "service", "assets", "contracts", "activities"] as const).map(t => {
+        {(["overview", "quotations", "activities", "projects", "service", "assets", "contracts"] as const).map(t => {
           const labels: Record<Tab, string> = { overview: "ภาพรวม", quotations: `ใบเสนอราคา (${quotations.length})`, projects: `ดีล / โปรเจค (${projects.length})`, service: `บริการ (${serviceTickets.length})`, assets: `🖥 อุปกรณ์ (${assets.length})`, contracts: `🛡️ สัญญา/รับประกัน (${contracts.length})`, activities: `กิจกรรม (${activities.length})` };
           const isContractsWithAlert = t === "contracts" && contractStats.expiringSoon.length > 0;
           return (

@@ -8,7 +8,7 @@ const themes = [
     name: "Midnight",
     desc: "Deep space dark with indigo glow",
     thai: "โทนมืดลึก — แรงบันดาลใจจาก Linear & Vercel",
-    colors: { bg: "#080c14", card: "#0f1729", accent: "#6366f1", text: "#e0e7ef" },
+    colors: { bg: "#080c14", card: "#0f1729", sidebar: "#0f1729", accent: "#6366f1", text: "#e0e7ef" },
     tags: ["Dark", "Professional", "Default"],
   },
   {
@@ -16,7 +16,7 @@ const themes = [
     name: "Obsidian",
     desc: "Warm charcoal with amber accent",
     thai: "โทนเทาอุ่น — แรงบันดาลใจจาก GitHub & Notion",
-    colors: { bg: "#111111", card: "#191919", accent: "#f59e0b", text: "#ededec" },
+    colors: { bg: "#111111", card: "#191919", sidebar: "#191919", accent: "#f59e0b", text: "#ededec" },
     tags: ["Dark", "Warm", "Minimal"],
   },
   {
@@ -24,7 +24,7 @@ const themes = [
     name: "Snow",
     desc: "Clean white with blue accent",
     thai: "โทนขาวสะอาด — แรงบันดาลใจจาก Apple & Stripe",
-    colors: { bg: "#fafafa", card: "#ffffff", accent: "#2563eb", text: "#171717" },
+    colors: { bg: "#fafafa", card: "#ffffff", sidebar: "#ffffff", accent: "#2563eb", text: "#171717" },
     tags: ["Light", "Clean", "Professional"],
   },
   {
@@ -32,8 +32,16 @@ const themes = [
     name: "Cyberpunk",
     desc: "True black with electric cyan & pink neon",
     thai: "โทนดำสนิท + นีออน — แรงบันดาลใจจาก Figma Dark & Cyberpunk",
-    colors: { bg: "#030303", card: "#0a0a0a", accent: "#06b6d4", text: "#f0f0f0" },
+    colors: { bg: "#030303", card: "#0a0a0a", sidebar: "#0a0a0a", accent: "#06b6d4", text: "#f0f0f0" },
     tags: ["Dark", "Neon", "Bold"],
+  },
+  {
+    id: "corporate",
+    name: "Corporate",
+    desc: "Navy sidebar with clean white content",
+    thai: "Sidebar navy เข้ม + content ขาวสะอาด — แนว Enterprise / SmartHR",
+    colors: { bg: "#f0f4f8", card: "#ffffff", sidebar: "#1b3a6b", accent: "#2563eb", text: "#0f172a" },
+    tags: ["Light", "Enterprise", "Split"],
   },
 ];
 
@@ -78,15 +86,15 @@ export default function ThemePage() {
                 {/* Mini sidebar + content preview */}
                 <div className="flex gap-2 h-28">
                   {/* Sidebar preview */}
-                  <div className="w-16 rounded-lg overflow-hidden shrink-0" style={{ background: t.colors.card, border: `1px solid ${t.colors.accent}20` }}>
+                  <div className="w-16 rounded-lg overflow-hidden shrink-0" style={{ background: t.colors.sidebar, border: `1px solid ${t.colors.accent}30` }}>
                     <div className="px-2 py-2">
                       <div className="h-1.5 w-8 rounded" style={{ background: t.colors.accent }} />
-                      <div className="h-1 w-6 rounded mt-1 opacity-30" style={{ background: t.colors.text }} />
+                      <div className="h-1 w-6 rounded mt-1 opacity-40" style={{ background: t.id === "corporate" ? "#dde8f5" : t.colors.text }} />
                     </div>
                     <div className="px-1.5 space-y-1">
                       {[1,2,3,4,5].map(i => (
-                        <div key={i} className="h-2 rounded px-1" style={{ background: i === 1 ? `${t.colors.accent}25` : "transparent" }}>
-                          <div className="h-full w-full rounded" style={{ background: i === 1 ? t.colors.accent : `${t.colors.text}15`, width: `${60 + i * 5}%` }} />
+                        <div key={i} className="h-2 rounded px-1" style={{ background: i === 1 ? `${t.colors.accent}30` : "transparent" }}>
+                          <div className="h-full w-full rounded" style={{ background: i === 1 ? t.colors.accent : `${t.id === "corporate" ? "#dde8f5" : t.colors.text}20`, width: `${60 + i * 5}%` }} />
                         </div>
                       ))}
                     </div>
@@ -127,7 +135,7 @@ export default function ThemePage() {
                 <div className="flex items-center justify-between mb-1.5">
                   <h3 className="text-base font-bold" style={{ color: t.colors.text }}>{t.name}</h3>
                   <div className="flex gap-1.5">
-                    {["bg","card","accent","text"].map(k => (
+                    {["bg","sidebar","card","accent","text"].map(k => (
                       <div key={k} className="w-4 h-4 rounded-full border border-white/10" style={{ background: t.colors[k as keyof typeof t.colors] }} title={k} />
                     ))}
                   </div>

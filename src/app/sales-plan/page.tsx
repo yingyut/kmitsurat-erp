@@ -37,6 +37,13 @@ const SEED_THIS_MONTH: SeedQuota[] = [
   { user_name: "คุณมาลี เริ่มต้น", role: "sale",    quota_target:  300_000, actual_sales:  100_000, profit_target:  60_000, actual_profit:  18_000, target_gp_percent: 20, won_deals: 1, total_activities: 12 },
 ];
 
+const emptyForm = {
+  user_name: "", role: "sale" as "sale" | "avenger", month: currentMonth,
+  quota_target: 0, actual_sales: 0,
+  profit_target: 0, actual_profit: 0, target_gp_percent: 0,
+  won_deals: 0, total_activities: 0,
+};
+
 export default function SalesPlanPage() {
   const [quotas, setQuotas] = useState<SalesQuota[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,17 +52,14 @@ export default function SalesPlanPage() {
   const [selectedUser, setSelectedUser] = useState("");
   const [month, setMonth] = useState(currentMonth);
   const [tierFilter, setTierFilter] = useState<Tier>("all");
-  const [rankBy, setRankBy] = useState<RankBy>("profit"); // default: profit-first ranking
+  const [rankBy, setRankBy] = useState<RankBy>("profit");
 
   // Form
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    user_name: "", role: "sale" as "sale" | "avenger", month: currentMonth,
-    quota_target: 0, actual_sales: 0,
-    profit_target: 0, actual_profit: 0, target_gp_percent: 0,
-    won_deals: 0, total_activities: 0,
-  });
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   async function load() {
     const { salesQuotas } = await import("@/lib/firestore");
@@ -64,6 +68,52 @@ export default function SalesPlanPage() {
       setQuotas(all);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  }
+
+  function openEdit(q: SalesQuota) {
+    setEditId(q.id!);
+    setForm({
+      user_name: q.user_name, role: q.role ?? "sale", month: q.month,
+      quota_target: q.quota_target, actual_sales: q.actual_sales,
+      profit_target: q.profit_target || 0, actual_profit: q.actual_profit || 0,
+      target_gp_percent: q.target_gp_percent || 0,
+      won_deals: q.won_deals || 0, total_activities: q.total_activities || 0,
+    });
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelForm() {
+    setShowForm(false);
+    setEditId(null);
+    setForm(emptyForm);
+  }
+
+  // Sync won_deals + actual_sales from live pipeline projects for current month
+  async function syncFromPipeline() {
+    if (!confirm(`ดึงข้อมูล Won Deals จาก Pipeline สำหรับเดือน ${month} ?\n\nระบบจะนับโปรเจกต์ที่ Won และอัปเดต last_activity_date ตรงกับเดือนนี้`)) return;
+    setSyncing(true);
+    try {
+      const { projects: projectsFs, salesQuotas } = await import("@/lib/firestore");
+      const allProjects = await projectsFs.list();
+      const wonThisMonth = allProjects.filter(p =>
+        p.status === "won" && p.last_activity_date?.startsWith(month)
+      );
+      const monthQuotas = quotas.filter(q => q.month === month);
+      for (const q of monthQuotas) {
+        const personWon = wonThisMonth.filter(p => p.assigned_to === q.user_name);
+        const wonCount = personWon.length;
+        const wonValue = personWon.reduce((s, p) => s + (p.value || 0), 0);
+        if (wonCount !== (q.won_deals || 0) || wonValue !== q.actual_sales) {
+          const remaining = q.quota_target - wonValue;
+          const percent = q.quota_target > 0 ? (wonValue / q.quota_target * 100) : 0;
+          const profit_percent = (q.profit_target || 0) > 0 ? ((q.actual_profit || 0) / q.profit_target * 100) : 0;
+          await salesQuotas.update(q.id!, { won_deals: wonCount, actual_sales: wonValue, remaining, percent, profit_percent } as unknown as Record<string, unknown>);
+        }
+      }
+      await load();
+    } catch (e) { console.error(e); }
+    finally { setSyncing(false); }
   }
 
   useEffect(() => { setMounted(true); load(); }, []);
@@ -114,9 +164,14 @@ export default function SalesPlanPage() {
     const percent = form.quota_target > 0 ? (form.actual_sales / form.quota_target * 100) : 0;
     const profit_percent = form.profit_target > 0 ? (form.actual_profit / form.profit_target * 100) : 0;
     try {
-      await salesQuotas.add({ ...form, remaining, percent, profit_percent } as unknown as Record<string, unknown>);
-      setForm({ user_name: "", role: "sale", month: currentMonth, quota_target: 0, actual_sales: 0, profit_target: 0, actual_profit: 0, target_gp_percent: 0, won_deals: 0, total_activities: 0 });
+      if (editId) {
+        await salesQuotas.update(editId, { ...form, remaining, percent, profit_percent } as unknown as Record<string, unknown>);
+      } else {
+        await salesQuotas.add({ ...form, remaining, percent, profit_percent } as unknown as Record<string, unknown>);
+      }
+      setForm(emptyForm);
       setShowForm(false);
+      setEditId(null);
       await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
@@ -156,7 +211,7 @@ export default function SalesPlanPage() {
           <h1 className="text-xl font-bold" title="แผนยอดขาย / โควต้า">Sales Plan / Quota</h1>
           <p className="text-xs text-muted">ตั้งเป้ายอดขายรายเดือน ติดตาม Achievement และ Top Performer</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
           <button onClick={() => setViewMode(viewMode === "admin" ? "sale" : "admin")}
             className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">
             {viewMode === "admin" ? "View: All (Admin)" : "View: My Plan"}
@@ -167,9 +222,16 @@ export default function SalesPlanPage() {
               📥 โหลดตัวอย่าง 5 ราย
             </button>
           )}
-          <button onClick={() => setShowForm(!showForm)}
+          {monthFiltered.length > 0 && (
+            <button onClick={syncFromPipeline} disabled={syncing}
+              className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50"
+              title="นับ Won Deals ที่มี last_activity_date ตรงกับเดือนนี้">
+              {syncing ? "กำลังดึง..." : "🔄 ดึงจาก Pipeline"}
+            </button>
+          )}
+          <button onClick={() => { if (showForm && editId) cancelForm(); else { setEditId(null); setForm({ ...emptyForm, month }); setShowForm(!showForm); } }}
             className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">
-            {showForm ? "Cancel" : "+ Set Quota"}
+            {showForm ? "✕ ยกเลิก" : "+ Set Quota"}
           </button>
         </div>
       </div>
@@ -280,7 +342,7 @@ export default function SalesPlanPage() {
                       <span className="text-lg">{medal}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium truncate">{tp.q.user_name} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${tp.q.role === "avenger" ? "bg-purple-900/50 text-purple-400" : "bg-blue-900/50 text-blue-400"}`}>{tp.q.role}</span></p>
+                          <p className="text-sm font-medium truncate">{tp.q.user_name} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${tp.q.role === "avenger" ? "bg-purple-700 text-white" : "bg-blue-700 text-white"}`}>{tp.q.role}</span></p>
                           <p className={`text-sm font-bold shrink-0 ${pctColor}`}>{tp.pct.toFixed(1)}%</p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -325,7 +387,10 @@ export default function SalesPlanPage() {
       {/* Add quota form */}
       {showForm && (
         <div className="rounded-xl bg-card border border-border p-5 mb-5">
-          <h2 className="text-base font-semibold mb-3">Set Sales Quota</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold">{editId ? `✏️ แก้ไข Quota — ${form.user_name}` : "Set Sales Quota"}</h2>
+            <button onClick={cancelForm} className="text-xs text-muted hover:text-foreground">✕ ยกเลิก</button>
+          </div>
 
           <p className="text-xs text-muted uppercase mb-2">ข้อมูล Sales</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
@@ -368,7 +433,7 @@ export default function SalesPlanPage() {
 
           <button onClick={handleSave} disabled={saving || !form.user_name.trim() || form.quota_target <= 0}
             className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">
-            {saving ? "Saving..." : "Save Quota"}
+            {saving ? "กำลังบันทึก..." : editId ? "💾 บันทึกการแก้ไข" : "Save Quota"}
           </button>
         </div>
       )}
@@ -400,8 +465,9 @@ export default function SalesPlanPage() {
                 <th className="px-3 py-2.5 text-right">Actual Profit</th>
                 <th className="px-3 py-2.5 text-right">% Profit</th>
                 <th className="px-3 py-2.5 text-right" title="GP% จริง">GP%</th>
-                <th className="px-3 py-2.5 text-center">Deals</th>
-                <th className="px-3 py-2.5 w-12"></th>
+                <th className="px-3 py-2.5 text-center" title="Won Deals">Deals</th>
+                <th className="px-3 py-2.5 text-center" title="จำนวน Activities">Activities</th>
+                <th className="px-3 py-2.5 w-20"></th>
               </tr>
             </thead>
             <tbody>
@@ -412,7 +478,7 @@ export default function SalesPlanPage() {
                 return (
                   <tr key={q.id} className="border-b border-border last:border-0 hover:bg-card-hover">
                     <td className="px-3 py-3 font-medium">{q.user_name}</td>
-                    <td className="px-3 py-3"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${q.role === "avenger" ? "bg-purple-900/50 text-purple-400" : "bg-blue-900/50 text-blue-400"}`}>{q.role}</span></td>
+                    <td className="px-3 py-3"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${q.role === "avenger" ? "bg-purple-700 text-white" : "bg-blue-700 text-white"}`}>{q.role}</span></td>
                     <td className="px-3 py-3 text-right">{q.quota_target.toLocaleString()}</td>
                     <td className="px-3 py-3 text-right text-green-400">{q.actual_sales.toLocaleString()}</td>
                     <td className={`px-3 py-3 text-right font-semibold ${pct >= 100 ? "text-green-400" : pct >= 70 ? "text-yellow-400" : "text-red-400"}`}>{pct.toFixed(0)}%</td>
@@ -420,8 +486,14 @@ export default function SalesPlanPage() {
                     <td className="px-3 py-3 text-right text-purple-400">{(q.actual_profit || 0).toLocaleString()}</td>
                     <td className={`px-3 py-3 text-right font-semibold ${profitPct >= 100 ? "text-green-400" : profitPct >= 70 ? "text-yellow-400" : profitPct > 0 ? "text-red-400" : "text-muted"}`}>{profitPct > 0 ? `${profitPct.toFixed(0)}%` : "—"}</td>
                     <td className={`px-3 py-3 text-right text-xs ${gp >= 20 ? "text-green-400" : gp >= 10 ? "text-yellow-400" : gp > 0 ? "text-red-400" : "text-muted"}`}>{gp > 0 ? `${gp.toFixed(1)}%` : "—"}</td>
-                    <td className="px-3 py-3 text-center">{q.won_deals}</td>
-                    <td className="px-3 py-3"><button onClick={() => handleDelete(q.id!)} className="text-xs text-danger hover:underline">Del</button></td>
+                    <td className="px-3 py-3 text-center font-semibold">{q.won_deals || 0}</td>
+                    <td className="px-3 py-3 text-center text-muted">{q.total_activities || 0}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => openEdit(q)} className="text-xs text-accent hover:underline">แก้ไข</button>
+                        <button onClick={() => handleDelete(q.id!)} className="text-xs text-danger hover:underline">ลบ</button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
