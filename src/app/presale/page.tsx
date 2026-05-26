@@ -237,14 +237,18 @@ export default function PresalePage() {
     pendingApproval: pendingApprovalList.length,
   };
 
-  // Per-person workload (manager view)
-  const byPerson = presaleUsers.map(u => ({
-    user: u,
-    active: list.filter(r => r.assigned_to === u.name && r.status !== "completed").length,
-    overdue: list.filter(r => r.assigned_to === u.name && r.due_date && r.due_date < today && r.status !== "completed").length,
-    pendingApproval: list.filter(r => r.assigned_to === u.name && r.approval_status === "pending_review").length,
-    total: list.filter(r => r.assigned_to === u.name).length,
-  })).filter(w => w.total > 0).sort((a, b) => b.active - a.active);
+  // Per-person workload — derived from actual task assignees (not role filter)
+  const assigneeNames = [...new Set(list.map(r => r.assigned_to).filter(Boolean))];
+  const byPerson = assigneeNames.map(name => {
+    const user = allUsers.find(u => u.name === name) ?? { id: name, name, role: "", active: true, tenant_id: "", email: "" } as unknown as User;
+    return {
+      user,
+      active: list.filter(r => r.assigned_to === name && r.status !== "completed").length,
+      overdue: list.filter(r => r.assigned_to === name && r.due_date && r.due_date < today && r.status !== "completed").length,
+      pendingApproval: list.filter(r => r.assigned_to === name && r.approval_status === "pending_review").length,
+      total: list.filter(r => r.assigned_to === name).length,
+    };
+  }).sort((a, b) => b.active - a.active);
 
   // Legacy workload (small widget — keep for non-manager)
   const workload = byPerson.slice(0, 5).map(w => ({ name: w.user.name, active: w.active }));
