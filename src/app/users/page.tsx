@@ -70,7 +70,7 @@ const REAL_TEAM: Array<typeof emptyUser> = [
   { ...emptyUser, nickname: "พี่จอร์ด",  role: "admin",   position: "CEO",                 display_preference: "nickname" },
   { ...emptyUser, nickname: "พี่แนน",     role: "admin",   position: "Manager",             display_preference: "nickname" },
   { ...emptyUser, first_name: "พัชรี", nickname: "น้องก้อย", role: "Coordinator" as User["role"], position: "ธุรการ", display_preference: "nickname" },
-  { ...emptyUser, nickname: "ออย",       role: "sale",    position: "Sales",  sales_code: "OY",  display_preference: "nickname" },
+  { ...emptyUser, nickname: "ออย",       role: "sale",    position: "Sales",  sales_code: "OY",  display_preference: "nickname", employment_status: "resigned" as EmploymentStatus, active: false, resigned_at: "2025-12-31" },
   { ...emptyUser, nickname: "แนนน้อย",   role: "sale",    position: "Sales",  sales_code: "NN",  display_preference: "nickname" },
   { ...emptyUser, nickname: "อี๊ฟ",       role: "sale",    position: "Sales",  sales_code: "EVE", display_preference: "nickname" },
   { ...emptyUser, nickname: "บีบี",       role: "sale",    position: "Sales",  sales_code: "BB",  display_preference: "nickname" },
@@ -279,7 +279,9 @@ export default function UsersPage() {
         for (const u of userList) { if (u.id) await fs.users.remove(u.id); }
         for (const t of REAL_TEAM) {
           const computed = computeDisplayName(t).trim();
-          await fs.users.add({ ...t, name: computed } as unknown as Record<string, unknown>);
+          const es = t.employment_status || "active";
+          const derivedActive = es === "active" || es === "on_leave";
+          await fs.users.add({ ...t, name: computed, active: derivedActive } as unknown as Record<string, unknown>);
         }
         showToast(`✓ ตั้งทีมเรียบร้อย — เพิ่ม ${REAL_TEAM.length} คน`);
         await load();
