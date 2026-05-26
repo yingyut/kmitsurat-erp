@@ -162,7 +162,8 @@ export default function PresalePage() {
       setProds(pd.filter(x => x.active));
       setAllUsers(u.filter(x => x.active));
       setIncomingReqs(jr.filter(j => j.request_to_team === "presale"));
-      setPresaleUsers(u.filter(x => x.active && (x.role === "presale" || x.role === "Presales Engineer" || x.role === "Presales Manager")));
+      const presaleRoles = new Set(["presale", "Presales Engineer", "Presales Manager"]);
+      setPresaleUsers(u.filter(x => x.active && (presaleRoles.has(x.role) || (x.extra_roles ?? []).some(r => presaleRoles.has(r)))));
       // Pick the first active integration (UX: simplicity)
       setIntegration(ints.find(i => i.active) || null);
       const latestAps = aps[0] || null;
@@ -237,10 +238,13 @@ export default function PresalePage() {
     pendingApproval: pendingApprovalList.length,
   };
 
-  // Per-person workload — derived from actual task assignees (not role filter)
-  const assigneeNames = [...new Set(list.map(r => r.assigned_to).filter(Boolean))];
+  // Per-person workload — union of presaleUsers + actual assignees (so members with 0 tasks still show)
+  const assigneeNames = [...new Set([
+    ...presaleUsers.map(u => u.name),
+    ...list.map(r => r.assigned_to).filter(Boolean),
+  ])];
   const byPerson = assigneeNames.map(name => {
-    const user = allUsers.find(u => u.name === name) ?? { id: name, name, role: "", active: true, tenant_id: "", email: "" } as unknown as User;
+    const user = presaleUsers.find(u => u.name === name) ?? allUsers.find(u => u.name === name) ?? { id: name, name, role: "", active: true, tenant_id: "", email: "" } as unknown as User;
     return {
       user,
       active: list.filter(r => r.assigned_to === name && r.status !== "completed").length,
