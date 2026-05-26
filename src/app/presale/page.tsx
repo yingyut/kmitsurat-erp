@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { PresaleRequest, Customer, Project, JobRequest, User, Product, QuotationItem, BomItem, PresaleAttachment, IntegrationSetting } from "@/lib/types";
+import type { PresaleRequest, PresaleApprovalSettings, Customer, Project, JobRequest, User, Product, QuotationItem, BomItem, PresaleAttachment, IntegrationSetting } from "@/lib/types";
+import { useCurrentUser } from "@/lib/UserContext";
 import { generateNumber } from "@/lib/numbering";
 import { buildProjectFolderUrl, buildSubfolderUrl } from "@/lib/integrations";
 
@@ -11,7 +12,7 @@ const typeLabels: Record<string, string> = { solution_design: "Solution Design",
 const empty = {
   activity_id: "", customer_id: "", customer_name: "", project_id: "", project_name: "",
   type: "boq" as PresaleRequest["type"], requirement: "", assigned_to: "", due_date: "",
-  status: "pending" as PresaleRequest["status"],
+  status: "pending" as PresaleRequest["status"], value: 0,
 };
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -108,6 +109,8 @@ const GOV_LABOR_TEMPLATE: QuotationItem[] = [
 ];
 
 export default function PresalePage() {
+  const { currentUser, hasPermission } = useCurrentUser();
+
   const [list, setList] = useState<PresaleRequest[]>([]);
   const [custs, setCusts] = useState<Customer[]>([]);
   const [projs, setProjs] = useState<Project[]>([]);
@@ -115,14 +118,27 @@ export default function PresalePage() {
   const [integration, setIntegration] = useState<IntegrationSetting | null>(null);
   const [incomingReqs, setIncomingReqs] = useState<JobRequest[]>([]);
   const [presaleUsers, setPresaleUsers] = useState<User[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | PresaleRequest["status"]>("all");
+  const [personFilter, setPersonFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  // Approval settings
+  const [approvalSettings, setApprovalSettings] = useState<PresaleApprovalSettings | null>(null);
+  const [showApprovalSettings, setShowApprovalSettings] = useState(false);
+  const [savingAps, setSavingAps] = useState(false);
+  const [apForm, setApForm] = useState({
+    require_for_types: [] as string[],
+    value_threshold: 0,
+    primary_approver: "",
+    substitute_approvers: [] as string[],
+  });
 
   // Detail panel state
   const [detail, setDetail] = useState<PresaleRequest | null>(null);
@@ -137,17 +153,21 @@ export default function PresalePage() {
   async function load() {
     const fs = await import("@/lib/firestore");
     try {
-      const [r, c, p, jr, u, pd, ints] = await Promise.all([
+      const [r, c, p, jr, u, pd, ints, aps] = await Promise.all([
         fs.presaleRequests.list(), fs.customers.list(), fs.projects.list(),
         fs.jobRequests.list(), fs.users.list(), fs.products.list(),
-        fs.integrationSettings.list(),
+        fs.integrationSettings.list(), fs.presaleApprovalSettings.list(),
       ]);
       setList(r); setCusts(c); setProjs(p);
       setProds(pd.filter(x => x.active));
+      setAllUsers(u.filter(x => x.active));
       setIncomingReqs(jr.filter(j => j.request_to_team === "presale"));
-      setPresaleUsers(u.filter(x => x.active && x.role === "presale"));
+      setPresaleUsers(u.filter(x => x.active && (x.role === "presale" || x.role === "Presales Engineer" || x.role === "Presales Manager")));
       // Pick the first active integration (UX: simplicity)
       setIntegration(ints.find(i => i.active) || null);
+      const latestAps = aps[0] || null;
+      setApprovalSettings(latestAps);
+      if (latestAps) setApForm({ require_for_types: latestAps.require_for_types || [], value_threshold: latestAps.value_threshold || 0, primary_approver: latestAps.primary_approver || "", substitute_approvers: latestAps.substitute_approvers || [] });
       // Refresh detail panel if open
       if (detail) {
         const updated = r.find(x => x.id === detail.id);
@@ -173,33 +193,61 @@ export default function PresalePage() {
     setAttachments([]);
   }
 
+  // Role detection
+  const myName = currentUser?.name || "";
+  const myRole = currentUser?.role || "";
+  const isAdmin = !currentUser || myRole === "admin" || myRole === "Administrator";
+  const canApprove = isAdmin || hasPermission("approve_presale") ||
+    approvalSettings?.primary_approver === myName ||
+    (approvalSettings?.substitute_approvers || []).includes(myName);
+  const isManager = canApprove || hasPermission("manage_presale");
+  const ownOnly = !isManager && !!currentUser;
+
+  function checkNeedsApproval(type: string, value: number): boolean {
+    if (!approvalSettings) return false;
+    const typeMatch = (approvalSettings.require_for_types || []).includes(type);
+    const valueMatch = approvalSettings.value_threshold > 0 && value >= approvalSettings.value_threshold;
+    return typeMatch || valueMatch;
+  }
+
   // Filter
   const filtered = list.filter((r) => {
+    if (ownOnly && r.assigned_to !== myName) return false;
+    if (personFilter && r.assigned_to !== personFilter) return false;
     const s = search.toLowerCase();
     const matchSearch = !s || r.requirement.toLowerCase().includes(s) || r.customer_name.toLowerCase().includes(s);
     const matchStatus = statusFilter === "all" || r.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
-  // Dashboard stats (from full list)
+  // Dashboard stats (scoped to what user can see)
   const today = todayStr();
-  const overdueList = list.filter(r => r.due_date && r.due_date < today && r.status !== "completed");
-  const dueTodayList = list.filter(r => r.due_date === today && r.status !== "completed");
+  const scopedList = ownOnly ? list.filter(r => r.assigned_to === myName) : list;
+  const overdueList = scopedList.filter(r => r.due_date && r.due_date < today && r.status !== "completed");
+  const dueTodayList = scopedList.filter(r => r.due_date === today && r.status !== "completed");
+  const pendingApprovalList = list.filter(r => r.approval_status === "pending_review");
   const stats = {
-    total: list.length,
-    pending: list.filter(r => r.status === "pending").length,
-    inProgress: list.filter(r => r.status === "in_progress").length,
-    completed: list.filter(r => r.status === "completed").length,
+    total: scopedList.length,
+    pending: scopedList.filter(r => r.status === "pending").length,
+    inProgress: scopedList.filter(r => r.status === "in_progress").length,
+    completed: scopedList.filter(r => r.status === "completed").length,
     overdue: overdueList.length,
     dueToday: dueTodayList.length,
     pendingReqs: incomingReqs.filter(r => r.status === "pending").length,
+    pendingApproval: pendingApprovalList.length,
   };
 
-  // Workload per person
-  const workload = presaleUsers.map(u => ({
-    name: u.name,
+  // Per-person workload (manager view)
+  const byPerson = presaleUsers.map(u => ({
+    user: u,
     active: list.filter(r => r.assigned_to === u.name && r.status !== "completed").length,
-  })).filter(w => w.active > 0).sort((a, b) => b.active - a.active).slice(0, 5);
+    overdue: list.filter(r => r.assigned_to === u.name && r.due_date && r.due_date < today && r.status !== "completed").length,
+    pendingApproval: list.filter(r => r.assigned_to === u.name && r.approval_status === "pending_review").length,
+    total: list.filter(r => r.assigned_to === u.name).length,
+  })).filter(w => w.total > 0).sort((a, b) => b.active - a.active);
+
+  // Legacy workload (small widget — keep for non-manager)
+  const workload = byPerson.slice(0, 5).map(w => ({ name: w.user.name, active: w.active }));
 
   function selectCust(id: string) { const c = custs.find((x) => x.id === id); setForm({ ...form, customer_id: id, customer_name: c?.company_name || "" }); }
   function selectProj(id: string) { const p = projs.find((x) => x.id === id); setForm({ ...form, project_id: id, project_name: p?.name || "" }); }
@@ -211,7 +259,7 @@ export default function PresalePage() {
       activity_id: r.activity_id || "", customer_id: r.customer_id, customer_name: r.customer_name,
       project_id: r.project_id || "", project_name: r.project_name || "",
       type: r.type, requirement: r.requirement, assigned_to: r.assigned_to || "",
-      due_date: r.due_date || "", status: r.status,
+      due_date: r.due_date || "", status: r.status, value: r.value || 0,
     });
     setShowForm(true);
     closeDetail();
@@ -221,8 +269,17 @@ export default function PresalePage() {
     if (!form.requirement.trim()) return; setSaving(true);
     const { presaleRequests } = await import("@/lib/firestore");
     try {
-      if (editId) await presaleRequests.update(editId, form as unknown as Record<string, unknown>);
-      else await presaleRequests.add(form as unknown as Record<string, unknown>);
+      if (editId) {
+        await presaleRequests.update(editId, form as unknown as Record<string, unknown>);
+      } else {
+        const needsApproval = checkNeedsApproval(form.type, form.value || 0);
+        await presaleRequests.add({
+          ...form,
+          approval_status: needsApproval ? "pending_review" : "not_required",
+          approval_requested_at: needsApproval ? todayStr() : "",
+          co_approvers: [],
+        } as unknown as Record<string, unknown>);
+      }
       setForm(empty); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
@@ -233,6 +290,48 @@ export default function PresalePage() {
     await presaleRequests.remove(id);
     if (detail?.id === id) closeDetail();
     await load();
+  }
+
+  async function handleApprove(r: PresaleRequest) {
+    const note = prompt("หมายเหตุการอนุมัติ (ไม่บังคับ)") ?? "";
+    const { presaleRequests } = await import("@/lib/firestore");
+    await presaleRequests.update(r.id!, { approval_status: "approved", reviewed_by: myName, reviewed_at: todayStr(), review_note: note });
+    if (detail?.id === r.id) setDetail({ ...r, approval_status: "approved", reviewed_by: myName, reviewed_at: todayStr(), review_note: note });
+    await load();
+  }
+  async function handleReject(r: PresaleRequest) {
+    const note = prompt("เหตุผลที่ส่งกลับแก้ไข:");
+    if (!note) return;
+    const { presaleRequests } = await import("@/lib/firestore");
+    await presaleRequests.update(r.id!, { approval_status: "rejected", reviewed_by: myName, reviewed_at: todayStr(), review_note: note });
+    if (detail?.id === r.id) setDetail({ ...r, approval_status: "rejected", reviewed_by: myName, reviewed_at: todayStr(), review_note: note });
+    await load();
+  }
+  async function requestApproval(r: PresaleRequest) {
+    const { presaleRequests } = await import("@/lib/firestore");
+    await presaleRequests.update(r.id!, { approval_status: "pending_review", approval_requested_at: todayStr() });
+    await load();
+  }
+  async function addCoApprover(r: PresaleRequest) {
+    const name = prompt("ชื่อผู้ตรวจสอบร่วม:");
+    if (!name) return;
+    const existing = r.co_approvers || [];
+    if (existing.includes(name)) { alert("มีชื่อนี้อยู่แล้ว"); return; }
+    const { presaleRequests } = await import("@/lib/firestore");
+    await presaleRequests.update(r.id!, { co_approvers: [...existing, name] });
+    await load();
+  }
+
+  async function saveApprovalSettings() {
+    setSavingAps(true);
+    const { presaleApprovalSettings } = await import("@/lib/firestore");
+    try {
+      if (approvalSettings?.id) await presaleApprovalSettings.update(approvalSettings.id, apForm as unknown as Record<string, unknown>);
+      else await presaleApprovalSettings.add(apForm as unknown as Record<string, unknown>);
+      await load();
+      setShowApprovalSettings(false);
+    } catch (e) { console.error(e); }
+    finally { setSavingAps(false); }
   }
 
   async function changeStatus(r: PresaleRequest, status: PresaleRequest["status"]) {
@@ -443,10 +542,64 @@ export default function PresalePage() {
           <p className="text-xs text-muted">งาน BOQ / Solution Design / Site Survey — รับงานจาก Sales และติดตามสถานะ</p>
         </div>
         <div className="flex gap-2">
+          {isManager && (
+            <button onClick={() => setShowApprovalSettings(v => !v)} className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:bg-card-hover" title="ตั้งค่าการอนุมัติ">⚙ Approval</button>
+          )}
           <Link href="/presale/calendar" title="ปฏิทินงาน Presale" className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:bg-card-hover">📅 ปฏิทิน</Link>
           <button onClick={() => { if (showForm) { setShowForm(false); setEditId(null); } else openAdd(); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Task"}</button>
         </div>
       </div>
+
+      {/* Approval Settings Panel */}
+      {showApprovalSettings && isManager && (
+        <div className="rounded-xl bg-card border border-accent/40 p-5 mb-4">
+          <h2 className="text-sm font-semibold mb-3">⚙ ตั้งค่าการอนุมัติงาน Presale</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-muted mb-1.5">ประเภทงานที่ต้องขออนุมัติ</p>
+              <div className="flex flex-wrap gap-1.5">
+                {reqTypes.map(t => (
+                  <button key={t} type="button"
+                    onClick={() => setApForm(f => ({ ...f, require_for_types: f.require_for_types.includes(t) ? f.require_for_types.filter(x => x !== t) : [...f.require_for_types, t] }))}
+                    className={`rounded-full px-2.5 py-1 text-[11px] border transition-colors ${apForm.require_for_types.includes(t) ? "bg-accent text-white border-accent" : "border-border text-muted hover:border-accent/60"}`}>
+                    {typeLabels[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-muted mb-1.5">มูลค่างานขั้นต่ำที่ต้องขออนุมัติ (0 = ทุกงาน)</p>
+              <input type="number" value={apForm.value_threshold} onChange={e => setApForm(f => ({ ...f, value_threshold: Number(e.target.value) }))} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" placeholder="เช่น 500000" />
+            </div>
+            <div>
+              <p className="text-xs text-muted mb-1.5">ผู้อนุมัติหลัก (Presale Manager)</p>
+              <select value={apForm.primary_approver} onChange={e => setApForm(f => ({ ...f, primary_approver: e.target.value }))} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                <option value="">-- เลือกผู้อนุมัติ --</option>
+                {allUsers.map(u => <option key={u.id} value={u.name}>{u.name} ({u.role})</option>)}
+              </select>
+            </div>
+            <div>
+              <p className="text-xs text-muted mb-1.5">ผู้ตรวจสอบแทน (เมื่อผู้อนุมัติหลักไม่อยู่)</p>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {apForm.substitute_approvers.map(n => (
+                  <span key={n} className="rounded-full bg-card border border-border px-2 py-0.5 text-[11px] flex items-center gap-1">
+                    {n}
+                    <button onClick={() => setApForm(f => ({ ...f, substitute_approvers: f.substitute_approvers.filter(x => x !== n) }))} className="text-danger hover:opacity-70">✕</button>
+                  </span>
+                ))}
+              </div>
+              <select onChange={e => { if (!e.target.value || apForm.substitute_approvers.includes(e.target.value)) return; setApForm(f => ({ ...f, substitute_approvers: [...f.substitute_approvers, e.target.value] })); e.target.value = ""; }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                <option value="">+ เพิ่มผู้ตรวจสอบแทน</option>
+                {allUsers.filter(u => !apForm.substitute_approvers.includes(u.name) && u.name !== apForm.primary_approver).map(u => <option key={u.id} value={u.name}>{u.name} ({u.role})</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button onClick={saveApprovalSettings} disabled={savingAps} className="rounded-lg bg-accent text-white px-4 py-1.5 text-sm hover:bg-accent-hover disabled:opacity-50">{savingAps ? "บันทึก..." : "💾 บันทึกการตั้งค่า"}</button>
+            <button onClick={() => setShowApprovalSettings(false)} className="rounded-lg border border-border px-4 py-1.5 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+          </div>
+        </div>
+      )}
 
       {/* Dashboard */}
       {!loading && (
@@ -481,38 +634,70 @@ export default function PresalePage() {
               <p className="text-base font-bold text-purple-400">{stats.pendingReqs}</p>
               <p className="text-[10px] text-muted">Job Requests รอรับ</p>
             </div>
+            {canApprove && (
+              <div className="rounded-lg border border-orange-800/50 bg-orange-900/10 p-2.5">
+                <p className="text-base font-bold text-orange-400">{stats.pendingApproval}</p>
+                <p className="text-[10px] text-muted">รอตรวจสอบ</p>
+              </div>
+            )}
           </div>
 
+          {/* Per-person workload grid (manager view) */}
+          {isManager && byPerson.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <p className="text-xs font-semibold text-muted">👥 ภาระงานแต่ละคน</p>
+                {personFilter && <button onClick={() => setPersonFilter("")} className="text-[10px] text-accent hover:underline">× ล้างตัวกรอง</button>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {byPerson.map(w => (
+                  <button key={w.user.id} onClick={() => setPersonFilter(prev => prev === w.user.name ? "" : w.user.name)}
+                    className={`rounded-xl border px-3 py-2 text-left min-w-32 transition-all ${personFilter === w.user.name ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
+                    <p className="text-xs font-semibold truncate max-w-28">{w.user.name}</p>
+                    <p className="text-[10px] text-muted">{w.user.role}</p>
+                    <div className="flex gap-2 mt-1">
+                      <span className="text-[10px] text-yellow-400">{w.active} งาน</span>
+                      {w.overdue > 0 && <span className="text-[10px] text-red-400">⚠{w.overdue}</span>}
+                      {w.pendingApproval > 0 && <span className="text-[10px] text-orange-400">🔍{w.pendingApproval}</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Alerts + workload */}
-          {(overdueList.length > 0 || dueTodayList.length > 0 || workload.length > 0) && (
+          {(overdueList.length > 0 || dueTodayList.length > 0 || (!isManager && workload.length > 0)) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="rounded-xl bg-card border border-border p-3">
                 <h3 className="text-xs font-semibold text-red-400 mb-2">⚠ เลยกำหนด ({overdueList.length})</h3>
                 {overdueList.length === 0 ? <p className="text-[11px] text-muted">ไม่มี</p> : overdueList.slice(0, 3).map(r => (
-                  <div key={r.id} className="text-[11px] py-1 border-b border-border last:border-0">
+                  <button key={r.id} onClick={() => hydrateDetail(r)} className="text-[11px] py-1 border-b border-border last:border-0 text-left w-full hover:text-accent">
                     <p className="truncate">{typeLabels[r.type]} — {r.customer_name}</p>
                     <p className="text-muted">กำหนด {r.due_date}{r.assigned_to && ` · ${r.assigned_to}`}</p>
-                  </div>
+                  </button>
                 ))}
               </div>
               <div className="rounded-xl bg-card border border-border p-3">
                 <h3 className="text-xs font-semibold text-amber-400 mb-2">📅 ครบวันนี้ ({dueTodayList.length})</h3>
                 {dueTodayList.length === 0 ? <p className="text-[11px] text-muted">ไม่มี</p> : dueTodayList.slice(0, 3).map(r => (
-                  <div key={r.id} className="text-[11px] py-1 border-b border-border last:border-0">
+                  <button key={r.id} onClick={() => hydrateDetail(r)} className="text-[11px] py-1 border-b border-border last:border-0 text-left w-full hover:text-accent">
                     <p className="truncate">{typeLabels[r.type]} — {r.customer_name}</p>
                     <p className="text-muted">{r.assigned_to || "ยังไม่มอบหมาย"}</p>
-                  </div>
+                  </button>
                 ))}
               </div>
-              <div className="rounded-xl bg-card border border-border p-3">
-                <h3 className="text-xs font-semibold text-blue-400 mb-2">👤 ภาระงานต่อคน (Active)</h3>
-                {workload.length === 0 ? <p className="text-[11px] text-muted">ไม่มีงาน Active</p> : workload.map(w => (
-                  <div key={w.name} className="flex justify-between text-[11px] py-1 border-b border-border last:border-0">
-                    <span>{w.name}</span>
-                    <span className="font-semibold">{w.active} งาน</span>
-                  </div>
-                ))}
-              </div>
+              {!isManager && (
+                <div className="rounded-xl bg-card border border-border p-3">
+                  <h3 className="text-xs font-semibold text-blue-400 mb-2">👤 ภาระงานต่อคน (Active)</h3>
+                  {workload.length === 0 ? <p className="text-[11px] text-muted">ไม่มีงาน Active</p> : workload.map(w => (
+                    <div key={w.name} className="flex justify-between text-[11px] py-1 border-b border-border last:border-0">
+                      <span>{w.name}</span>
+                      <span className="font-semibold">{w.active} งาน</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -525,9 +710,18 @@ export default function PresalePage() {
             <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as PresaleRequest["type"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">{reqTypes.map((t) => <option key={t} value={t}>{typeLabels[t]}</option>)}</select>
             <select value={form.customer_id} onChange={(e) => selectCust(e.target.value)} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="">-- Customer --</option>{custs.map((c) => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select>
             <select value={form.project_id} onChange={(e) => selectProj(e.target.value)} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="">-- Project --</option>{projs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <input placeholder="Assigned To" value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <select value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+              <option value="">-- Assigned To --</option>
+              {presaleUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+            </select>
             <input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as PresaleRequest["status"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="completed">Completed</option></select>
+            <div className="relative">
+              <input type="number" placeholder="มูลค่าโครงการ (THB)" value={form.value || ""} onChange={e => setForm({ ...form, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+              {!editId && checkNeedsApproval(form.type, form.value || 0) && (
+                <p className="text-[10px] text-orange-400 mt-0.5">⚠ งานนี้จะต้องผ่านการอนุมัติ</p>
+              )}
+            </div>
             <textarea placeholder="Requirement *" value={form.requirement} onChange={(e) => setForm({ ...form, requirement: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-20 resize-y" />
           </div>
           <div className="flex gap-2">
@@ -545,12 +739,33 @@ export default function PresalePage() {
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <h2 className="text-lg font-bold">{typeLabels[detail.type]}</h2>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[detail.status]}`}>{statusLabel[detail.status]}</span>
+                {/* Approval badge */}
+                {detail.approval_status === "pending_review" && <span className="rounded-full bg-orange-900/50 text-orange-400 px-2 py-0.5 text-[10px]">🔍 รอตรวจสอบ</span>}
+                {detail.approval_status === "approved" && <span className="rounded-full bg-green-900/50 text-green-400 px-2 py-0.5 text-[10px]" title={`อนุมัติโดย ${detail.reviewed_by} — ${detail.reviewed_at}${detail.review_note ? ` · ${detail.review_note}` : ""}`}>✅ อนุมัติแล้ว</span>}
+                {detail.approval_status === "rejected" && <span className="rounded-full bg-red-900/50 text-red-400 px-2 py-0.5 text-[10px]" title={detail.review_note || ""}>❌ ส่งกลับแก้ไข{detail.review_note ? ` — ${detail.review_note}` : ""}</span>}
                 {detail.converted_to_quotation_id && (
-                  <span className="rounded-full bg-emerald-900/50 text-emerald-400 px-2 py-0.5 text-[10px]" title={`Converted to ${detail.converted_quotation_number}`}>✓ {detail.converted_quotation_number}</span>
+                  <Link href="/quotations" className="rounded-full bg-emerald-900/50 text-emerald-400 px-2 py-0.5 text-[10px] hover:underline" title={`Converted to ${detail.converted_quotation_number}`}>✓ → {detail.converted_quotation_number}</Link>
                 )}
               </div>
-              <p className="text-sm text-muted">{detail.customer_name}{detail.project_name && ` · ${detail.project_name}`}{detail.assigned_to && ` · 👤 ${detail.assigned_to}`}{detail.due_date && ` · 📅 ${detail.due_date}`}</p>
+              <p className="text-sm text-muted flex flex-wrap gap-x-2 items-center">
+                {detail.customer_id ? <Link href={`/customers/${detail.customer_id}`} className="hover:text-accent hover:underline">{detail.customer_name}</Link> : <span>{detail.customer_name}</span>}
+                {detail.project_name && <span>· {detail.project_name}</span>}
+                {detail.assigned_to && <span>· 👤 {detail.assigned_to}</span>}
+                {detail.due_date && <span>· 📅 <span className={detail.due_date < today && detail.status !== "completed" ? "text-red-400" : ""}>{detail.due_date}</span></span>}
+                {(detail.value || 0) > 0 && <span>· 💰 {(detail.value || 0).toLocaleString()} THB</span>}
+              </p>
               <p className="text-xs text-muted mt-1 italic">📋 {detail.requirement}</p>
+              {/* Approval actions for approvers */}
+              {canApprove && detail.approval_status === "pending_review" && (
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => handleApprove(detail)} className="rounded-lg bg-green-700/60 text-green-200 px-3 py-1 text-xs hover:bg-green-700">✅ อนุมัติ</button>
+                  <button onClick={() => handleReject(detail)} className="rounded-lg bg-red-700/60 text-red-200 px-3 py-1 text-xs hover:bg-red-700">❌ ส่งกลับแก้ไข</button>
+                  <button onClick={() => addCoApprover(detail)} className="rounded-lg border border-border text-muted px-3 py-1 text-xs hover:bg-card-hover">+ ผู้ตรวจสอบร่วม</button>
+                </div>
+              )}
+              {detail.co_approvers && detail.co_approvers.length > 0 && (
+                <p className="text-[10px] text-muted mt-1">ผู้ตรวจสอบร่วม: {detail.co_approvers.join(", ")}</p>
+              )}
             </div>
             <div className="flex gap-2 shrink-0">
               <select value={detail.status} onChange={e => changeStatus(detail, e.target.value as PresaleRequest["status"])} className={`rounded-full px-3 py-1 text-xs border-0 focus:outline-none cursor-pointer ${statusColor[detail.status]}`}>
@@ -799,7 +1014,11 @@ export default function PresalePage() {
       )}
       <div className="flex items-center justify-between gap-2 mb-3">
         <input placeholder="ค้นหา requirement / ลูกค้า..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-        <p className="text-xs text-muted shrink-0">{filtered.length} รายการ {statusFilter !== "all" && <span className="text-accent">· {statusLabel[statusFilter]}</span>}</p>
+        <p className="text-xs text-muted shrink-0">
+          {filtered.length} รายการ
+          {statusFilter !== "all" && <span className="text-accent"> · {statusLabel[statusFilter]}</span>}
+          {personFilter && <span className="text-accent"> · {personFilter}</span>}
+        </p>
       </div>
       {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? <p className="text-muted text-sm">ไม่พบงาน</p> : (
         <div className="space-y-2">{filtered.map((r) => {
@@ -809,30 +1028,47 @@ export default function PresalePage() {
           const fileCount = (r.attachments || []).length;
           const isOpen = detail?.id === r.id;
           return (
-            <div key={r.id} className={`rounded-xl bg-card border p-4 hover:bg-card-hover cursor-pointer transition-colors ${isOpen ? "border-accent bg-accent/5" : "border-border"}`} onClick={() => isOpen ? closeDetail() : hydrateDetail(r)}>
+            <div key={r.id} className={`rounded-xl bg-card border p-4 hover:bg-card-hover cursor-pointer transition-colors ${isOpen ? "border-accent bg-accent/5" : r.approval_status === "pending_review" ? "border-orange-800/50" : "border-border"}`} onClick={() => isOpen ? closeDetail() : hydrateDetail(r)}>
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <p className="text-sm font-medium">{typeLabels[r.type]}</p>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[r.status]}`}>{statusLabel[r.status]}</span>
                     {overdue && <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-[10px] text-red-400">⚠ เลยกำหนด</span>}
+                    {/* Approval badges */}
+                    {r.approval_status === "pending_review" && <span className="rounded-full bg-orange-900/50 px-2 py-0.5 text-[10px] text-orange-400">🔍 รอตรวจสอบ</span>}
+                    {r.approval_status === "approved" && <span className="rounded-full bg-green-900/50 px-2 py-0.5 text-[10px] text-green-400" title={`อนุมัติโดย ${r.reviewed_by}`}>✅ อนุมัติ</span>}
+                    {r.approval_status === "rejected" && <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-[10px] text-red-400" title={r.review_note || ""}>❌ ส่งกลับ</span>}
                     {/* Artifact badges */}
                     {r.solution_summary && <span className="rounded-full bg-blue-900/50 px-2 py-0.5 text-[10px] text-blue-400" title="มี Solution Summary">📋</span>}
                     {bomCount > 0 && <span className="rounded-full bg-amber-900/50 px-2 py-0.5 text-[10px] text-amber-400" title={`${bomCount} BOM items`}>🛒 {bomCount}</span>}
                     {boqCount > 0 && <span className="rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] text-emerald-400" title={`${boqCount} BOQ items · ${(r.boq_total_selling || 0).toLocaleString()} THB`}>💰 {boqCount}</span>}
                     {fileCount > 0 && <span className="rounded-full bg-purple-900/50 px-2 py-0.5 text-[10px] text-purple-400" title={`${fileCount} files`}>📎 {fileCount}</span>}
                     {r.converted_to_quotation_id && (
-                      <span className="rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] text-emerald-400" title={`Converted to ${r.converted_quotation_number}`}>✓ → {r.converted_quotation_number}</span>
+                      <Link href="/quotations" className="rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] text-emerald-400 hover:underline" title={`Converted to ${r.converted_quotation_number}`} onClick={e => e.stopPropagation()}>✓ → {r.converted_quotation_number}</Link>
                     )}
                   </div>
                   <p className="text-sm text-muted">{r.requirement}</p>
-                  <p className="text-xs text-muted mt-1">
-                    {r.customer_name}{r.project_name && ` · ${r.project_name}`}
-                    {r.assigned_to && ` · 👤 ${r.assigned_to}`}
-                    {r.due_date && <> · <span className={overdue ? "text-red-400" : ""}>📅 {r.due_date}</span></>}
+                  <p className="text-xs text-muted mt-1 flex flex-wrap gap-x-2">
+                    {r.customer_id ? <Link href={`/customers/${r.customer_id}`} className="hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>{r.customer_name}</Link> : <span>{r.customer_name}</span>}
+                    {r.project_name && <span>· {r.project_name}</span>}
+                    {r.assigned_to && <span>· 👤 {r.assigned_to}</span>}
+                    {r.due_date && <span>· <span className={overdue ? "text-red-400" : ""}>📅 {r.due_date}</span></span>}
+                    {(r.value || 0) > 0 && <span>· 💰 {(r.value || 0).toLocaleString()} THB</span>}
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0 ml-3" onClick={e => e.stopPropagation()}>
+                  {/* Inline approve/reject for approvers */}
+                  {canApprove && r.approval_status === "pending_review" && (
+                    <>
+                      <button onClick={() => handleApprove(r)} className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✅</button>
+                      <button onClick={() => handleReject(r)} className="text-[10px] bg-red-800/50 text-red-400 rounded px-2 py-1 hover:bg-red-800">❌</button>
+                    </>
+                  )}
+                  {/* Request approval if not yet set */}
+                  {!r.approval_status && checkNeedsApproval(r.type, r.value || 0) && (
+                    <button onClick={() => requestApproval(r)} className="text-[10px] text-orange-400 hover:underline">ขออนุมัติ</button>
+                  )}
                   <button onClick={() => isOpen ? closeDetail() : hydrateDetail(r)} className="text-xs text-accent hover:underline">{isOpen ? "ปิด" : "ดู Artifacts"}</button>
                   <button onClick={() => openEdit(r)} className="text-xs text-accent hover:underline">แก้ไข</button>
                   <button onClick={() => handleDelete(r.id!)} className="text-xs text-danger hover:underline">ลบ</button>

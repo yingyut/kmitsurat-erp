@@ -319,6 +319,23 @@ export interface PresaleRequest {
   converted_to_quotation_id?: string;
   converted_quotation_number?: string;
   converted_at?: string;
+  // Approval workflow
+  value?: number;
+  approval_status?: "pending_review" | "approved" | "rejected" | "not_required";
+  approval_requested_at?: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  review_note?: string;
+  co_approvers?: string[];
+}
+
+export interface PresaleApprovalSettings {
+  id?: string;
+  tenant_id: string;
+  require_for_types: string[];
+  value_threshold: number;
+  primary_approver: string;
+  substitute_approvers: string[];
 }
 
 export interface ServiceTicket {

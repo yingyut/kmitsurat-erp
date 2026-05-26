@@ -11,7 +11,7 @@ import type {
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow,
   PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem, PresalePreset,
-  ActivityLog, Asset, CompanySettings, Todo,
+  ActivityLog, Asset, CompanySettings, Todo, PresaleApprovalSettings,
 } from "./types";
 
 // Re-export types
@@ -24,6 +24,7 @@ export type {
   PresaleToolType, PresaleToolStatus, PresaleProjectStatus, BOQCategory,
   CCTVDesignData, CCTVCamera, CCTVRecorder, CCTVInfraItem, CCTVLaborItem, CatalogItemType,
   PresalePreset, ActivityLog, Asset, AssetDocument, CompanySettings, Todo, TodoPriority, TodoStatus,
+  PresaleApprovalSettings,
 } from "./types";
 
 // ============================================================
@@ -146,6 +147,7 @@ export const activityLogs = svc<ActivityLog>("activity_logs", "created_at");
 export const assets = svc<Asset>("assets");
 export const companySettings = svc<CompanySettings>("company_settings");
 export const todos = svc<Todo>("todos", "created_at");
+export const presaleApprovalSettings = svc<PresaleApprovalSettings>("presale_approval_settings");
 
 export async function logActivity(entry: Omit<ActivityLog, "id" | "tenant_id" | "created_at">) {
   try { await activityLogs.add(entry as Record<string, unknown>); } catch { /* non-blocking */ }

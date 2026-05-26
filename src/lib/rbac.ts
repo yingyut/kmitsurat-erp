@@ -14,7 +14,7 @@ export type Permission =
   | "view_finance"
   | "view_reports"
   | "manage_system"
-  | "view_presale"   | "manage_presale" | "use_presale_tools"
+  | "view_presale"   | "manage_presale" | "use_presale_tools" | "approve_presale"
   | "view_contracts" | "manage_contracts"
   | "view_vendors"   | "manage_vendors"
   | "view_products"  | "manage_products"
@@ -33,7 +33,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "view_finance",
   "view_reports",
   "manage_system",
-  "view_presale",       "manage_presale",     "use_presale_tools",
+  "view_presale",       "manage_presale",     "use_presale_tools",  "approve_presale",
   "view_contracts",     "manage_contracts",
   "view_vendors",       "manage_vendors",
   "view_products",      "manage_products",
@@ -95,7 +95,7 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
     "view_finance",       "view_reports",
     "approve_quote",      "view_quote",          "create_quote",
     "manage_users",
-    "view_presale",       "use_presale_tools",
+    "view_presale",       "use_presale_tools",   "approve_presale",
     "view_contracts",     "manage_contracts",
     "view_vendors",       "manage_vendors",     "view_products",
     "assign_job",         "close_ticket",
@@ -124,7 +124,7 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
     "view_dashboard",
     "view_all_projects",  "view_all_customers",
     "view_finance",       "view_reports",
-    "view_presale",       "manage_presale",     "use_presale_tools",
+    "view_presale",       "manage_presale",     "use_presale_tools",  "approve_presale",
     "approve_quote",      "view_quote",         "create_quote",
     "view_products",      "manage_products",
     "view_vendors",       "view_catalog",
@@ -258,6 +258,7 @@ export const PERMISSION_META: Record<Permission, { label: string; thai: string; 
   "view_presale":         { label: "View Presale",      thai: "ดูงานพรีเซลล์",              category: "Presale" },
   "manage_presale":       { label: "Manage Presale",    thai: "จัดการพรีเซลล์",             category: "Presale" },
   "use_presale_tools":    { label: "Presale Tools",     thai: "ใช้เครื่องมือออกแบบ",        category: "Presale" },
+  "approve_presale":      { label: "Approve Presale",   thai: "อนุมัติงานพรีเซลล์",         category: "Presale" },
   "view_catalog":         { label: "View Catalog",      thai: "ดูคลังสินค้าพรีเซลล์",      category: "Presale" },
   "view_all_customers":   { label: "All Customers",     thai: "ดูลูกค้าทั้งหมด",           category: "CRM" },
   "view_own_customers":   { label: "Own Customers",     thai: "ดูลูกค้าตัวเอง",             category: "CRM" },
