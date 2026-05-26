@@ -74,7 +74,7 @@ function AppContent({ children }: { children: ReactNode }) {
     <div className="flex w-full min-h-screen">
       {!isNarrow && <Sidebar />}
 
-      <main className={`flex-1 min-h-screen pb-16 ${!isNarrow ? "ml-52" : ""}`}>
+      <main className={`@container flex-1 min-h-screen pb-16 ${!isNarrow ? "ml-52" : ""}`}>
         {isNarrow ? (
           /* ── Device preview wrapper ── */
           <div className="min-h-screen" style={{ background: "var(--border)" }}>
@@ -83,7 +83,7 @@ function AppContent({ children }: { children: ReactNode }) {
               {meta.icon} {meta.label} — กำลัง Preview อยู่ · ข้อมูลจริงทุกอย่าง
             </div>
             {/* Constrained frame */}
-            <div className="device-narrow mx-auto bg-background min-h-screen shadow-2xl overflow-x-auto"
+            <div className="@container device-narrow mx-auto bg-background min-h-screen shadow-2xl overflow-x-auto"
               style={{ maxWidth: meta.width ?? undefined, width: "100%" }}>
               {children}
             </div>

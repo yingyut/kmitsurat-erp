@@ -49,6 +49,7 @@ export default function SalesPage() {
   const [apView, setApView] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [apPersonFilter, setApPersonFilter] = useState("");
   const [showRepeatReport, setShowRepeatReport] = useState(false);
+  const [expandedRepeatRow, setExpandedRepeatRow] = useState<string | null>(null);
   const [actValidate, setActValidate] = useState(false);
 
   // Activity/Plan form
@@ -741,16 +742,18 @@ export default function SalesPage() {
               </button>
               {showRepeatReport && (() => {
                 const allPlans = activities.filter(a => a.is_plan);
-                type RepeatRow = { name: string; total: number; done: number; lastDate: string; persons: Set<string>; types: string[] };
+                type RepeatRow = { name: string; customerId: string; total: number; done: number; lastDate: string; persons: Set<string>; types: string[]; items: SalesActivity[] };
                 const custMap = new Map<string, RepeatRow>();
                 allPlans.forEach(p => {
                   const key = p.customer_name || "(ยังไม่ระบุลูกค้า)";
-                  const ex = custMap.get(key) ?? { name: key, total: 0, done: 0, lastDate: "", persons: new Set<string>(), types: [] };
+                  const ex = custMap.get(key) ?? { name: key, customerId: p.customer_id || "", total: 0, done: 0, lastDate: "", persons: new Set<string>(), types: [], items: [] };
+                  if (!ex.customerId && p.customer_id) ex.customerId = p.customer_id;
                   ex.total++;
                   if (p.status === "done") ex.done++;
                   if ((p.plan_date || "") > ex.lastDate) ex.lastDate = p.plan_date || "";
                   if (p.assigned_to) ex.persons.add(p.assigned_to);
                   if (p.expected_outcome || p.description) ex.types.push(p.expected_outcome || p.description || "");
+                  ex.items.push(p);
                   custMap.set(key, ex);
                 });
                 const rows = [...custMap.values()].sort((a, b) => b.total - a.total);
@@ -774,9 +777,17 @@ export default function SalesPage() {
                         )}
                         {rows.map(r => {
                           const repeat = Math.max(0, r.total - 1);
-                          return (
-                            <tr key={r.name} className="border-b border-border/50 last:border-0 hover:bg-card-hover transition-colors">
-                              <td className="px-4 py-2.5 font-medium">{r.name}</td>
+                          const isExpanded = expandedRepeatRow === r.name;
+                          const sortedItems = [...r.items].sort((a, b) => (a.plan_date || "").localeCompare(b.plan_date || ""));
+                          return (<>
+                            <tr key={r.name} onClick={() => setExpandedRepeatRow(isExpanded ? null : r.name)}
+                              className="border-b border-border/50 last:border-0 hover:bg-card-hover transition-colors cursor-pointer select-none">
+                              <td className="px-4 py-2.5 font-medium">
+                                <span className="mr-1.5 text-muted text-[10px]">{isExpanded ? "▼" : "▶"}</span>
+                                {r.customerId
+                                  ? <Link href={`/customers/${r.customerId}`} onClick={e => e.stopPropagation()} className="text-accent hover:underline">{r.name}</Link>
+                                  : r.name}
+                              </td>
                               <td className="px-4 py-2.5 text-center">
                                 <span className={`rounded-full px-2 py-0.5 font-bold text-[11px] ${r.total >= 5 ? "bg-red-900/50 text-red-400" : r.total >= 3 ? "bg-orange-900/50 text-orange-400" : r.total >= 2 ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}>{r.total}</span>
                               </td>
@@ -790,7 +801,34 @@ export default function SalesPage() {
                               <td className="px-4 py-2.5 text-muted hidden md:table-cell">{[...r.persons].join(", ") || "—"}</td>
                               <td className="px-4 py-2.5 text-muted">{r.lastDate || "—"}</td>
                             </tr>
-                          );
+                            {isExpanded && (
+                              <tr key={`${r.name}-detail`} className="bg-background/40">
+                                <td colSpan={7} className="px-4 py-2">
+                                  <div className="space-y-1">
+                                    {sortedItems.map((item, i) => (
+                                      <div key={item.id ?? i} className={`flex items-start gap-3 py-1.5 px-2 rounded-lg text-[11px] ${item.status === "done" ? "opacity-60" : ""}`}>
+                                        <span className="text-muted w-4 shrink-0">{i + 1}.</span>
+                                        <span className="text-muted w-20 shrink-0">{item.plan_date || "—"}</span>
+                                        <span className="bg-card border border-border rounded px-1.5 py-0.5 shrink-0">{typeLabels[item.type] || item.type}</span>
+                                        <span className="text-accent shrink-0">{item.assigned_to || "—"}</span>
+                                        <span className="text-foreground flex-1 truncate">{item.expected_outcome || item.description || "—"}</span>
+                                        <span className={`shrink-0 ${item.status === "done" ? "text-green-400" : item.status === "cancelled" ? "text-red-400" : "text-yellow-400"}`}>
+                                          {item.status === "done" ? "✓ เสร็จ" : item.status === "cancelled" ? "ยกเลิก" : "รอดำเนิน"}
+                                        </span>
+                                        {item.customer_id && (
+                                          <Link href={`/customers/${item.customer_id}`} onClick={e => e.stopPropagation()}
+                                            className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted hover:text-accent hover:border-accent transition-colors"
+                                            title={`ข้อมูลลูกค้า: ${item.customer_name}`}>
+                                            🏢 ลูกค้า
+                                          </Link>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </>);
                         })}
                       </tbody>
                     </table>

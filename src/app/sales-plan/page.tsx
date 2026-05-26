@@ -9,6 +9,11 @@ const tierLabel: Record<string, string> = { above: "เกินเป้า", o
 const pctOf = (q: SalesQuota) => q.quota_target > 0 ? (q.actual_sales / q.quota_target * 100) : 0;
 const profitPctOf = (q: SalesQuota) => (q.profit_target || 0) > 0 ? ((q.actual_profit || 0) / q.profit_target * 100) : 0;
 const tierOf = (pct: number): Exclude<Tier, "all"> => pct >= 100 ? "above" : pct >= 70 ? "ontrack" : "behind";
+const fmt = (n: number) => {
+  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (Math.abs(n) >= 1_000) return Math.round(n / 1_000) + "k";
+  return n.toLocaleString();
+};
 
 type RankBy = "revenue" | "profit";
 
@@ -206,12 +211,12 @@ export default function SalesPlanPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col @sm:flex-row @sm:items-center justify-between gap-2 mb-4">
         <div>
           <h1 className="text-xl font-bold" title="แผนยอดขาย / โควต้า">Sales Plan / Quota</h1>
           <p className="text-xs text-muted">ตั้งเป้ายอดขายรายเดือน ติดตาม Achievement และ Top Performer</p>
         </div>
-        <div className="flex gap-2 flex-wrap justify-end">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={() => setViewMode(viewMode === "admin" ? "sale" : "admin")}
             className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">
             {viewMode === "admin" ? "View: All (Admin)" : "View: My Plan"}
@@ -254,20 +259,20 @@ export default function SalesPlanPage() {
         {/* Revenue row */}
         <div>
           <p className="text-[10px] uppercase text-muted mb-1.5 font-semibold">📈 Revenue (ยอดขาย)</p>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 @lg:grid-cols-5 gap-3">
             <div className="rounded-xl bg-card border border-border p-4">
               <p className="text-xs text-muted">Target</p>
-              <p className="text-2xl font-bold">{totalTarget.toLocaleString()}</p>
+              <p className="text-2xl font-bold" title={totalTarget.toLocaleString()}>{fmt(totalTarget)}</p>
               <p className="text-xs text-muted">THB</p>
             </div>
             <div className="rounded-xl bg-card border border-border p-4">
               <p className="text-xs text-muted">Actual Sales</p>
-              <p className="text-2xl font-bold text-green-400">{totalActual.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-green-400" title={totalActual.toLocaleString()}>{fmt(totalActual)}</p>
               <p className="text-xs text-muted">THB</p>
             </div>
             <div className="rounded-xl bg-card border border-border p-4">
               <p className="text-xs text-muted">Remaining</p>
-              <p className={`text-2xl font-bold ${totalRemaining > 0 ? "text-yellow-400" : "text-green-400"}`}>{totalRemaining.toLocaleString()}</p>
+              <p className={`text-2xl font-bold ${totalRemaining > 0 ? "text-yellow-400" : "text-green-400"}`} title={totalRemaining.toLocaleString()}>{fmt(totalRemaining)}</p>
               <p className="text-xs text-muted">THB</p>
             </div>
             <div className="rounded-xl bg-card border border-border p-4">
@@ -288,20 +293,20 @@ export default function SalesPlanPage() {
         {/* Profit row */}
         <div>
           <p className="text-[10px] uppercase text-muted mb-1.5 font-semibold">💎 Gross Profit (กำไร) <span className="normal-case text-muted/60">— เป้าหมายหลักของบริษัท</span></p>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 @lg:grid-cols-5 gap-3">
             <div className="rounded-xl bg-card border border-purple-800/40 p-4">
               <p className="text-xs text-muted">Profit Target</p>
-              <p className="text-2xl font-bold">{totalProfitTarget.toLocaleString()}</p>
+              <p className="text-2xl font-bold" title={totalProfitTarget.toLocaleString()}>{fmt(totalProfitTarget)}</p>
               <p className="text-xs text-muted">THB</p>
             </div>
             <div className="rounded-xl bg-card border border-purple-800/40 p-4">
               <p className="text-xs text-muted">Actual Profit</p>
-              <p className="text-2xl font-bold text-purple-400">{totalActualProfit.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-purple-400" title={totalActualProfit.toLocaleString()}>{fmt(totalActualProfit)}</p>
               <p className="text-xs text-muted">THB</p>
             </div>
             <div className="rounded-xl bg-card border border-purple-800/40 p-4">
               <p className="text-xs text-muted">Remaining</p>
-              <p className={`text-2xl font-bold ${totalProfitRemaining > 0 ? "text-yellow-400" : "text-green-400"}`}>{totalProfitRemaining.toLocaleString()}</p>
+              <p className={`text-2xl font-bold ${totalProfitRemaining > 0 ? "text-yellow-400" : "text-green-400"}`} title={totalProfitRemaining.toLocaleString()}>{fmt(totalProfitRemaining)}</p>
               <p className="text-xs text-muted">THB</p>
             </div>
             <div className="rounded-xl bg-card border border-purple-800/40 p-4">
@@ -322,14 +327,14 @@ export default function SalesPlanPage() {
 
       {/* Top performers + Tier filter */}
       {monthFiltered.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
+        <div className="grid grid-cols-1 @lg:grid-cols-3 gap-3 mb-4">
           {/* Top performers */}
-          <div className="lg:col-span-2 rounded-xl bg-card border border-border p-4">
+          <div className="@lg:col-span-2 rounded-xl bg-card border border-border p-4">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-semibold">🏆 Top Performers — {month}</h3>
               <div className="flex gap-1 text-[10px]">
-                <button onClick={() => setRankBy("profit")} className={`rounded px-2 py-0.5 ${rankBy === "profit" ? "bg-purple-600 text-white" : "border border-border text-muted hover:bg-card-hover"}`}>💎 จัดอันดับตามกำไร</button>
-                <button onClick={() => setRankBy("revenue")} className={`rounded px-2 py-0.5 ${rankBy === "revenue" ? "bg-accent text-white" : "border border-border text-muted hover:bg-card-hover"}`}>📈 ตามยอดขาย</button>
+                <button onClick={() => setRankBy("profit")} className={`rounded px-2 py-0.5 ${rankBy === "profit" ? "bg-purple-600 text-white" : "border border-border text-muted hover:bg-card-hover"}`}>💎 กำไร</button>
+                <button onClick={() => setRankBy("revenue")} className={`rounded px-2 py-0.5 ${rankBy === "revenue" ? "bg-accent text-white" : "border border-border text-muted hover:bg-card-hover"}`}>📈 ยอดขาย</button>
               </div>
             </div>
             {topPerformers.length === 0 || topPerformers[0].pct === 0 ? <p className="text-xs text-muted">ยังไม่มี{rankBy === "profit" ? "กำไร" : "ยอดขาย"}ในเดือนนี้</p> : (
@@ -393,7 +398,7 @@ export default function SalesPlanPage() {
           </div>
 
           <p className="text-xs text-muted uppercase mb-2">ข้อมูล Sales</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-1 @md:grid-cols-3 gap-3 mb-4">
             <div><label className="text-[10px] text-muted">ชื่อ Sales *</label><input placeholder="เช่น คุณสมชาย" value={form.user_name} onChange={(e) => setForm({ ...form, user_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
             <div><label className="text-[10px] text-muted">Role</label><select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "sale" | "avenger" })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="sale">Sale</option><option value="avenger">Avenger</option></select></div>
             <div><label className="text-[10px] text-muted">เดือน</label><input type="month" value={form.month} onChange={(e) => setForm({ ...form, month: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
@@ -401,7 +406,7 @@ export default function SalesPlanPage() {
 
           {/* Revenue */}
           <p className="text-xs text-muted uppercase mb-2">📈 Revenue (ยอดขาย)</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-1 @md:grid-cols-3 gap-3 mb-4">
             <div><label className="text-[10px] text-muted">Quota Target (THB) *</label><input type="number" placeholder="0" value={form.quota_target || ""} onChange={(e) => setForm({ ...form, quota_target: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
             <div><label className="text-[10px] text-muted">Actual Sales (THB)</label><input type="number" placeholder="0" value={form.actual_sales || ""} onChange={(e) => setForm({ ...form, actual_sales: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
             <div><label className="text-[10px] text-muted">Won Deals (จำนวนดีล)</label><input type="number" placeholder="0" value={form.won_deals || ""} onChange={(e) => setForm({ ...form, won_deals: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
@@ -409,7 +414,7 @@ export default function SalesPlanPage() {
 
           {/* Profit — emphasized */}
           <p className="text-xs text-muted uppercase mb-2">💎 Gross Profit (กำไรขั้นต้น) <span className="normal-case text-purple-400">— เป้าหมายหลักของบริษัท</span></p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-1 @md:grid-cols-3 gap-3 mb-4">
             <div>
               <label className="text-[10px] text-muted">Profit Target (THB)</label>
               <input type="number" placeholder="0" value={form.profit_target || ""} onChange={(e) => setForm({ ...form, profit_target: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-purple-800/40 px-3 py-2 text-sm focus:outline-none focus:border-purple-500 mt-1" />
