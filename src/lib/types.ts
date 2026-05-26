@@ -17,6 +17,8 @@ export interface User {
   branch_id?: string;
   department?: string;
   active: boolean;
+  employment_status?: "active" | "on_leave" | "resigned" | "terminated";
+  resigned_at?: string;        // วันที่ลาออก / เลิกจ้าง (YYYY-MM-DD)
   position?: string;
   phone?: string;
   avatar?: string;

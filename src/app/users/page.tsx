@@ -50,9 +50,19 @@ function computeDisplayName(form: { first_name?: string; last_name?: string; nic
   return nick || first || last;
 }
 
+type EmploymentStatus = NonNullable<User["employment_status"]>;
+const EMPLOYMENT_STATUS_OPTIONS: { value: EmploymentStatus; label: string; color: string }[] = [
+  { value: "active",     label: "ทำงานอยู่",  color: "bg-green-900/50 text-green-400" },
+  { value: "on_leave",   label: "ลาพัก",       color: "bg-amber-900/50 text-amber-400" },
+  { value: "resigned",   label: "ลาออก",       color: "bg-red-900/50 text-red-400" },
+  { value: "terminated", label: "เลิกจ้าง",    color: "bg-red-950/70 text-red-500" },
+];
+
 const emptyUser = {
   name: "", first_name: "", last_name: "", nickname: "", display_preference: "nickname" as DisplayPref,
-  email: "", role: "sale" as User["role"], position: "", department: "", phone: "", bio: "", active: true, sales_code: "", login_username: "",
+  email: "", role: "sale" as User["role"], position: "", department: "", phone: "", bio: "",
+  active: true, employment_status: "active" as EmploymentStatus, resigned_at: "",
+  sales_code: "", login_username: "",
   extra_roles: [] as string[],
 };
 
@@ -86,6 +96,7 @@ export default function UsersPage() {
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<"users" | "teams">("users");
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // User form
@@ -159,9 +170,13 @@ export default function UsersPage() {
 
   useEffect(() => { setMounted(true); load(); }, []);
 
-  const filteredUsers = search
-    ? userList.filter((u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()) || (u.position || "").toLowerCase().includes(search.toLowerCase()))
-    : userList;
+  const filteredUsers = userList.filter((u) => {
+    if (!showInactive && !u.active) return false;
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return u.name.toLowerCase().includes(s) || u.email.toLowerCase().includes(s) || (u.position || "").toLowerCase().includes(s);
+  });
+  const inactiveCount = userList.filter(u => !u.active).length;
 
   // === User CRUD ===
   function openAddUser() {
@@ -182,6 +197,8 @@ export default function UsersPage() {
       email: user.email, role: user.role,
       position: user.position || "", department: user.department || "",
       phone: user.phone || "", bio: user.bio || "", active: user.active,
+      employment_status: (user.employment_status || "active") as EmploymentStatus,
+      resigned_at: user.resigned_at || "",
       sales_code: user.sales_code || "", login_username: user.login_username || "",
       extra_roles: user.extra_roles || [],
     });
@@ -195,7 +212,9 @@ export default function UsersPage() {
     setSaving(true);
     const fs = await import("@/lib/firestore");
     try {
-      const payload = { ...userForm, name: computedName || userForm.name };
+      const es = userForm.employment_status || "active";
+      const derivedActive = es === "active" || es === "on_leave";
+      const payload = { ...userForm, name: computedName || userForm.name, active: derivedActive };
       if (editingUserId) {
         await fs.users.update(editingUserId, payload as unknown as Record<string, unknown>);
         await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "users", action: "update", resource_id: editingUserId, resource_name: computedName || userForm.name, details: `แก้ไขข้อมูลผู้ใช้: ${computedName || userForm.name} (${userForm.role})` });
@@ -455,9 +474,17 @@ export default function UsersPage() {
                     <input placeholder="เช่น OY, NN, EVE" maxLength={5} value={userForm.sales_code} onChange={(e) => setUserForm({ ...userForm, sales_code: e.target.value.toUpperCase() })} title="ใช้ใน Document Numbering" className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent uppercase font-mono mt-1" />
                   </div>
                   <textarea placeholder="รายละเอียด / Bio" value={userForm.bio} onChange={(e) => setUserForm({ ...userForm, bio: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" checked={userForm.active} onChange={(e) => setUserForm({ ...userForm, active: e.target.checked })} id="active-check" />
-                    <label htmlFor="active-check" className="text-sm">เปิดใช้งาน (Active)</label>
+                  <div>
+                    <label className="text-[10px] text-muted">สถานะการทำงาน</label>
+                    <select value={userForm.employment_status} onChange={e => setUserForm({ ...userForm, employment_status: e.target.value as EmploymentStatus })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                      {EMPLOYMENT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                    {(userForm.employment_status === "resigned" || userForm.employment_status === "terminated") && (
+                      <input type="date" value={userForm.resigned_at} onChange={e => setUserForm({ ...userForm, resigned_at: e.target.value })} placeholder="วันที่ออก" className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                    )}
+                    {(userForm.employment_status === "resigned" || userForm.employment_status === "terminated") && (
+                      <p className="text-[10px] text-orange-400 mt-1">⚠ บัญชีนี้จะถูกซ่อนจาก Dashboard และ dropdown ทั้งหมด แต่ข้อมูลเก่ายังคงอยู่</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -499,6 +526,14 @@ export default function UsersPage() {
           )}
 
           {/* User List */}
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-xs text-muted flex-1">{filteredUsers.length} คน{inactiveCount > 0 && !showInactive && ` (ซ่อน ${inactiveCount} คนที่ลาออก/เลิกจ้าง)`}</p>
+            {inactiveCount > 0 && (
+              <button onClick={() => setShowInactive(v => !v)} className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${showInactive ? "border-accent bg-accent/10 text-accent" : "border-border text-muted hover:bg-card-hover"}`}>
+                {showInactive ? "ซ่อนคนที่ออกไปแล้ว" : `แสดงคนที่ออกไปแล้ว (${inactiveCount})`}
+              </button>
+            )}
+          </div>
           {filteredUsers.length === 0 ? <p className="text-muted text-sm">ไม่พบผู้ใช้</p> : (
             <div className="rounded-xl bg-card border border-border overflow-hidden">
               <table className="w-full text-sm">
@@ -517,7 +552,7 @@ export default function UsersPage() {
                 </thead>
                 <tbody>
                   {filteredUsers.map((u) => (
-                    <tr key={u.id} className="border-b border-border last:border-0 hover:bg-card-hover cursor-pointer" onClick={() => setSelectedUser(u)}>
+                    <tr key={u.id} className={`border-b border-border last:border-0 hover:bg-card-hover cursor-pointer ${!u.active ? "opacity-50" : ""}`} onClick={() => setSelectedUser(u)}>
                       <td className="px-4 py-2.5">
                         {u.avatar ? <img src={u.avatar} alt="" className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-xs font-bold text-accent">{u.name.charAt(0)}</div>}
                       </td>
@@ -534,7 +569,13 @@ export default function UsersPage() {
                       </td>
                       <td className="px-4 py-2.5 text-muted text-xs">{u.email}</td>
                       <td className="px-4 py-2.5 text-muted text-xs">{u.phone || "-"}</td>
-                      <td className="px-4 py-2.5">{u.active ? <span className="text-green-400 text-xs">Active</span> : <span className="text-red-400 text-xs">Inactive</span>}</td>
+                      <td className="px-4 py-2.5">
+                        {(() => {
+                          const es = u.employment_status || (u.active ? "active" : "resigned");
+                          const opt = EMPLOYMENT_STATUS_OPTIONS.find(o => o.value === es) ?? EMPLOYMENT_STATUS_OPTIONS[0];
+                          return <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${opt.color}`}>{opt.label}{u.resigned_at && ` · ${u.resigned_at}`}</span>;
+                        })()}
+                      </td>
                       <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                         <div className="flex gap-2">
                           <button onClick={() => openEditUser(u)} title="แก้ไขข้อมูล" className="text-xs text-accent hover:underline">แก้ไข</button>
