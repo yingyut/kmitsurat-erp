@@ -273,6 +273,7 @@ export interface SalesActivity {
   contact_person?: string;                   // ติดต่อใคร (ชื่อ / ตำแหน่ง)
   next_action_type?: string;                 // ประเภทของ next action
   next_action_by?: string;                   // next action โดยใคร
+  reminder_date?: string;                    // วันที่แจ้งเตือน
 }
 
 export interface BomItem {
