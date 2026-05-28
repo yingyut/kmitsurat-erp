@@ -1555,10 +1555,15 @@ export default function DashboardPage() {
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3">
         <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
               {view==="executive"?"Executive Dashboard":view==="sales"?(seeAll?"Sales Dashboard":myName||"Sales Dashboard"):view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":"Projects Dashboard"}
             </h1>
+            {view==="sales" && !seeAll && myMonthTarget > 0 && (
+              <span className="text-[11px] font-medium text-muted/70 bg-card border border-border/60 rounded-full px-2.5 py-0.5">
+                เป้า {(myMonthTarget/1000).toFixed(0)}K · {myMonthPct}%
+              </span>
+            )}
             {!loading&&(
               <span className="flex items-center gap-1.5">
                 <span className="relative flex h-1.5 w-1.5">
