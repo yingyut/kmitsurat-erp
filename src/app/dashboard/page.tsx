@@ -2,6 +2,8 @@
 import { useEffect, useState, useCallback, createContext, useContext } from "react";
 import Link from "next/link";
 import { useCurrentUser } from "@/lib/UserContext";
+import { isOwnRecord, isOwner, filterOwned, canSeeAll } from "@/lib/ownership";
+import { showHeroKpiStrip } from "@/lib/featureFlags";
 import {
   DEFAULT_LAYOUTS, ALL_VIEWS, WIDGET_LABELS, getRoleDefaultView,
   loadLayout, saveLayout, resetLayout,
@@ -11,6 +13,7 @@ import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota,
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
+  AreaChart, Area,
 } from "recharts";
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -50,17 +53,20 @@ function KpiCard({ label, value, sub, color, href, pct, alert }: {
   color: "green" | "blue" | "purple" | "amber" | "red" | "cyan" | "muted";
   href?: string; pct?: number; alert?: boolean;
 }) {
-  const colorMap = { green: "text-green-400", blue: "text-blue-400", purple: "text-purple-400", amber: "text-amber-400", red: "text-rose-400", cyan: "text-cyan-400", muted: "text-muted" };
+  const valColor = { green: "text-emerald-500", blue: "text-blue-500", purple: "text-violet-500", amber: "text-amber-500", red: "text-orange-500", cyan: "text-sky-500", muted: "text-muted" }[color];
+  const barColor = { green: "bg-emerald-500", blue: "bg-blue-500", purple: "bg-violet-500", amber: "bg-amber-500", red: "bg-orange-500", cyan: "bg-sky-500", muted: "bg-muted" }[color];
   const inner = (
-    <div className={`rounded-2xl bg-card border ${alert ? "border-rose-700/60 bg-rose-950/30" : "border-border"} p-4 h-full flex flex-col justify-between gap-2`}>
-      <p className="text-xs text-muted leading-tight">{label}</p>
-      <p className={`text-3xl font-bold tracking-tight leading-none ${colorMap[color]}`}>{value}</p>
-      {pct !== undefined && (
-        <div className="h-1.5 rounded-full bg-background overflow-hidden">
-          <div className={`h-full rounded-full ${pct >= 80 ? "bg-green-500" : pct >= 50 ? "bg-yellow-500" : "bg-rose-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-        </div>
-      )}
-      {sub && <p className="text-[11px] text-muted">{sub}</p>}
+    <div className={`rounded-xl bg-card border p-4 min-h-[110px] flex flex-col justify-between transition-colors ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500" : "border-border/60 hover:border-border/90"}`}>
+      <p className="text-[11px] font-medium text-muted/60 uppercase tracking-wider leading-none">{label}</p>
+      <p className={`text-[1.75rem] font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
+      <div className="space-y-1.5">
+        {pct !== undefined && (
+          <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
+            <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
+          </div>
+        )}
+        <p className="text-[11px] text-muted/60 leading-snug min-h-[14px]">{sub ?? ""}</p>
+      </div>
     </div>
   );
   return href ? <Link href={href} className="block h-full hover:opacity-80 transition-opacity">{inner}</Link> : inner;
@@ -68,13 +74,12 @@ function KpiCard({ label, value, sub, color, href, pct, alert }: {
 
 // ── Alert Row ──────────────────────────────────────────────────────────────────
 function AlertRow({ level, msg, href }: { level: "red" | "orange" | "green"; msg: string; href: string }) {
-  const cls = level === "red" ? "bg-rose-950/40 border-rose-800/50 text-rose-300"
-    : level === "orange" ? "bg-amber-950/40 border-amber-800/50 text-amber-300"
-    : "bg-emerald-950/40 border-emerald-800/50 text-emerald-300";
+  const dot = level === "red" ? "bg-orange-400" : level === "orange" ? "bg-amber-400" : "bg-emerald-400";
   return (
-    <Link href={href} className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-xs hover:opacity-80 transition-opacity ${cls}`}>
-      <span className="shrink-0 mt-0.5">{level === "red" ? "🔴" : level === "orange" ? "🟡" : "🟢"}</span>
-      <span className="line-clamp-2">{msg}</span>
+    <Link href={href} className="flex items-center gap-3 rounded-lg border border-border/50 bg-card px-3 py-2 text-xs hover:bg-card-hover transition-colors">
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
+      <span className="text-foreground/80 line-clamp-1 flex-1">{msg}</span>
+      <span className="text-muted/50 shrink-0">→</span>
     </Link>
   );
 }
@@ -86,26 +91,26 @@ function Section({ title, action, children, defaultOpen = true }: {
   const [open, setOpen] = useState(defaultOpen);
   const onHide = useContext(HideCtx);
   return (
-    <div className="rounded-2xl bg-card border border-border overflow-hidden h-full">
-      <div className="flex items-center px-4 py-3 hover:bg-card-hover transition-colors gap-2">
+    <div className="rounded-xl bg-card border border-border/70 overflow-hidden h-full">
+      <div className="flex items-center px-4 py-3 border-b border-border/40 gap-2">
         <button onClick={() => setOpen(v => !v)} className="flex-1 text-left min-w-0">
-          <span className="text-sm font-semibold">{title}</span>
+          <span className="text-sm font-semibold text-foreground/90">{title}</span>
         </button>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           {action}
           {onHide && (
             <button
               onClick={e => { e.stopPropagation(); onHide(); }}
               title="ซ่อน"
-              className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[11px] text-muted hover:text-rose-400 hover:bg-rose-950/40 transition-all"
+              className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[11px] text-muted hover:text-orange-400 hover:bg-orange-950/30 transition-all"
             >✕</button>
           )}
-          <button onClick={() => setOpen(v => !v)} className="text-muted text-xs w-5 h-5 flex items-center justify-center hover:text-foreground transition-colors">
+          <button onClick={() => setOpen(v => !v)} className="text-muted/50 text-[10px] w-5 h-5 flex items-center justify-center hover:text-foreground transition-colors">
             {open ? "▲" : "▼"}
           </button>
         </div>
       </div>
-      {open && <div className="px-5 pb-5 pt-1">{children}</div>}
+      {open && <div className="p-4 pt-3">{children}</div>}
     </div>
   );
 }
@@ -119,7 +124,7 @@ function KpiCardWidget({ children }: { children: React.ReactNode }) {
         <button
           onClick={e => { e.stopPropagation(); onHide(); }}
           title="ซ่อน"
-          className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[11px] text-muted hover:text-rose-400 hover:bg-rose-950/40 bg-background/70 transition-all"
+          className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[11px] text-muted hover:text-orange-400 hover:bg-orange-950/30 bg-card/80 transition-all"
         >✕</button>
       )}
       {children}
@@ -134,7 +139,7 @@ function SortableWidget({ id, span, editMode, onToggleVisible, onToggleSpan, lab
   label: string; children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const colSpan = span === "full" ? "span 6" : span === "third" ? "span 2" : "span 3";
+  const colSpanClass = span === "full" ? "col-span-6" : span === "third" ? "col-span-6 @md:col-span-2" : "col-span-6 @md:col-span-3";
   return (
     <HideCtx.Provider value={onToggleVisible}>
       <div
@@ -142,17 +147,16 @@ function SortableWidget({ id, span, editMode, onToggleVisible, onToggleSpan, lab
         style={{
           transform: CSS.Transform.toString(transform),
           transition,
-          gridColumn: colSpan,
           opacity: isDragging ? 0.5 : 1,
           zIndex: isDragging ? 50 : "auto",
         }}
-        className="group relative"
+        className={`group relative ${colSpanClass}`}
       >
         {editMode && (
           <div
             {...listeners} {...attributes}
-            className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-t-2xl
-              bg-accent/10 border border-accent/30 border-b-0
+            className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-t-xl
+              bg-card border border-border/60 border-b-0
               cursor-grab active:cursor-grabbing select-none"
             style={{ touchAction: "none" }}
           >
@@ -172,7 +176,7 @@ function SortableWidget({ id, span, editMode, onToggleVisible, onToggleSpan, lab
             )}
           </div>
         )}
-        <div className={editMode ? "rounded-b-2xl rounded-tr-2xl ring-1 ring-accent/30 overflow-hidden" : ""}>{children}</div>
+        <div className={editMode ? "rounded-b-xl rounded-tr-xl ring-1 ring-border/60 overflow-hidden" : ""}>{children}</div>
       </div>
     </HideCtx.Provider>
   );
@@ -180,7 +184,7 @@ function SortableWidget({ id, span, editMode, onToggleVisible, onToggleSpan, lab
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const { currentUser } = useCurrentUser();
+  const { currentUser, hasPermission } = useCurrentUser();
   const isAdmin = ["admin", "Administrator"].includes(currentUser?.role ?? "");
 
   const [mounted, setMounted] = useState(false);
@@ -278,16 +282,34 @@ export default function DashboardPage() {
     return Math.floor((t.getTime() - now.getTime()) / 86400000);
   }
 
+  // ── Role-based data scoping ─────────────────────────────────────────────────
+  // Admin / Avenger เท่านั้นที่เห็นข้อมูลรวมทุกคนได้
+  // isOwnRecord() รองรับ match ทั้ง name และ email (เช่น sale.bb@kmitsurat.com)
+  const myName   = currentUser?.name ?? "";
+  const seeAll   = canSeeAll(currentUser);   // admin / avenger only
+  const sc = {
+    projects: seeAll ? projects : filterOwned(projects, currentUser, "assigned_to"),
+    sales:    seeAll ? sales    : filterOwned(sales,    currentUser, "assigned_to"),
+    quotas:   seeAll ? quotas   : quotas.filter(q => !q.user_name || isOwnRecord({ user_name: q.user_name }, currentUser)),
+    quots:    seeAll ? quots    : quots.filter(q => !q.created_by  || isOwnRecord({ created_by: q.created_by }, currentUser)),
+    presale:  seeAll ? presale  : filterOwned(presale,  currentUser, "assigned_to"),
+    service:  seeAll ? service  : service.filter(t => !t.technician || isOwnRecord({ technician: t.technician }, currentUser)),
+  };
+  // ใช้ seeAll แทน seeAllSales/seeAllService/seeAllPresale ทั้งหมด
+  const seeAllSales    = seeAll;
+  const seeAllService  = seeAll;
+  const seeAllPresale  = seeAll;
+
   // ── Filtered slices ───────────────────────────────────────────────────────────
   const filtQuotas = (() => {
-    if (filter === "year") return quotas.filter(q => q.month?.startsWith(thisYear));
-    if (filter === "month") return quotas.filter(q => q.month === thisMonth);
-    if (activeRange) return quotas.filter(q => q.month && q.month >= activeRange.from.slice(0,7) && q.month <= activeRange.to.slice(0,7));
-    return quotas.filter(q => q.month === thisMonth);
+    if (filter === "year") return sc.quotas.filter(q => q.month?.startsWith(thisYear));
+    if (filter === "month") return sc.quotas.filter(q => q.month === thisMonth);
+    if (activeRange) return sc.quotas.filter(q => q.month && q.month >= activeRange.from.slice(0,7) && q.month <= activeRange.to.slice(0,7));
+    return sc.quotas.filter(q => q.month === thisMonth);
   })();
-  const filtSales = sales.filter(a => inRange(a.next_follow_up));
-  const filtPresale = presale.filter(r => inRange(r.due_date));
-  const filtService = service.filter(t => inRange(t.service_date));
+  const filtSales = sc.sales.filter(a => inRange(a.next_follow_up));
+  const filtPresale = sc.presale.filter(r => inRange(r.due_date));
+  const filtService = sc.service.filter(t => inRange(t.service_date));
 
   // ── Core KPIs ─────────────────────────────────────────────────────────────────
   const target = filtQuotas.reduce((s, q) => s + (q.quota_target || 0), 0);
@@ -297,14 +319,14 @@ export default function DashboardPage() {
   const actualProfit = filtQuotas.reduce((s, q) => s + (q.actual_profit || 0), 0);
   const profitPct = profitTarget > 0 ? (actualProfit / profitTarget * 100) : 0;
   const gpPct = actual > 0 ? (actualProfit / actual * 100) : 0;
-  const pipeline = projects.filter(p => !["won","lost"].includes(p.status)).reduce((s, p) => s + (p.value || 0), 0);
-  const wonCount = projects.filter(p => p.status === "won").length;
-  const totalDeals = projects.filter(p => p.status !== "lost").length;
+  const pipeline = sc.projects.filter(p => !["won","lost"].includes(p.status)).reduce((s, p) => s + (p.value || 0), 0);
+  const wonCount = sc.projects.filter(p => p.status === "won").length;
+  const totalDeals = sc.projects.filter(p => p.status !== "lost").length;
   const convRate = totalDeals > 0 ? (wonCount / totalDeals * 100) : 0;
-  const allSvcResolved = service.filter(t => ["resolved","closed"].includes(t.status)).length;
-  const allSvcTotal = service.length;
+  const allSvcResolved = sc.service.filter(t => ["resolved","closed"].includes(t.status)).length;
+  const allSvcTotal = sc.service.length;
   const slaOnTime = allSvcTotal > 0 ? Math.round(allSvcResolved / allSvcTotal * 100) : 100;
-  const approvedProfit = quots.filter(q => q.status === "approved").reduce((s, q) => s + (q.gross_profit || 0), 0);
+  const approvedProfit = sc.quots.filter(q => q.status === "approved").reduce((s, q) => s + (q.gross_profit || 0), 0);
 
   // ── Contracts ─────────────────────────────────────────────────────────────────
   const activeContracts = contracts.filter(c => c.status === "active");
@@ -313,23 +335,37 @@ export default function DashboardPage() {
   const topExpiring = activeContracts.map(c => ({ c, d: dayDiff(c.end_date) ?? 9999 })).filter(x => x.d >= 0).sort((a,b) => a.d - b.d).slice(0,6);
 
   // ── Alerts ────────────────────────────────────────────────────────────────────
-  const salesOverdue = sales.filter(a => a.next_follow_up && a.next_follow_up < today && a.status !== "done");
-  const presaleOverdue = presale.filter(r => r.due_date && r.due_date < today && r.status !== "completed");
-  const svcOverdue = service.filter(t => t.service_date && t.service_date < today && !["resolved","closed"].includes(t.status));
+  const salesOverdue = sc.sales.filter(a => a.next_follow_up && a.next_follow_up < today && a.status !== "done");
+  const presaleOverdue = sc.presale.filter(r => r.due_date && r.due_date < today && r.status !== "completed");
+  const svcOverdue = sc.service.filter(t => t.service_date && t.service_date < today && !["resolved","closed"].includes(t.status));
   type AlertItem = { id: string; msg: string; level: "red"|"orange"|"green"; href: string };
   const alerts: AlertItem[] = [];
+  const myRole = currentUser?.role ?? "";
+  const isSalesRole = ["sale","avenger","Sales Executive","Sales Manager","Branch Manager"].includes(myRole) && !seeAll;
+  const isPresaleRole = ["presale","Presales Manager","Presales"].includes(myRole) && !seeAll;
+  const isServiceRole = ["service","Service Engineer","Service Manager"].includes(myRole) && !seeAll;
+  // Sales alerts — always shown (sc.sales is already user-scoped)
   if (salesOverdue.length > 0) alerts.push({ id:"so", msg:`Sales overdue ${salesOverdue.length} รายการ — ติดตามลูกค้าด่วน`, level:"red", href:"/sales" });
-  if (presaleOverdue.length > 0) alerts.push({ id:"po", msg:`Presale ค้าง SLA ${presaleOverdue.length} งาน`, level:"red", href:"/presale" });
-  if (expiredContracts.length > 0) alerts.push({ id:"ec", msg:`สัญญาหมดอายุแล้ว ${expiredContracts.length} รายการ — ต่ออายุด่วน`, level:"red", href:"/contracts" });
-  if (svcOverdue.length > 0) alerts.push({ id:"sv", msg:`Service ค้าง ${svcOverdue.length} งาน`, level:"orange", href:"/service" });
-  if (expiringContracts.length > 0) alerts.push({ id:"rc", msg:`${expiringContracts.length} สัญญาใกล้หมดใน ≤30 วัน`, level:"orange", href:"/contracts" });
+  // Presale alerts — only for presale/admin roles
+  if (!isSalesRole && !isServiceRole && presaleOverdue.length > 0) alerts.push({ id:"po", msg:`Presale ค้าง SLA ${presaleOverdue.length} งาน`, level:"red", href:"/presale" });
+  // Contract alerts — only for admin/avenger (service domain)
+  if (seeAll) {
+    if (expiredContracts.length > 0) alerts.push({ id:"ec", msg:`สัญญาหมดอายุแล้ว ${expiredContracts.length} รายการ — ต่ออายุด่วน`, level:"red", href:"/contracts" });
+    if (expiringContracts.length > 0) alerts.push({ id:"rc", msg:`${expiringContracts.length} สัญญาใกล้หมดใน ≤30 วัน`, level:"orange", href:"/contracts" });
+  }
+  // Service alerts — only for service/admin roles
+  if (!isSalesRole && !isPresaleRole && svcOverdue.length > 0) alerts.push({ id:"sv", msg:`Service ค้าง ${svcOverdue.length} งาน`, level:"orange", href:"/service" });
+  // Asset / warranty alerts — only for admin/avenger
   const warranty30 = assets.filter(a => { const d = dayDiff(a.warranty_end); return d !== null && d >= 0 && d <= 30; });
   const warrantyExpired = assets.filter(a => { const d = dayDiff(a.warranty_end); return d !== null && d < 0; });
-  if (warrantyExpired.length > 0) alerts.push({ id:"we", msg:`${warrantyExpired.length} อุปกรณ์หมดประกันแล้ว — ตรวจสอบ MA`, level:"red", href:"/assets" });
-  if (warranty30.length > 0) alerts.push({ id:"w30", msg:`${warranty30.length} อุปกรณ์ประกันหมดใน ≤30 วัน`, level:"orange", href:"/assets" });
-  const pmDue = assets.filter(a => { const d = dayDiff(a.pm_next_date); return d !== null && d < 0; });
-  if (pmDue.length > 0) alerts.push({ id:"pmd", msg:`${pmDue.length} อุปกรณ์ PM เลยกำหนดแล้ว — สร้าง PM Ticket`, level:"red", href:"/assets/pm-schedule" });
-  const draftQ = quots.filter(q => q.status === "draft").length;
+  if (seeAll) {
+    if (warrantyExpired.length > 0) alerts.push({ id:"we", msg:`${warrantyExpired.length} อุปกรณ์หมดประกันแล้ว — ตรวจสอบ MA`, level:"red", href:"/assets" });
+    if (warranty30.length > 0) alerts.push({ id:"w30", msg:`${warranty30.length} อุปกรณ์ประกันหมดใน ≤30 วัน`, level:"orange", href:"/assets" });
+    const pmDue = assets.filter(a => { const d = dayDiff(a.pm_next_date); return d !== null && d < 0; });
+    if (pmDue.length > 0) alerts.push({ id:"pmd", msg:`${pmDue.length} อุปกรณ์ PM เลยกำหนดแล้ว — สร้าง PM Ticket`, level:"red", href:"/assets/pm-schedule" });
+  }
+  // Quotation draft — always shown (sc.quots is already user-scoped)
+  const draftQ = sc.quots.filter(q => q.status === "draft").length;
   if (draftQ > 0) alerts.push({ id:"dq", msg:`${draftQ} ใบเสนอราคา Draft รอส่ง`, level:"green", href:"/quotations" });
 
   // ── Quarterly comparison ──────────────────────────────────────────────────────
@@ -343,7 +379,7 @@ export default function DashboardPage() {
   const fyEndMonthNum = ((fyStartMonth - 1 + 11) % 12) + 1;
   const fyEndYear = fyYear + (fyStartMonth + 11 > 12 ? 1 : 0);
   const fyEndStr = `${fyEndYear}-${String(fyEndMonthNum).padStart(2,"0")}`;
-  const fyQuotas = quotas.filter(q => q.month && q.month >= fyStartStr && q.month <= fyEndStr);
+  const fyQuotas = sc.quotas.filter(q => q.month && q.month >= fyStartStr && q.month <= fyEndStr);
   const quarterlyData = ([1,2,3,4] as const).map(q => {
     const qQ = fyQuotas.filter(qt => getQuarterOf(qt.month!) === q);
     const tgt = qQ.reduce((s, x) => s + (x.quota_target||0), 0);
@@ -367,39 +403,42 @@ export default function DashboardPage() {
     const act = pQ.reduce((s,q) => s+(q.actual_sales||0), 0);
     const pft = pQ.reduce((s,q) => s+(q.actual_profit||0), 0);
     const acts = filtSales.filter(a => a.assigned_to === u.name).length;
-    const activeProj = projects.filter(pr => pr.assigned_to === u.name && !["won","lost"].includes(pr.status)).length;
+    const activeProj = sc.projects.filter(pr => pr.assigned_to === u.name && !["won","lost"].includes(pr.status)).length;
     return { name:u.name, short, tgt, act, pft, acts, activeProj, pct: tgt>0?Math.round(act/tgt*100):0, targetK:Math.round(tgt/1000), actualK:Math.round(act/1000) };
   }).sort((a,b) => b.act-a.act);
   const poolSalesQ = filtQuotas.filter(q => q.user_name && !activeUserNames.has(q.user_name));
   const poolTgt = poolSalesQ.reduce((s,q)=>s+(q.quota_target||0),0), poolAct = poolSalesQ.reduce((s,q)=>s+(q.actual_sales||0),0), poolPft = poolSalesQ.reduce((s,q)=>s+(q.actual_profit||0),0);
   const poolSalesActs = filtSales.filter(a=>a.assigned_to&&!activeUserNames.has(a.assigned_to)).length;
-  const poolSalesProj = projects.filter(p=>p.assigned_to&&!activeUserNames.has(p.assigned_to)&&!["won","lost"].includes(p.status)).length;
+  const poolSalesProj = sc.projects.filter(p=>p.assigned_to&&!activeUserNames.has(p.assigned_to)&&!["won","lost"].includes(p.status)).length;
   const poolRow: PersonRow|null = (poolTgt>0||poolAct>0||poolSalesActs>0||poolSalesProj>0)
     ? { name:"กองกลาง",short:"กองกลาง",tgt:poolTgt,act:poolAct,pft:poolPft,acts:poolSalesActs,activeProj:poolSalesProj,pct:poolTgt>0?Math.round(poolAct/poolTgt*100):0,targetK:Math.round(poolTgt/1000),actualK:Math.round(poolAct/1000),isPool:true }
     : null;
-  const personData: PersonRow[] = [...activeSalesData,...(poolRow?[poolRow]:[])];
+  // ถ้า seeAllSales → แสดงทุกคน + กองกลาง  ถ้าไม่ → แสดงเฉพาะแถวของตัวเอง
+  const personData: PersonRow[] = seeAllSales
+    ? [...activeSalesData, ...(poolRow ? [poolRow] : [])]
+    : activeSalesData.filter(p => p.name === myName || (currentUser?.email && p.name === currentUser.email));
 
   // ── Presale Workload ──────────────────────────────────────────────────────────
   const PRESALE_ROLES = new Set(["presale","Presale Manager","presales_manager","Avenger","Avenger Team","avenger","Presale Engineer","BOQ Engineer","Presales Manager","Presales Engineer"]);
   const presaleRoleUsers = users.filter(u => PRESALE_ROLES.has(u.role));
-  const presaleAssigneeNames = new Set(presale.map(r=>r.assigned_to).filter(Boolean) as string[]);
+  const presaleAssigneeNames = new Set(sc.presale.map(r=>r.assigned_to).filter(Boolean) as string[]);
   const extraPresaleAssignees = [...presaleAssigneeNames].filter(n => !presaleRoleUsers.find(u=>u.name===n));
   const activeExtraPresale = extraPresaleAssignees.filter(n => activeUserNames.has(n));
   const exPresaleNames = extraPresaleAssignees.filter(n => !activeUserNames.has(n));
   const allPresalePeople = [...presaleRoleUsers.map(u=>u.name),...activeExtraPresale];
   const prWorkload = allPresalePeople.map(name => ({
     name: name.split(" ")[0], fullName: name, isPool: false,
-    pending: presale.filter(r=>r.assigned_to===name&&r.status==="pending").length,
-    progress: presale.filter(r=>r.assigned_to===name&&r.status==="in_progress").length,
-    done: presale.filter(r=>r.assigned_to===name&&r.status==="completed").length,
+    pending: sc.presale.filter(r=>r.assigned_to===name&&r.status==="pending").length,
+    progress: sc.presale.filter(r=>r.assigned_to===name&&r.status==="in_progress").length,
+    done: sc.presale.filter(r=>r.assigned_to===name&&r.status==="completed").length,
   })).sort((a,b)=>(b.pending+b.progress+b.done)-(a.pending+a.progress+a.done));
-  const exPresaleTickets = presale.filter(r=>r.assigned_to&&exPresaleNames.includes(r.assigned_to));
+  const exPresaleTickets = sc.presale.filter(r=>r.assigned_to&&exPresaleNames.includes(r.assigned_to));
   if (exPresaleTickets.length > 0) prWorkload.push({ name:"กองกลาง",fullName:"กองกลาง",isPool:true, pending:exPresaleTickets.filter(r=>r.status==="pending").length, progress:exPresaleTickets.filter(r=>r.status==="in_progress").length, done:exPresaleTickets.filter(r=>r.status==="completed").length });
 
   // ── Service ───────────────────────────────────────────────────────────────────
-  const svcOpen = service.filter(t=>t.status==="open").length;
-  const svcInProg = service.filter(t=>t.status==="in_progress").length;
-  const svcDone = service.filter(t=>["resolved","closed"].includes(t.status)).length;
+  const svcOpen = sc.service.filter(t=>t.status==="open").length;
+  const svcInProg = sc.service.filter(t=>t.status==="in_progress").length;
+  const svcDone = sc.service.filter(t=>["resolved","closed"].includes(t.status)).length;
   const svcDelay = svcOverdue.length;
   const svcPieData = [
     { name:"เสร็จแล้ว",value:svcDone,fill:C.green },
@@ -407,37 +446,39 @@ export default function DashboardPage() {
     { name:"กำลังดำเนินการ",value:svcInProg,fill:C.amber },
     { name:"รอดำเนินการ",value:svcOpen,fill:C.blue },
   ].filter(d=>d.value>0);
-  const allTechNames = [...new Set(service.map(t=>t.technician))].filter(Boolean) as string[];
+  const allTechNames = [...new Set(sc.service.map(t=>t.technician))].filter(Boolean) as string[];
   const activeTechNames = allTechNames.filter(n=>activeUserNames.has(n));
   const exTechNames = allTechNames.filter(n=>!activeUserNames.has(n));
   const techWorkload = [
     ...activeTechNames.map(name => {
-      const mine = service.filter(t=>t.technician===name);
+      const mine = sc.service.filter(t=>t.technician===name);
       return { name:name.split(" ")[0], fullName:name, open:mine.filter(t=>t.status==="open").length, inProg:mine.filter(t=>t.status==="in_progress").length, done:mine.filter(t=>["resolved","closed"].includes(t.status)).length, total:mine.length, isPool:false };
     }),
-    ...(exTechNames.length>0?[(() => { const pool=service.filter(t=>t.technician&&exTechNames.includes(t.technician)); return { name:"กองกลาง",fullName:"กองกลาง",open:pool.filter(t=>t.status==="open").length,inProg:pool.filter(t=>t.status==="in_progress").length,done:pool.filter(t=>["resolved","closed"].includes(t.status)).length,total:pool.length,isPool:true }; })()]:[]),
+    ...(exTechNames.length>0?[(() => { const pool=sc.service.filter(t=>t.technician&&exTechNames.includes(t.technician)); return { name:"กองกลาง",fullName:"กองกลาง",open:pool.filter(t=>t.status==="open").length,inProg:pool.filter(t=>t.status==="in_progress").length,done:pool.filter(t=>["resolved","closed"].includes(t.status)).length,total:pool.length,isPool:true }; })()]:[]),
   ].sort((a,b)=>(b.open+b.inProg)-(a.open+a.inProg)).slice(0,8);
 
   // ── Funnel ────────────────────────────────────────────────────────────────────
   const funnelSteps = [
-    { name:"Lead",value:projects.filter(p=>p.status==="lead").length,fill:C.blue },
-    { name:"Opportunity",value:projects.filter(p=>p.status==="opportunity").length,fill:C.cyan },
-    { name:"Proposal",value:projects.filter(p=>p.status==="proposal").length,fill:C.amber },
-    { name:"Negotiation",value:projects.filter(p=>p.status==="negotiation").length,fill:C.orange },
-    { name:"Won",value:projects.filter(p=>p.status==="won").length,fill:C.green },
+    { name:"Lead",       value:sc.projects.filter(p=>p.status==="lead").length,        fill:C.blue },
+    { name:"Opportunity",value:sc.projects.filter(p=>p.status==="opportunity").length,  fill:C.cyan },
+    { name:"Proposal",   value:sc.projects.filter(p=>p.status==="proposal").length,     fill:C.amber },
+    { name:"Negotiation",value:sc.projects.filter(p=>p.status==="negotiation").length,  fill:C.orange },
+    { name:"Won",        value:sc.projects.filter(p=>p.status==="won").length,          fill:C.green },
   ];
 
   // ── Quotation stats ───────────────────────────────────────────────────────────
-  const qtDraft = quots.filter(q=>q.status==="draft").length;
-  const qtSent = quots.filter(q=>["sent","follow_up","revised"].includes(q.status)).length;
-  const qtApproved = quots.filter(q=>q.status==="approved").length;
-  const qtRejected = quots.filter(q=>["rejected","expired"].includes(q.status)).length;
-  const approvedGP = quots.filter(q=>q.status==="approved").reduce((s,q)=>s+(q.gross_profit||0),0);
-  const approvedTotal = quots.filter(q=>q.status==="approved").reduce((s,q)=>s+(q.grand_total||0),0);
-  const prTotal = presale.length, prPending = presale.filter(r=>r.status==="pending").length;
-  const prInProg = presale.filter(r=>r.status==="in_progress").length, prDone = presale.filter(r=>r.status==="completed").length;
+  const qtDraft    = sc.quots.filter(q=>q.status==="draft").length;
+  const qtSent     = sc.quots.filter(q=>["sent","follow_up","revised"].includes(q.status)).length;
+  const qtApproved = sc.quots.filter(q=>q.status==="approved").length;
+  const qtRejected = sc.quots.filter(q=>["rejected","expired"].includes(q.status)).length;
+  const approvedGP    = sc.quots.filter(q=>q.status==="approved").reduce((s,q)=>s+(q.gross_profit||0),0);
+  const approvedTotal = sc.quots.filter(q=>q.status==="approved").reduce((s,q)=>s+(q.grand_total||0),0);
+  const prTotal   = sc.presale.length;
+  const prPending = sc.presale.filter(r=>r.status==="pending").length;
+  const prInProg  = sc.presale.filter(r=>r.status==="in_progress").length;
+  const prDone    = sc.presale.filter(r=>r.status==="completed").length;
   const pmOverdue = assets.filter(a=>{ const d=dayDiff(a.pm_next_date); return d!==null&&d<0; });
-  const pmDue30 = assets.filter(a=>{ const d=dayDiff(a.pm_next_date); return d!==null&&d>=0&&d<=30; });
+  const pmDue30   = assets.filter(a=>{ const d=dayDiff(a.pm_next_date); return d!==null&&d>=0&&d<=30; });
   const overdueJobs = salesOverdue.length + presaleOverdue.length + svcOverdue.length;
 
   // ── Layout management ─────────────────────────────────────────────────────────
@@ -560,29 +601,42 @@ export default function DashboardPage() {
       </Section>
     );
 
-    if (id === "exec-pipeline" || id === "sales-funnel" || id === "prj-funnel") return (
-      <Section title="🔽 Sales Pipeline" action={<Link href="/projects" className="text-[11px] text-accent hover:underline">ดูดีล →</Link>}>
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
-          <div className="text-xs text-muted">Win Rate</div>
-          <div className="text-2xl font-bold text-green-400">{convRate.toFixed(0)}%</div>
-          <div className="text-xs text-muted">({wonCount}/{totalDeals} ดีล)</div>
-        </div>
-        <div className="space-y-2">
-          {funnelSteps.map((step, i) => {
-            const maxVal = Math.max(...funnelSteps.map(s=>s.value), 1);
-            return (
-              <Link key={step.name} href="/projects" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                <div className="w-20 text-xs text-right text-muted shrink-0">{step.name}</div>
-                <div className="flex-1 h-7 rounded-lg bg-background overflow-hidden">
-                  <div className="h-full rounded-lg" style={{ width:`${(step.value/maxVal)*100}%`,backgroundColor:step.fill,opacity:0.85-i*0.05 }} />
-                </div>
-                <div className="w-8 text-xs font-bold text-right" style={{ color:step.fill }}>{step.value}</div>
+    if (id === "exec-pipeline" || id === "sales-funnel" || id === "prj-funnel") {
+      const pipeCards = [
+        { name:"Lead",        sub:"ลีด",          value:funnelSteps.find(s=>s.name==="Lead")?.value??0,        color:"text-blue-500",    bg:"bg-blue-500/10 border-blue-500/25"    },
+        { name:"Opportunity", sub:"โอกาสขาย",     value:funnelSteps.find(s=>s.name==="Opportunity")?.value??0, color:"text-cyan-500",    bg:"bg-cyan-500/10 border-cyan-500/25"    },
+        { name:"Proposal",    sub:"เสนอราคา",     value:funnelSteps.find(s=>s.name==="Proposal")?.value??0,    color:"text-amber-500",   bg:"bg-amber-500/10 border-amber-500/25"  },
+        { name:"Negotiation", sub:"กำลังเจรจา",   value:funnelSteps.find(s=>s.name==="Negotiation")?.value??0, color:"text-orange-500",  bg:"bg-orange-500/10 border-orange-500/25"},
+        { name:"Won",         sub:"ปิดดีลได้",    value:funnelSteps.find(s=>s.name==="Won")?.value??0,         color:"text-emerald-500", bg:"bg-emerald-500/10 border-emerald-500/25"},
+      ];
+      return (
+        <Section title="Sales Pipeline" action={<Link href="/projects" className="text-[11px] text-accent hover:underline">ดูดีล →</Link>}>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {pipeCards.slice(0,3).map(s=>(
+              <Link key={s.name} href="/projects" className={`rounded-xl border p-3 text-center hover:opacity-80 transition-opacity ${s.bg}`}>
+                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                <p className="text-[11px] font-medium mt-0.5">{s.sub}</p>
+                <p className="text-[10px] text-muted/50">{s.name}</p>
               </Link>
-            );
-          })}
-        </div>
-      </Section>
-    );
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {pipeCards.slice(3).map(s=>(
+              <Link key={s.name} href="/projects" className={`rounded-xl border p-3 text-center hover:opacity-80 transition-opacity ${s.bg}`}>
+                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                <p className="text-[11px] font-medium mt-0.5">{s.sub}</p>
+                <p className="text-[10px] text-muted/50">{s.name}</p>
+              </Link>
+            ))}
+          </div>
+          <Link href="/projects" className="block rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-center hover:opacity-80 transition-opacity">
+            <p className="text-[11px] text-muted/60 mb-0.5">Win Rate</p>
+            <p className="text-2xl font-bold text-emerald-500">{convRate.toFixed(0)}%</p>
+            <p className="text-[11px] text-muted/60">{wonCount} / {totalDeals} ดีล</p>
+          </Link>
+        </Section>
+      );
+    }
 
     if (id === "exec-sales-table" || id === "sales-table") return (
       <Section title={`👥 ยอดขายรายบุคคล · ${filterLabel}`} action={<Link href="/reports" className="text-[11px] text-accent hover:underline">รายงาน →</Link>}>
@@ -708,9 +762,9 @@ export default function DashboardPage() {
     if (id === "exec-contracts" || id === "prj-contracts") return (
       <Section title="📄 สัญญาใกล้หมดอายุ" action={<Link href="/contracts" className="text-[11px] text-accent hover:underline">ดูสัญญา →</Link>}>
         <div className="grid grid-cols-2 gap-2 mb-3">
-          <Link href="/contracts" className="rounded-xl bg-rose-950/30 border border-rose-800/40 p-3 text-center hover:opacity-80">
-            <p className="text-2xl font-bold text-rose-400">{expiringContracts.length}</p>
-            <p className="text-[10px] text-muted mt-0.5">หมดใน ≤30 วัน</p>
+          <Link href="/contracts" className="rounded-xl bg-orange-950/20 border border-orange-800/30 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-orange-400">{expiringContracts.length}</p>
+            <p className="text-[10px] text-muted/70 mt-0.5">หมดใน ≤30 วัน</p>
           </Link>
           <Link href="/contracts" className="rounded-xl bg-amber-950/30 border border-amber-800/40 p-3 text-center hover:opacity-80">
             <p className="text-2xl font-bold text-amber-400">{expiredContracts.length}</p>
@@ -734,41 +788,102 @@ export default function DashboardPage() {
     );
 
     // ── SALES ─────────────────────────────────────────────────────────────────
-    if (id === "sales-person-cards") return (
-      <div>
-        <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">Sales รายบุคคล · {filterLabel}</p>
-        <div className="flex gap-3 flex-wrap">
-          {personData.filter(p=>!p.isPool).map(p=>{
-            const myOverdue = salesOverdue.filter(a=>a.assigned_to===p.name).length;
-            return (
-              <Link key={p.name} href="/sales"
-                className="flex-1 min-w-[200px] max-w-[280px] rounded-2xl bg-card border border-border p-4 hover:border-accent/50 hover:bg-card-hover transition-all">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="text-sm font-semibold">{p.short}</p>
-                    <p className="text-[10px] text-muted truncate max-w-[140px]">{p.name}</p>
-                  </div>
-                  <div className={`text-xs font-bold px-2 py-0.5 rounded-full ${p.pct>=80?"bg-green-900/50 text-green-300":p.pct>=50?"bg-amber-900/50 text-amber-300":p.tgt>0?"bg-rose-900/50 text-rose-300":"bg-muted/10 text-muted"}`}>
-                    {p.tgt>0?`${p.pct}%`:"—"}
-                  </div>
+    if (id === "sales-person-cards") {
+      const myCards = personData.filter(p=>!p.isPool);
+      // Personal card — show only when non-admin sales user sees their own row
+      if (!seeAll) {
+        const p = myCards[0];
+        if (!p) return <p className="text-xs text-muted py-4">ยังไม่มีข้อมูล</p>;
+        const myOverdue = salesOverdue.filter(a=>a.assigned_to===p.name).length;
+        const profitK = Math.round(p.pft/1000);
+        const gpPctMe = p.act>0?Math.round(p.pft/p.act*100):0;
+        const pctColor = p.pct>=80?"text-emerald-500":p.pct>=50?"text-amber-500":p.tgt>0?"text-orange-500":"text-muted";
+        const barColor = p.pct>=80?"bg-emerald-500":p.pct>=50?"bg-amber-500":"bg-orange-500";
+        const gpColor  = gpPctMe>=20?"text-emerald-500":gpPctMe>=10?"text-amber-500":profitK>0?"text-foreground/70":"text-muted";
+        return (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Achievement */}
+              <div className="rounded-xl bg-background border border-border/60 p-4 flex flex-col justify-between min-h-[110px]">
+                <p className="text-[11px] text-muted/60 truncate leading-tight">Achievement</p>
+                <p className={`text-xl font-bold leading-none ${pctColor}`}>{p.tgt>0?`${p.pct}%`:"—"}</p>
+                <div className="space-y-1 overflow-hidden">
+                  {p.tgt>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className={`h-full ${barColor}`} style={{width:`${Math.min(p.pct,100)}%`}}/></div>}
+                  <p className="text-[10px] text-muted/50 truncate">{p.actualK>0?`${p.actualK.toLocaleString()}K`:"-"} / {p.targetK>0?`${p.targetK.toLocaleString()}K`:"-"}</p>
                 </div>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs"><span className="text-muted">ยอดขาย</span><span className="font-semibold text-green-400">{p.actualK>0?`${p.actualK.toLocaleString()}K`:"—"}</span></div>
-                  <div className="flex justify-between text-xs"><span className="text-muted">เป้า</span><span className="text-muted">{p.targetK>0?`${p.targetK.toLocaleString()}K`:"—"}</span></div>
-                  {p.tgt>0&&<div className="h-1.5 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${p.pct>=80?"bg-green-500":p.pct>=50?"bg-amber-500":"bg-rose-500"}`} style={{ width:`${Math.min(p.pct,100)}%` }}/></div>}
-                  <div className="flex gap-3 mt-2 pt-2 border-t border-border">
-                    <div className="text-center"><p className="text-xs font-bold">{p.acts}</p><p className="text-[10px] text-muted">Activity</p></div>
-                    <div className="text-center"><p className="text-xs font-bold">{p.activeProj}</p><p className="text-[10px] text-muted">โปรเจค</p></div>
-                    <div className="text-center"><p className={`text-xs font-bold ${myOverdue>0?"text-rose-400":""}`}>{myOverdue}</p><p className="text-[10px] text-muted">ค้าง</p></div>
-                  </div>
-                </div>
+              </div>
+              {/* ยอดขาย */}
+              <Link href="/sales" className="rounded-xl bg-background border border-border/60 p-4 flex flex-col justify-between min-h-[110px] hover:border-border/90 transition-colors">
+                <p className="text-[11px] text-muted/60 truncate leading-tight">ยอดขาย</p>
+                <p className="text-xl font-bold leading-none text-emerald-500">{p.actualK>0?`${p.actualK.toLocaleString()}K`:"—"}</p>
+                <p className="text-[10px] text-muted/50 truncate">THB · {filterLabel}</p>
               </Link>
-            );
-          })}
-          {personData.filter(p=>!p.isPool).length===0&&<p className="text-xs text-muted py-4">ยังไม่มีข้อมูล Sales</p>}
+              {/* GP */}
+              <Link href="/reports" className="rounded-xl bg-background border border-border/60 p-4 flex flex-col justify-between min-h-[110px] hover:border-border/90 transition-colors">
+                <p className="text-[11px] text-muted/60 truncate leading-tight">กำไร GP</p>
+                <p className={`text-xl font-bold leading-none ${gpColor}`}>{profitK>0?`${profitK.toLocaleString()}K`:"—"}</p>
+                <p className="text-[10px] text-muted/50 truncate">{gpPctMe>0?`${gpPctMe}% margin`:"ยังไม่มีข้อมูล"}</p>
+              </Link>
+              {/* Follow-up ค้าง */}
+              <Link href="/sales" className={`rounded-xl border p-4 flex flex-col justify-between min-h-[110px] transition-colors ${myOverdue>0?"bg-orange-950/10 border-orange-600/30 hover:border-orange-500/50":"bg-background border-border/60 hover:border-border/90"}`}>
+                <p className="text-[11px] text-muted/60 truncate leading-tight">Follow-up</p>
+                <p className={`text-xl font-bold leading-none ${myOverdue>0?"text-orange-500":"text-muted"}`}>{myOverdue}</p>
+                <p className="text-[10px] text-muted/50 truncate">{myOverdue>0?"งานต้องติดตาม":"ทุกงานปกติ"}</p>
+              </Link>
+            </div>
+            {/* Activity row */}
+            <div className="flex items-center gap-5 px-1 pt-1 border-t border-border/30">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-sm font-semibold">{p.acts}</span>
+                <span className="text-[11px] text-muted/60">Activity</span>
+              </div>
+              <div className="w-px h-3 bg-border/40"/>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-sm font-semibold">{p.activeProj}</span>
+                <span className="text-[11px] text-muted/60">โปรเจค active</span>
+              </div>
+              <span className="ml-auto text-[11px] text-muted/40">{p.short||p.name} · {filterLabel}</span>
+            </div>
+          </div>
+        );
+      }
+      // Admin / seeAll: team cards view
+      return (
+        <div>
+          <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">Sales รายบุคคล · {filterLabel}</p>
+          <div className="flex gap-3 flex-wrap">
+            {myCards.map(p=>{
+              const myOverdue = salesOverdue.filter(a=>a.assigned_to===p.name).length;
+              return (
+                <Link key={p.name} href="/sales"
+                  className="flex-1 min-w-[200px] max-w-[280px] rounded-2xl bg-card border border-border p-4 hover:border-accent/50 hover:bg-card-hover transition-all">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-sm font-semibold">{p.short}</p>
+                      <p className="text-[10px] text-muted truncate max-w-[140px]">{p.name}</p>
+                    </div>
+                    <div className={`text-xs font-bold px-2 py-0.5 rounded-full ${p.pct>=80?"bg-green-900/50 text-green-300":p.pct>=50?"bg-amber-900/50 text-amber-300":p.tgt>0?"bg-rose-900/50 text-rose-300":"bg-muted/10 text-muted"}`}>
+                      {p.tgt>0?`${p.pct}%`:"—"}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs"><span className="text-muted">ยอดขาย</span><span className="font-semibold text-green-400">{p.actualK>0?`${p.actualK.toLocaleString()}K`:"—"}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-muted">เป้า</span><span className="text-muted">{p.targetK>0?`${p.targetK.toLocaleString()}K`:"—"}</span></div>
+                    {p.tgt>0&&<div className="h-1.5 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${p.pct>=80?"bg-green-500":p.pct>=50?"bg-amber-500":"bg-rose-500"}`} style={{ width:`${Math.min(p.pct,100)}%` }}/></div>}
+                    <div className="flex gap-3 mt-2 pt-2 border-t border-border">
+                      <div className="text-center"><p className="text-xs font-bold">{p.acts}</p><p className="text-[10px] text-muted">Activity</p></div>
+                      <div className="text-center"><p className="text-xs font-bold">{p.activeProj}</p><p className="text-[10px] text-muted">โปรเจค</p></div>
+                      <div className="text-center"><p className={`text-xs font-bold ${myOverdue>0?"text-rose-400":""}`}>{myOverdue}</p><p className="text-[10px] text-muted">ค้าง</p></div>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+            {myCards.length===0&&<p className="text-xs text-muted py-4">ยังไม่มีข้อมูล Sales</p>}
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
 
     if (id === "sales-kpis") return (
       <div>
@@ -788,44 +903,47 @@ export default function DashboardPage() {
       <Section title="📋 สถานะใบเสนอราคา" action={<Link href="/quotations" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>}>
         <div className="grid grid-cols-2 gap-3 mb-4">
           {[
-            { label:"Draft",value:qtDraft,color:"text-amber-400",bg:"bg-amber-950/30 border-amber-800/40" },
-            { label:"Sent / Follow-up",value:qtSent,color:"text-blue-400",bg:"bg-blue-950/30 border-blue-800/40" },
-            { label:"Approved",value:qtApproved,color:"text-green-400",bg:"bg-green-950/30 border-green-800/40" },
-            { label:"Rejected / Expired",value:qtRejected,color:"text-rose-400",bg:"bg-rose-950/30 border-rose-800/40" },
+            { label:"Draft", sub:"ร่าง", value:qtDraft,color:"text-amber-500",bg:"bg-amber-500/10 border-amber-500/25" },
+            { label:"Sent / Follow-up", sub:"ส่งแล้ว / ติดตาม", value:qtSent,color:"text-blue-500",bg:"bg-blue-500/10 border-blue-500/25" },
+            { label:"Approved", sub:"อนุมัติแล้ว", value:qtApproved,color:"text-emerald-500",bg:"bg-emerald-500/10 border-emerald-500/25" },
+            { label:"Rejected / Expired", sub:"ปฏิเสธ / หมดอายุ", value:qtRejected,color:"text-orange-500",bg:"bg-orange-500/10 border-orange-500/25" },
           ].map(s=>(
             <Link key={s.label} href="/quotations" className={`rounded-xl border p-3 text-center hover:opacity-80 transition-opacity ${s.bg}`}>
               <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-              <p className="text-[10px] text-muted mt-0.5">{s.label}</p>
+              <p className="text-[11px] font-medium mt-0.5">{s.sub}</p>
+              <p className="text-[10px] text-muted/50">{s.label}</p>
             </Link>
           ))}
         </div>
         {approvedTotal>0&&(
-          <Link href="/quotations" className="block rounded-xl bg-green-950/20 border border-green-800/30 p-3 text-center hover:opacity-80">
-            <p className="text-xs text-muted mb-1">มูลค่า Approved รวม</p>
-            <p className="text-xl font-bold text-green-400">{(approvedTotal/1e6).toFixed(2)}M THB</p>
-            <p className="text-[10px] text-muted">GP {(approvedGP/1000).toFixed(0)}K</p>
+          <Link href="/quotations" className="block rounded-xl bg-emerald-500/10 border border-emerald-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-xs text-muted/60 mb-1">มูลค่า Approved รวม</p>
+            <p className="text-xl font-bold text-emerald-500">{(approvedTotal/1e6).toFixed(2)}M THB</p>
+            <p className="text-[10px] text-muted/60">GP {(approvedGP/1000).toFixed(0)}K</p>
           </Link>
         )}
       </Section>
     );
 
     if (id === "sales-overdue") return (
-      <Section title="⚠️ Follow-up ค้าง" action={<Link href="/sales" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>}>
-        {salesOverdue.length===0?<p className="text-xs text-muted py-4 text-center">✅ ไม่มีงานค้าง</p>:(
-          <div className="space-y-1.5">
+      <Section title="Follow-up ค้าง" action={<Link href="/sales" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>}>
+        {salesOverdue.length===0?(
+          <p className="text-xs text-muted/60 py-3 text-center">ไม่มีงานค้าง</p>
+        ):(
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5">
             {salesOverdue.slice(0,8).map(a=>(
-              <Link key={a.id} href="/sales" className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover transition-colors">
-                <div className="text-xs text-rose-400 w-20 shrink-0">{a.next_follow_up}</div>
+              <Link key={a.id} href="/sales" className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border/40 hover:bg-card-hover transition-colors">
+                <div className="text-xs text-orange-400/70 w-[88px] shrink-0 font-mono">{a.next_follow_up}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate font-medium">{a.customer_name||"—"}</p>
-                  <p className="text-[10px] text-muted truncate">{a.project_name||a.description?.slice(0,40)||"—"}</p>
+                  <p className="text-[10px] text-muted/60 truncate">{a.project_name||a.description?.slice(0,40)||"—"}</p>
                 </div>
-                <div className="text-[10px] text-muted shrink-0">{a.assigned_to?.split(" ")[0]||"—"}</div>
+                {!seeAll ? null : <div className="text-[10px] text-muted/50 shrink-0">{a.assigned_to?.split(" ")[0]||"—"}</div>}
               </Link>
             ))}
-            {salesOverdue.length>8&&<Link href="/sales" className="block text-center text-[11px] text-accent hover:underline pt-1">+ อีก {salesOverdue.length-8} รายการ</Link>}
           </div>
         )}
+        {salesOverdue.length>8&&<Link href="/sales" className="block text-center text-[11px] text-accent hover:underline pt-2">+ อีก {salesOverdue.length-8} รายการ</Link>}
       </Section>
     );
 
@@ -887,7 +1005,7 @@ export default function DashboardPage() {
           <div className="space-y-1.5">
             {presaleOverdue.slice(0,8).map(r=>(
               <Link key={r.id} href="/presale" className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover transition-colors">
-                <div className="text-xs text-rose-400 w-20 shrink-0">{r.due_date}</div>
+                <div className="text-xs text-orange-400/80 w-20 shrink-0 font-mono">{r.due_date}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate font-medium">{r.project_name||r.customer_name||"—"}</p>
                   <p className="text-[10px] text-muted truncate">{r.type?.replace(/_/g," ")||"—"}</p>
@@ -977,7 +1095,7 @@ export default function DashboardPage() {
       <div>
         <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">Service KPI (ทั้งหมด)</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <KpiCard label="Ticket รวม" value={String(service.length)} sub="ทุกสถานะ" color="blue" href="/service" />
+          <KpiCard label="Ticket รวม" value={String(allSvcTotal)} sub="ทุกสถานะ" color="blue" href="/service" />
           <KpiCard label="เปิดอยู่" value={String(svcOpen)} sub="open" color={svcOpen>0?"amber":"muted"} href="/service" />
           <KpiCard label="กำลังดำเนินการ" value={String(svcInProg)} sub="in progress" color="cyan" href="/service" />
           <KpiCard label="เสร็จแล้ว" value={String(svcDone)} sub="resolved/closed" color="green" href="/service" />
@@ -993,7 +1111,7 @@ export default function DashboardPage() {
           <div className="space-y-1.5">
             {svcOverdue.slice(0,6).map(t=>(
               <Link key={t.id} href="/service" className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover transition-colors">
-                <div className="text-xs text-rose-400 w-20 shrink-0">{t.service_date}</div>
+                <div className="text-xs text-orange-400/80 w-20 shrink-0 font-mono">{t.service_date}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate font-medium">{t.customer_name||"—"}</p>
                   <p className="text-[10px] text-muted truncate">{t.issue?.slice(0,40)||t.type?.replace(/_/g," ")||"—"}</p>
@@ -1010,16 +1128,16 @@ export default function DashboardPage() {
     if (id === "svc-pm") return (
       <Section title="🛠️ PM Schedule" action={<Link href="/assets/pm-schedule" className="text-[11px] text-accent hover:underline">ดูตาราง →</Link>}>
         <div className="grid grid-cols-2 gap-2 mb-3">
-          <Link href="/assets/pm-schedule" className="rounded-xl bg-rose-950/30 border border-rose-800/40 p-3 text-center hover:opacity-80">
-            <p className="text-2xl font-bold text-rose-400">{pmOverdue.length}</p><p className="text-[10px] text-muted mt-0.5">PM เลยกำหนด</p>
+          <Link href="/assets/pm-schedule" className="rounded-xl bg-orange-950/20 border border-orange-800/30 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-orange-400">{pmOverdue.length}</p><p className="text-[10px] text-muted/70 mt-0.5">PM เลยกำหนด</p>
           </Link>
-          <Link href="/assets/pm-schedule" className="rounded-xl bg-amber-950/30 border border-amber-800/40 p-3 text-center hover:opacity-80">
-            <p className="text-2xl font-bold text-amber-400">{pmDue30.length}</p><p className="text-[10px] text-muted mt-0.5">PM ภายใน 30 วัน</p>
+          <Link href="/assets/pm-schedule" className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-amber-500">{pmDue30.length}</p><p className="text-[10px] text-muted/60 mt-0.5">PM ภายใน 30 วัน</p>
           </Link>
         </div>
         {pmOverdue.slice(0,4).map(a=>(
           <Link key={a.id} href="/assets/pm-schedule" className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover transition-colors">
-            <div className="text-xs text-rose-400 w-20 shrink-0">{a.pm_next_date}</div>
+            <div className="text-xs text-orange-400/80 w-20 shrink-0 font-mono">{a.pm_next_date}</div>
             <div className="flex-1 min-w-0">
               <p className="text-xs truncate font-medium">{a.device_model||a.km_number}</p>
               <p className="text-[10px] text-muted truncate">{a.customer_name}</p>
@@ -1316,7 +1434,7 @@ export default function DashboardPage() {
               <div>
                 <p className="text-[10px] text-rose-400 font-semibold mb-1.5">หมดภายใน 30 วัน ({expiring30.length})</p>
                 {expiring30.map(c => (
-                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-rose-950/20 border border-rose-800/30 px-3 py-1.5 mb-1">
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-orange-500/8 border border-orange-500/20 px-3 py-1.5 mb-1">
                     <p className="text-sm flex-1 truncate font-medium">{c.customer_name}</p>
                     <p className="text-[11px] text-rose-300 shrink-0">{c.end_date}</p>
                   </div>
@@ -1327,7 +1445,7 @@ export default function DashboardPage() {
               <div>
                 <p className="text-[10px] text-amber-400 font-semibold mb-1.5">หมดภายใน 31–60 วัน ({expiring60.length})</p>
                 {expiring60.map(c => (
-                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-amber-950/20 border border-amber-800/30 px-3 py-1.5 mb-1">
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-amber-500/8 border border-amber-500/20 px-3 py-1.5 mb-1">
                     <p className="text-sm flex-1 truncate">{c.customer_name}</p>
                     <p className="text-[11px] text-amber-300 shrink-0">{c.end_date}</p>
                   </div>
@@ -1425,128 +1543,153 @@ export default function DashboardPage() {
   const viewLabel = view==="executive"?"📊 Executive":view==="sales"?"💰 Sales":view==="presale"?"⚙️ Presale":view==="service"?"🔧 Service":view==="coordinator"?"🗂️ ธุรการ":"🔽 Projects";
 
   return (
-    <div className="p-5 max-w-[1400px] space-y-5">
+    <div className="p-5 md:p-6 max-w-[1400px] space-y-5">
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {view==="executive"?"Executive Dashboard":view==="sales"?"Sales Dashboard":view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":"Projects Dashboard"}
-          </h1>
-          <p className="text-xs text-muted mt-0.5 flex items-center gap-2">
-            <span>KMITSURAT — {filterLabel}</span>
+      <div className="flex flex-col gap-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">
+              {view==="executive"?"Executive Dashboard":view==="sales"?"Sales Dashboard":view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":"Projects Dashboard"}
+            </h1>
             {!loading&&(
               <span className="flex items-center gap-1.5">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"/>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"/>
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"/>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"/>
                 </span>
-                <span className="text-green-400/80">Live</span>
-                {lastUpdated&&<span className="text-muted opacity-60">· {lastUpdated.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}</span>}
+                <span className="text-[11px] text-emerald-500/80 font-medium">Live</span>
               </span>
             )}
-          </p>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-muted/70">
+            <span>{filterLabel}</span>
+            {lastUpdated&&<><span>·</span><span>{lastUpdated.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</span></>}
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Period filters */}
-          <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
-            {(["today","week","month","year"] as Filter[]).map(f=>(
-              <button key={f} onClick={()=>setFilter(f)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filter===f?"bg-accent text-white":"text-muted hover:text-foreground"}`}>
-                {f==="today"?"วันนี้":f==="week"?"สัปดาห์":f==="month"?"เดือน":"ปี"}
-              </button>
-            ))}
+        <div className="overflow-x-auto -mx-1 px-1 pb-0.5">
+          <div className="flex items-center gap-1.5 w-max">
+            {/* Period filter */}
+            <div className="flex items-center gap-0.5 rounded-lg border border-border/70 bg-card p-1">
+              {(["today","week","month","year"] as Filter[]).map(f=>(
+                <button key={f} onClick={()=>setFilter(f)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${filter===f?"bg-accent text-white shadow-sm":"text-muted hover:text-foreground"}`}>
+                  {f==="today"?"วันนี้":f==="week"?"7 วัน":f==="month"?"เดือนนี้":"ปีนี้"}
+                </button>
+              ))}
+            </div>
+            {/* Quarter filter */}
+            <div className="flex items-center gap-0.5 rounded-lg border border-border/70 bg-card p-1">
+              {(["q1","q2","q3","q4"] as Filter[]).map(f=>(
+                <button key={f} onClick={()=>setFilter(f)}
+                  title={`${qRanges[f as "q1"|"q2"|"q3"|"q4"].from.slice(0,7)} → ${qRanges[f as "q1"|"q2"|"q3"|"q4"].to.slice(0,7)}`}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${filter===f?"bg-violet-600 text-white shadow-sm":"text-muted hover:text-foreground"}`}>
+                  {f.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <button onClick={()=>setFilter("custom")} title="กำหนดช่วงวันเอง"
+              className={`px-3 py-1.5 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors ${filter==="custom"?"bg-sky-700 border-sky-600 text-white":"border-border/70 bg-card text-muted hover:text-foreground"}`}>
+              กำหนดเอง
+            </button>
+            <button onClick={()=>setEditMode(v=>!v)}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors ${editMode?"bg-amber-600 border-amber-500 text-white":"border-border/70 bg-card text-muted hover:text-foreground"}`}>
+              {editMode?"✓ เสร็จ":"ปรับ Layout"}
+            </button>
           </div>
-          <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
-            {(["q1","q2","q3","q4"] as Filter[]).map(f=>(
-              <button key={f} onClick={()=>setFilter(f)}
-                title={`${f.toUpperCase()} · ${qRanges[f as "q1"|"q2"|"q3"|"q4"].from.slice(0,7)} → ${qRanges[f as "q1"|"q2"|"q3"|"q4"].to.slice(0,7)}`}
-                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filter===f?"bg-purple-600 text-white":"text-muted hover:text-foreground"}`}>
-                {f.toUpperCase()}
-              </button>
-            ))}
-          </div>
-          <button onClick={()=>setFilter("custom")}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors ${filter==="custom"?"bg-cyan-700 border-cyan-600 text-white":"border-border bg-card text-muted hover:text-foreground"}`}>
-            กำหนดเอง
-          </button>
-          {/* Edit mode toggle */}
-          <button onClick={()=>setEditMode(v=>!v)}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors ${editMode?"bg-amber-700 border-amber-600 text-white":"border-border bg-card text-muted hover:text-foreground"}`}>
-            {editMode?"✓ เสร็จ":"✏️ ปรับ Layout"}
-          </button>
         </div>
       </div>
 
       {filter==="custom"&&(
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
           <label className="text-xs text-muted">จาก</label>
-          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} className="rounded-xl bg-card border border-border px-3 py-1.5 text-xs" />
+          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} className="rounded-lg bg-card border border-border/70 px-3 py-1.5 text-xs" />
           <label className="text-xs text-muted">ถึง</label>
-          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} className="rounded-xl bg-card border border-border px-3 py-1.5 text-xs" />
+          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} className="rounded-lg bg-card border border-border/70 px-3 py-1.5 text-xs" />
         </div>
       )}
 
       {/* ── VIEW TABS ──────────────────────────────────────────────────────── */}
       {isAdmin&&(
-        <div className="flex gap-1 rounded-xl border border-border bg-card p-1 w-fit flex-wrap">
+        <div className="flex gap-0.5 rounded-lg border border-border/70 bg-card p-1 w-fit flex-wrap">
           {([
-            { id:"executive",   label:"📊 Executive" },
-            { id:"sales",       label:"💰 Sales" },
-            { id:"presale",     label:"⚙️ Presale" },
-            { id:"service",     label:"🔧 Service" },
-            { id:"projects",    label:"🔽 Projects" },
-            { id:"coordinator", label:"🗂️ ธุรการ" },
+            { id:"executive", label:"Executive" },
+            { id:"sales",     label:"Sales" },
+            { id:"presale",   label:"Presale" },
+            { id:"service",   label:"Service" },
+            { id:"projects",  label:"Projects" },
+            { id:"coordinator", label:"ธุรการ" },
           ] as {id:DashView;label:string}[]).map(v=>(
             <button key={v.id} onClick={()=>{ setView(v.id); setEditMode(false); }}
-              className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${view===v.id?"bg-accent text-white":"text-muted hover:text-foreground"}`}>
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view===v.id?"bg-accent text-white shadow-sm":"text-muted hover:text-foreground"}`}>
               {v.label}
             </button>
           ))}
         </div>
       )}
 
-      {loading&&<div className="text-center py-12 text-muted text-sm">กำลังโหลดข้อมูล...</div>}
+      {loading&&<div className="text-center py-16 text-muted text-sm">กำลังโหลดข้อมูล...</div>}
 
       {!loading&&(<>
 
-        {/* ── ALERTS BANNER (pinned, not draggable) ──────────────────────── */}
-        {alerts.length>0&&(
-          <div className={`rounded-2xl border p-4 ${alerts.some(a=>a.level==="red")?"border-rose-800/50 bg-rose-950/20":"border-amber-800/40 bg-amber-950/10"}`}>
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-sm font-semibold">{alerts.some(a=>a.level==="red")?"⚠️ ต้องดำเนินการด่วน":"🟡 แจ้งเตือน"}</span>
-              {alerts.filter(a=>a.level==="red").length>0&&(
-                <span className="rounded-full bg-rose-700 text-white text-[10px] px-2 py-0.5 font-bold">
-                  {alerts.filter(a=>a.level==="red").length} เรื่องด่วน
-                </span>
+        {/* ── ALERTS BANNER ──────────────────────────────────────────────── */}
+        {alerts.length>0 ? (
+          <div className="rounded-xl border border-border/60 bg-card p-4 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-foreground/90">การแจ้งเตือน</span>
+                {alerts.filter(a=>a.level==="red").length>0&&(
+                  <span className="rounded-full bg-orange-600/20 text-orange-400 border border-orange-600/30 text-[10px] px-2 py-0.5 font-semibold">
+                    {alerts.filter(a=>a.level==="red").length} เรื่องด่วน
+                  </span>
+                )}
+              </div>
+              {alerts.length>5&&(
+                <Link href="/sales" className="text-[11px] text-accent hover:underline shrink-0">
+                  ดูทั้งหมด {alerts.length} รายการ →
+                </Link>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {alerts.map(a=><AlertRow key={a.id} {...a}/>)}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+              {alerts.slice(0,5).map(a=><AlertRow key={a.id} {...a}/>)}
             </div>
+          </div>
+        ) : !seeAll && (
+          <div className="rounded-xl border border-border/40 p-3 text-center text-xs text-muted/70">
+            ไม่มีงานเร่งด่วน
+          </div>
+        )}
+
+        {/* ── HERO KPI STRIP — ซ่อนสำหรับ sales view ส่วนตัว (person card ครอบคลุมแล้ว) ── */}
+        {showHeroKpiStrip && !(view === "sales" && !seeAll) && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <KpiCard label="ยอดขายรวม" value={`${(actual/1e6).toFixed(1)}M`} sub={`THB · ${filterLabel}`} color="green" href="/sales" pct={targetPct} />
+            <KpiCard label="Achievement" value={`${targetPct.toFixed(0)}%`} sub={`${(actual/1000).toFixed(0)}K / ${(target/1000).toFixed(0)}K`} color={targetPct>=80?"green":targetPct>=50?"amber":"red"} pct={targetPct} href="/reports" />
+            <KpiCard label="GP รวม" value={actualProfit>0?`${(actualProfit/1e6).toFixed(2)}M`:"—"} sub={`GP ${gpPct.toFixed(1)}%`} color={gpPct>=20?"green":gpPct>=10?"amber":actualProfit>0?"red":"muted"} pct={profitPct} href="/reports" />
+            <KpiCard label="Follow-up ค้าง" value={String(salesOverdue.length)} sub={salesOverdue.length>0?`${salesOverdue.length} งานต้องติดตาม`:"ทุกงานปกติ"} color={salesOverdue.length>0?"red":"green"} alert={salesOverdue.length>0} href="/sales" />
           </div>
         )}
 
         {/* ── EDIT MODE TOOLBAR ──────────────────────────────────────────── */}
         {editMode&&(
-          <div className="rounded-2xl border border-amber-700/50 bg-amber-950/20 p-4">
+          <div className="rounded-xl border border-amber-600/40 bg-amber-950/15 p-4">
             <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
               <div>
-                <p className="text-sm font-semibold text-amber-300">✏️ โหมดปรับ Layout — {viewLabel}</p>
-                <p className="text-[11px] text-muted mt-0.5">ลากเพื่อย้าย · ½/⬛ ปรับขนาด · ✕ ซ่อน</p>
+                <p className="text-sm font-semibold text-amber-400">โหมดปรับ Layout — {viewLabel}</p>
+                <p className="text-[11px] text-muted/70 mt-0.5">ลากเพื่อย้าย · ½/⬛ ปรับขนาด · ✕ ซ่อน</p>
               </div>
               <button onClick={handleResetLayout}
-                className="px-3 py-1.5 rounded-xl border border-amber-700/50 text-amber-300 text-xs hover:bg-amber-900/30 transition-colors">
-                ↺ รีเซ็ต Default
+                className="px-3 py-1.5 rounded-lg border border-amber-600/40 text-amber-400 text-xs hover:bg-amber-900/20 transition-colors">
+                รีเซ็ต Default
               </button>
             </div>
             {hiddenWidgets.length>0&&(
               <div>
-                <p className="text-[11px] text-muted mb-2">Widget ที่ซ่อนอยู่ — คลิกเพื่อแสดง:</p>
-                <div className="flex flex-wrap gap-2">
+                <p className="text-[11px] text-muted/70 mb-2">Widget ที่ซ่อนอยู่ — คลิกเพื่อแสดง:</p>
+                <div className="flex flex-wrap gap-1.5">
                   {hiddenWidgets.map(w=>(
                     <button key={w.id} onClick={()=>toggleVisible(w.id)}
-                      className="px-3 py-1 rounded-lg border border-border bg-card text-xs text-muted hover:text-foreground hover:border-accent/50 transition-colors">
+                      className="px-2.5 py-1 rounded-md border border-border/60 bg-background text-xs text-muted hover:text-foreground hover:border-accent/50 transition-colors">
                       + {WIDGET_LABELS[w.id]||w.id}
                     </button>
                   ))}
@@ -1559,7 +1702,7 @@ export default function DashboardPage() {
         {/* ── WIDGET GRID ────────────────────────────────────────────────── */}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={visibleWidgets.map(w=>w.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-6 gap-4">
+            <div className="grid grid-cols-6 gap-5">
               {visibleWidgets.map(w=>(
                 <SortableWidget
                   key={w.id} id={w.id} span={w.span} editMode={editMode}
@@ -1575,9 +1718,9 @@ export default function DashboardPage() {
         </DndContext>
 
         {/* ── FOOTER ─────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between text-[10px] text-muted border-t border-border pt-3">
+        <div className="flex items-center justify-between text-[10px] text-muted/50 border-t border-border/40 pt-4">
           <span>ข้อมูลจาก: SalesQuota · Projects · Quotations · ServiceTickets · Contracts · Assets</span>
-          <span>{lastUpdated?`อัปเดตล่าสุด ${lastUpdated.toLocaleTimeString("th-TH")}`:""}</span>
+          <span>{lastUpdated?`อัปเดต ${lastUpdated.toLocaleTimeString("th-TH")}`:""}</span>
         </div>
 
       </>)}

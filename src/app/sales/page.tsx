@@ -10,9 +10,9 @@ import { showSalesDashboardMenu } from "@/lib/featureFlags";
 const actTypes = ["phone_call","visit","quotation_created","quotation_sent","follow_up","meeting","customer_update"] as const;
 const typeLabels: Record<string, string> = { phone_call: "โทร", visit: "เยี่ยม", quotation_created: "สร้าง QT", quotation_sent: "ส่ง QT", follow_up: "Follow-up", meeting: "ประชุม", customer_update: "Update" };
 const resultLabels: Record<string, string> = { success: "สำเร็จ", no_answer: "ไม่รับสาย", interested: "สนใจ", rejected: "ปฏิเสธ", pending: "รอผล", "": "—" };
-const resultColor: Record<string, string> = { success: "text-green-400", interested: "text-blue-400", no_answer: "text-yellow-400", rejected: "text-red-400", pending: "text-muted" };
+const resultColor: Record<string, string> = { success: "text-emerald-300 font-medium", interested: "text-sky-300 font-medium", no_answer: "text-amber-300", rejected: "text-red-300 font-medium", pending: "text-zinc-400" };
 const stages = ["lead","opportunity","proposal","negotiation","won","lost"] as const;
-const stageColor: Record<string, string> = { lead: "bg-gray-700", opportunity: "bg-blue-900/50 text-blue-400", proposal: "bg-purple-900/50 text-purple-400", negotiation: "bg-yellow-900/50 text-yellow-400", won: "bg-green-900/50 text-green-400", lost: "bg-red-900/50 text-red-400" };
+const stageColor: Record<string, string> = { lead: "bg-zinc-700/80 text-zinc-200", opportunity: "bg-blue-800/70 text-blue-200", proposal: "bg-violet-800/70 text-violet-200", negotiation: "bg-amber-800/70 text-amber-200", won: "bg-emerald-800/70 text-emerald-200", lost: "bg-red-800/70 text-red-200" };
 
 const today = new Date().toISOString().slice(0, 10);
 const currentMonth = new Date().toISOString().slice(0, 7);
@@ -61,6 +61,7 @@ export default function SalesPage() {
   });
   const [calDayDate, setCalDayDate] = useState(today);
   const [typeFilter, setTypeFilter] = useState("");
+  const [drawerDay, setDrawerDay] = useState<string | null>(null);
 
   // Activity/Plan form
   const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing" | "prospect", project_id: "", project_name: "", assigned_to: "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "" });
@@ -424,14 +425,14 @@ export default function SalesPage() {
 
       {/* ═══ ACTION PLAN — CRM Calendar Planner ═══ */}
       {tab === "workplan" && (() => {
-        const TC: Record<string, {bg:string;border:string;text:string;dot:string;label:string;icon:string}> = {
-          phone_call:        {bg:"bg-blue-500/15",    border:"border-blue-500/40",    text:"text-blue-300",    dot:"bg-blue-400",    label:"โทร",       icon:"📞"},
-          visit:             {bg:"bg-purple-500/15",  border:"border-purple-500/40",  text:"text-purple-300",  dot:"bg-purple-400",  label:"เยี่ยม",    icon:"🤝"},
-          meeting:           {bg:"bg-orange-500/15",  border:"border-orange-500/40",  text:"text-orange-300",  dot:"bg-orange-400",  label:"ประชุม",    icon:"💬"},
-          follow_up:         {bg:"bg-yellow-500/15",  border:"border-yellow-500/40",  text:"text-yellow-300",  dot:"bg-yellow-400",  label:"Follow-up", icon:"🔄"},
-          quotation_created: {bg:"bg-green-500/15",   border:"border-green-500/40",   text:"text-green-300",   dot:"bg-green-400",   label:"สร้าง QT",  icon:"📄"},
-          quotation_sent:    {bg:"bg-emerald-500/15", border:"border-emerald-500/40", text:"text-emerald-300", dot:"bg-emerald-400", label:"ส่ง QT",    icon:"✉️"},
-          customer_update:   {bg:"bg-cyan-500/15",    border:"border-cyan-500/40",    text:"text-cyan-300",    dot:"bg-cyan-400",    label:"Update",    icon:"📊"},
+        const TC: Record<string, {bg:string;border:string;text:string;dot:string;bar:string;label:string;icon:string}> = {
+          phone_call:        {bg:"bg-blue-500/10",    border:"border-blue-500/25",    text:"text-blue-500",    dot:"bg-blue-600",    bar:"bg-blue-600",    label:"โทร",       icon:"📞"},
+          visit:             {bg:"bg-orange-500/10",  border:"border-orange-500/25",  text:"text-orange-500",  dot:"bg-orange-500",  bar:"bg-orange-500",  label:"เยี่ยม",    icon:"🤝"},
+          meeting:           {bg:"bg-purple-500/10",  border:"border-purple-500/25",  text:"text-purple-500",  dot:"bg-purple-600",  bar:"bg-purple-600",  label:"ประชุม",    icon:"💬"},
+          follow_up:         {bg:"bg-cyan-500/10",    border:"border-cyan-500/25",    text:"text-cyan-500",    dot:"bg-cyan-600",    bar:"bg-cyan-600",    label:"Follow-up", icon:"🔄"},
+          quotation_created: {bg:"bg-green-500/10",   border:"border-green-500/25",   text:"text-green-500",   dot:"bg-green-600",   bar:"bg-green-600",   label:"สร้าง QT",  icon:"📄"},
+          quotation_sent:    {bg:"bg-teal-500/10",    border:"border-teal-500/25",    text:"text-teal-500",    dot:"bg-teal-600",    bar:"bg-teal-600",    label:"ส่ง QT",    icon:"✉️"},
+          customer_update:   {bg:"bg-indigo-500/10",  border:"border-indigo-500/25",  text:"text-indigo-500",  dot:"bg-indigo-600",  bar:"bg-indigo-600",  label:"Update",    icon:"📊"},
         };
         const thaiM = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
         const dhNames = ["จ.","อ.","พ.","พฤ.","ศ.","ส.","อา."];
@@ -497,19 +498,16 @@ export default function SalesPage() {
         }
 
         function chip(plan: SalesActivity) {
-          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
           const ovd = (plan.plan_date || "") < today && plan.status !== "done";
           const done = plan.status === "done";
           return (
             <button key={plan.id} onClick={e => {e.stopPropagation(); setSelectedActivity(plan);}}
-              className={`w-full text-left rounded px-1.5 py-0.5 border transition-all hover:brightness-110 ${
-                done ? "opacity-40 bg-background border-border/30" :
-                ovd  ? "bg-red-500/10 border-red-500/40" :
-                `${tc.bg} ${tc.border}`}`}>
-              <div className="flex items-center gap-1 min-w-0">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${ovd ? "bg-red-400" : tc.dot}`} />
-                <span className={`text-[10px] truncate leading-tight ${done ? "line-through text-muted" : ovd ? "text-red-300" : tc.text}`}>
-                  {plan.customer_name || plan.expected_outcome?.slice(0, 12) || "—"}
+              className="w-full flex items-stretch text-left rounded overflow-hidden border border-border/50 bg-card hover:bg-card-hover transition-all active:scale-[0.98]">
+              <div className={`w-[3px] shrink-0 ${done ? "bg-green-500 opacity-40" : ovd ? "bg-red-600" : tc.bar}`} />
+              <div className={`flex-1 px-1 py-0.5 min-w-0 ${done ? "opacity-50" : ""}`}>
+                <span className={`text-[10px] truncate leading-tight font-medium block ${done ? "line-through text-muted" : ovd ? "text-red-500" : tc.text}`}>
+                  {plan.customer_name?.slice(0, 13) || plan.expected_outcome?.slice(0, 13) || tc.label}
                 </span>
               </div>
             </button>
@@ -517,25 +515,18 @@ export default function SalesPage() {
         }
 
         function planCard(plan: SalesActivity) {
-          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
           const ovd = (plan.plan_date || "") < today && plan.status !== "done";
           const done = plan.status === "done";
           return (
             <button key={plan.id} onClick={() => setSelectedActivity(plan)}
-              className={`w-full text-left rounded-lg border px-2 py-1.5 transition-all hover:brightness-110 ${
-                done ? "opacity-40 bg-background border-border/30" :
-                ovd  ? "bg-red-500/10 border-red-500/40" :
-                `${tc.bg} ${tc.border}`}`}>
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-[11px] shrink-0">{tc.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-[11px] truncate font-medium leading-tight ${done ? "line-through text-muted" : ovd ? "text-red-300" : tc.text}`}>
-                    {plan.expected_outcome?.slice(0, 20) || plan.description?.slice(0, 20) || "—"}
-                  </p>
-                  {plan.customer_name && <p className="text-[9px] text-muted truncate">{plan.customer_name}</p>}
-                </div>
-                {ovd && <span className="text-red-400 text-[9px] shrink-0">⚠</span>}
-                {done && <span className="text-green-400 text-[9px] shrink-0">✓</span>}
+              className={`w-full flex items-stretch text-left rounded-lg overflow-hidden border bg-card hover:shadow-sm hover:border-border transition-all active:scale-[0.98] ${ovd ? "border-red-500/40" : "border-border/60"} ${done ? "opacity-50" : ""}`}>
+              <div className={`w-1 shrink-0 ${done ? "bg-green-500 opacity-60" : ovd ? "bg-red-600" : tc.bar}`} />
+              <div className="flex-1 px-2 py-1.5 min-w-0">
+                <p className={`text-[11px] truncate font-semibold leading-tight ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>
+                  {plan.expected_outcome?.slice(0, 22) || plan.description?.slice(0, 22) || "—"}
+                </p>
+                {plan.customer_name && <p className={`text-[9px] truncate mt-0.5 ${ovd ? "text-red-500/70" : "text-muted"}`}>{plan.customer_name}</p>}
               </div>
             </button>
           );
@@ -543,27 +534,27 @@ export default function SalesPage() {
 
         // Compact card for mobile agenda
         function mobileCard(plan: SalesActivity) {
-          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
           const ovd  = (plan.plan_date||"") < today && plan.status !== "done";
           const done = plan.status === "done";
           const linkedDeal = plan.converted_to_project_id ? projects.find(p => p.id === plan.converted_to_project_id) : null;
           return (
-            <div key={plan.id} className={`rounded-xl border overflow-hidden transition-all active:scale-[0.99] ${
-              done ? "border-border/40 bg-card/60 opacity-70" :
-              ovd  ? "border-red-500/30 bg-red-500/5" :
-              `${tc.bg} ${tc.border}`}`}>
+            <div key={plan.id} className={`rounded-xl overflow-hidden border bg-card transition-all active:scale-[0.99] ${ovd ? "border-red-500/40" : done ? "border-border/40 opacity-65" : "border-border"}`}>
               <div className="flex items-stretch">
-                <div className={`w-1.5 shrink-0 ${ovd?"bg-red-400":done?"bg-green-400":tc.dot}`} />
+                <div className={`w-1.5 shrink-0 ${ovd ? "bg-red-600" : done ? "bg-green-500 opacity-60" : tc.bar}`} />
                 <div className="flex-1 px-3 py-2.5 min-w-0">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <span className={`text-[10px] rounded-full px-2 py-0.5 border font-medium ${tc.bg} ${tc.border} ${tc.text}`}>{tc.icon} {tc.label}</span>
-                    <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${
-                      done?"bg-green-500/15 text-green-400":plan.status==="in_progress"?"bg-yellow-500/15 text-yellow-400":ovd?"bg-red-500/15 text-red-400":"bg-blue-500/15 text-blue-400"}`}>
-                      {done?"✓":plan.status==="in_progress"?"ทำอยู่":ovd?"⚠ เกิน":"รอ"}
+                    <span className={`text-[10px] rounded px-1.5 py-0.5 border font-semibold ${tc.bg} ${tc.border} ${tc.text}`}>{tc.icon} {tc.label}</span>
+                    <span className={`text-[10px] rounded px-1.5 py-0.5 font-medium border ${
+                      done ? "bg-green-500/10 border-green-500/25 text-green-500" :
+                      plan.status==="in_progress" ? "bg-amber-500/10 border-amber-500/25 text-amber-500" :
+                      ovd ? "bg-red-500/10 border-red-500/25 text-red-500" :
+                      "bg-blue-500/10 border-blue-500/25 text-blue-500"}`}>
+                      {done ? "✓ เสร็จ" : plan.status==="in_progress" ? "ทำอยู่" : ovd ? "⚠ เกิน" : "รอ"}
                     </span>
-                    {plan.plan_date && <span className={`text-[10px] ml-auto shrink-0 ${ovd?"text-red-400 font-medium":"text-muted"}`}>{plan.plan_date.slice(5)}</span>}
+                    {plan.plan_date && <span className={`text-[10px] ml-auto shrink-0 font-medium ${ovd ? "text-red-500" : "text-muted"}`}>{plan.plan_date.slice(5)}</span>}
                   </div>
-                  <p className={`text-sm font-semibold leading-tight ${done?"line-through text-muted":ovd?"text-red-300":""}`}>{plan.expected_outcome||plan.description||"—"}</p>
+                  <p className={`text-sm font-semibold leading-tight ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>{plan.expected_outcome||plan.description||"—"}</p>
                   {(plan.customer_name||linkedDeal) && (
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       {plan.customer_name && <span className="text-[11px] text-muted">🏢 {plan.customer_name}</span>}
@@ -574,9 +565,9 @@ export default function SalesPage() {
                 <div className="flex flex-col items-center justify-center gap-1.5 px-2 border-l border-border/20 shrink-0">
                   {!done && (
                     <button onClick={e=>{e.stopPropagation();updateActivity(plan.id!,{status:"done"});}}
-                      className="w-7 h-7 flex items-center justify-center rounded-full bg-green-500/15 text-green-400 text-xs active:bg-green-500/30 transition-colors" title="เสร็จ">✓</button>
+                      className="w-7 h-7 flex items-center justify-center rounded-full bg-green-500/15 text-green-500 text-xs active:bg-green-500/25 transition-colors font-bold" title="เสร็จ">✓</button>
                   )}
-                  <button onClick={()=>setSelectedActivity(plan)} className="w-7 h-7 flex items-center justify-center text-muted/40 text-xl">›</button>
+                  <button onClick={()=>setSelectedActivity(plan)} className="w-7 h-7 flex items-center justify-center text-muted/40 hover:text-muted text-xl">›</button>
                 </div>
               </div>
             </div>
@@ -934,45 +925,60 @@ export default function SalesPage() {
                 </div>
 
                 {/* Type filter chips */}
-                <div className="flex gap-1.5 mb-4 flex-wrap">
-                  <button onClick={() => setTypeFilter("")} className={`rounded-full px-3 py-1 text-[11px] border transition-all ${!typeFilter ? "bg-foreground/10 border-foreground/20 text-foreground font-medium" : "border-border text-muted hover:border-border/60"}`}>ทั้งหมด</button>
-                  {(Object.entries(TC) as [string, typeof TC[string]][]).map(([type, tc]) => (
-                    <button key={type} onClick={() => setTypeFilter(typeFilter === type ? "" : type)}
-                      className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] border transition-all ${typeFilter === type ? `${tc.bg} ${tc.border} ${tc.text} font-medium` : "border-border text-muted hover:border-border/60"}`}>
-                      {tc.icon} {tc.label}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+                  <span className="text-[10px] text-muted/50 font-semibold uppercase tracking-wider shrink-0 mr-0.5">กรอง:</span>
+                  <button onClick={() => setTypeFilter("")} className={`rounded-full px-3 py-1 text-[11px] border transition-all font-medium ${!typeFilter ? "bg-foreground/15 border-foreground/30 text-foreground shadow-sm" : "border-border/60 text-muted/70 hover:border-border hover:text-muted"}`}>ทั้งหมด</button>
+                  <span className="w-px h-4 bg-border/50 mx-0.5 shrink-0" />
+                  {(Object.entries(TC) as [string, typeof TC[string]][]).map(([type, tc]) => {
+                    const cnt = allPlans.filter(p => p.type === type).length;
+                    return (
+                      <button key={type} onClick={() => setTypeFilter(typeFilter === type ? "" : type)}
+                        className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] border transition-all ${typeFilter === type ? `${tc.bg} ${tc.border} ${tc.text} font-semibold shadow-sm` : "border-border/60 text-muted/70 hover:border-border hover:text-muted"}`}>
+                        {tc.icon} {tc.label}{cnt > 0 && typeFilter !== type && <span className="text-[9px] opacity-60 ml-0.5">{cnt}</span>}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* ── Month Calendar ── */}
                 {apView === "month" && (
                   <div>
-                    <div className="grid grid-cols-7 gap-px mb-1">
-                      {dhNames.map(d => <div key={d} className="text-center text-[10px] font-semibold text-muted py-1">{d}</div>)}
+                    <div className="grid grid-cols-7 mb-1">
+                      {dhNames.map((d, i) => <div key={d} className={`text-center text-[10px] font-bold py-1.5 tracking-wide ${i >= 5 ? "text-muted/35" : "text-muted/70"}`}>{d}</div>)}
                     </div>
-                    <div className="grid grid-cols-7 gap-px bg-border/30 rounded-xl overflow-hidden border border-border/30">
+                    <div className="grid grid-cols-7 gap-px bg-border/30 rounded-xl overflow-hidden border border-border/50 shadow-sm">
                       {calCells.map(dateStr => {
-                        const inM   = dateStr.startsWith(calNavDate);
-                        const isTd  = dateStr === today;
-                        const isPast = dateStr < today;
-                        const dp    = plansOn(dateStr);
-                        const ovdInDay = dp.some(p => p.status !== "done" && isPast);
-                        const vis   = dp.slice(0, 3);
-                        const more  = dp.length - vis.length;
+                        const inM      = dateStr.startsWith(calNavDate);
+                        const isTd     = dateStr === today;
+                        const isPast   = dateStr < today;
+                        const dp       = plansOn(dateStr);
+                        const ovdInDay = dp.some(p => p.status !== "done") && isPast && inM;
+                        const allDone  = dp.length > 0 && dp.every(p => p.status === "done") && inM;
+                        const vis      = dp.slice(0, 3);
+                        const more     = dp.length - vis.length;
+                        const isSelected = drawerDay === dateStr;
                         return (
-                          <div key={dateStr} onClick={() => { setCalDayDate(dateStr); setApView("day"); }}
-                            className={`min-h-[80px] p-1 cursor-pointer transition-all hover:ring-1 ring-inset hover:ring-accent/30 ${
-                              isTd       ? "bg-accent/8" :
-                              ovdInDay && inM ? "bg-red-500/5" :
-                              inM        ? "bg-card" :
-                              "bg-background/60 opacity-50"}`}>
-                            <div className="flex items-center justify-between mb-0.5">
-                              <span className={`text-[11px] font-bold w-5 h-5 flex items-center justify-center rounded-full leading-none ${isTd ? "bg-accent text-white" : !inM ? "text-muted/30" : "text-foreground"}`}>{parseInt(dateStr.slice(8))}</span>
-                              {dp.length > 0 && inM && <span className="text-[9px] text-muted leading-none">{dp.length}</span>}
+                          <div key={dateStr} onClick={() => inM && setDrawerDay(drawerDay === dateStr ? null : dateStr)}
+                            className={`min-h-[90px] p-1 cursor-pointer transition-colors ${
+                              !inM ? "bg-background/50 opacity-30" :
+                              isSelected ? "bg-blue-500/8 ring-2 ring-inset ring-blue-600" :
+                              isTd ? "bg-blue-500/5" :
+                              ovdInDay ? "bg-red-500/4" :
+                              "bg-card hover:bg-card-hover/40"}`}>
+                            <div className="flex items-center justify-between mb-1 px-0.5">
+                              <span className={`text-[11px] font-bold w-5 h-5 flex items-center justify-center rounded-full leading-none ${
+                                isTd ? "bg-blue-600 text-white text-[10px]" :
+                                !inM ? "text-muted/20" :
+                                ovdInDay ? "text-red-500" :
+                                isPast ? "text-muted/50" :
+                                "text-foreground"}`}>{parseInt(dateStr.slice(8))}</span>
+                              {ovdInDay && <span className="text-red-600 text-[9px] font-black leading-none">!</span>}
+                              {allDone  && <span className="text-green-500 text-[9px] font-bold leading-none">✓</span>}
+                              {!ovdInDay && !allDone && dp.length > 1 && inM && <span className="text-[9px] text-muted/60 leading-none">{dp.length}</span>}
                             </div>
                             <div className="space-y-px">
                               {vis.map(p => chip(p))}
-                              {more > 0 && <div className="text-[9px] text-accent text-center py-0.5 rounded hover:bg-accent/10">+{more}</div>}
+                              {more > 0 && <div className="text-[9px] text-blue-500 font-semibold text-center py-0.5 rounded bg-blue-500/8 hover:bg-blue-500/15">+{more}</div>}
                             </div>
                           </div>
                         );
@@ -991,17 +997,17 @@ export default function SalesPage() {
                         const dp    = plansOn(dateStr);
                         const hasOvd = dp.some(p => p.status !== "done" && isPast);
                         return (
-                          <div key={dateStr} className={`rounded-xl border flex flex-col ${isTd ? "border-accent/50 bg-accent/5" : hasOvd ? "border-red-500/20 bg-red-500/3" : "border-border bg-card"}`}>
-                            <div className={`px-2 py-2 text-center border-b cursor-pointer hover:bg-card-hover/50 transition-colors ${isTd ? "border-accent/30 bg-accent/10" : hasOvd ? "border-red-500/20" : "border-border"}`}
+                          <div key={dateStr} className={`rounded-xl border flex flex-col shadow-sm ${isTd ? "border-blue-600/40 bg-blue-500/4" : hasOvd ? "border-red-500/30" : "border-border/60 bg-card"}`}>
+                            <div className={`px-2 py-2 text-center border-b cursor-pointer hover:bg-card-hover/50 transition-colors ${isTd ? "border-blue-600/30 bg-blue-600/8" : hasOvd ? "border-red-500/20 bg-red-500/4" : "border-border/40"}`}
                               onClick={() => { setCalDayDate(dateStr); setApView("day"); }}>
-                              <p className={`text-[10px] font-semibold uppercase ${isTd ? "text-accent" : "text-muted"}`}>{dhNames[i]}</p>
-                              <p className={`text-xl font-bold leading-tight ${isTd ? "text-accent" : isPast ? "text-muted/60" : "text-foreground"}`}>{parseInt(dateStr.slice(8))}</p>
-                              {dp.length > 0 && <span className={`text-[9px] rounded-full px-1.5 py-0.5 font-bold inline-block mt-0.5 ${hasOvd ? "bg-red-900/50 text-red-400" : "bg-accent/20 text-accent"}`}>{dp.length}</span>}
+                              <p className={`text-[10px] font-bold uppercase tracking-wide ${isTd ? "text-blue-600" : hasOvd ? "text-red-500" : "text-muted/70"}`}>{dhNames[i]}</p>
+                              <p className={`text-xl font-bold leading-tight ${isTd ? "text-blue-600" : isPast ? "text-muted/50" : "text-foreground"}`}>{parseInt(dateStr.slice(8))}</p>
+                              {dp.length > 0 && <span className={`text-[9px] rounded px-1.5 py-0.5 font-bold inline-block mt-0.5 border ${hasOvd ? "bg-red-500/10 border-red-500/25 text-red-500" : isTd ? "bg-blue-500/10 border-blue-500/25 text-blue-600" : "bg-card-hover border-border text-muted"}`}>{dp.length}</span>}
                             </div>
                             <div className="p-1 flex-1 space-y-0.5 min-h-[100px]">
                               {dp.map(p => planCard(p))}
                               <button onClick={() => { resetActForm(); setActForm(f => ({...f, is_plan: true, plan_date: dateStr})); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
-                                className="w-full text-center text-[10px] text-muted/30 hover:text-accent transition-colors py-1 rounded hover:bg-card-hover">+</button>
+                                className="w-full text-center text-[10px] text-muted/25 hover:text-blue-500 transition-colors py-1 rounded hover:bg-blue-500/5">+</button>
                             </div>
                           </div>
                         );
@@ -1018,57 +1024,58 @@ export default function SalesPage() {
                   const dow   = new Date(calDayDate + "T12:00:00").getDay();
                   return (
                     <div>
-                      <div className={`rounded-xl border p-4 mb-4 flex items-center justify-between gap-3 ${isTd ? "border-accent/40 bg-accent/5" : isPast && dp.some(p => p.status !== "done") ? "border-red-500/20 bg-red-500/5" : "border-border bg-card"}`}>
+                      <div className={`rounded-xl border p-4 mb-4 flex items-center justify-between gap-3 bg-card ${isTd ? "border-blue-600/30" : isPast && dp.some(p => p.status !== "done") ? "border-red-500/30" : "border-border"}`}>
                         <div>
-                          <p className={`text-lg font-bold ${isTd ? "text-accent" : ""}`}>
-                            วัน{thaiDayFull[dow]}ที่ {parseInt(calDayDate.slice(8))} {thaiM[parseInt(calDayDate.slice(5,7))-1]} {parseInt(calDayDate.slice(0,4))+543}
+                          <p className={`text-lg font-bold ${isTd ? "text-blue-600" : ""}`}>
+                            {isTd && <span className="text-xs font-semibold bg-blue-600 text-white rounded px-1.5 py-0.5 mr-2">วันนี้</span>}
+                            วัน{thaiDayFull[dow]}{isTd ? "" : `ที่ ${parseInt(calDayDate.slice(8))} ${thaiM[parseInt(calDayDate.slice(5,7))-1]} ${parseInt(calDayDate.slice(0,4))+543}`}
                           </p>
-                          <p className="text-xs text-muted">{dp.length} กิจกรรม{isTd ? " · วันนี้" : isPast && dp.some(p => p.status !== "done") ? " · ⚠ มีค้างอยู่" : ""}</p>
+                          <p className="text-xs text-muted mt-0.5">{dp.length} กิจกรรม{isPast && dp.some(p => p.status !== "done") ? <span className="text-red-500 ml-1 font-medium">· มีค้างอยู่</span> : ""}</p>
                         </div>
                         <button onClick={() => { resetActForm(); setActForm(f => ({...f, is_plan: true, plan_date: calDayDate})); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
                           className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover shrink-0">+ วางแผน</button>
                       </div>
                       {dp.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-border p-12 text-center">
+                        <div className="rounded-xl border border-dashed border-border/60 p-12 text-center bg-card/50">
                           <p className="text-2xl mb-2">📅</p>
                           <p className="text-sm text-muted">ไม่มีแผนวันนี้</p>
                         </div>
                       ) : (
                         <div className="space-y-2">
                           {dp.map(plan => {
-                            const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+                            const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
                             const ovd = (plan.plan_date || "") < today && plan.status !== "done";
                             const done = plan.status === "done";
                             const linkedDeal = plan.converted_to_project_id ? projects.find(p => p.id === plan.converted_to_project_id) : null;
                             return (
                               <div key={plan.id} onClick={() => setSelectedActivity(plan)}
-                                className={`rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md flex gap-3 ${
-                                  done ? "border-border/40 bg-card/60 opacity-70" :
-                                  ovd  ? "border-red-500/30 bg-red-500/5 hover:border-red-500/50" :
-                                  `${tc.bg} ${tc.border} hover:brightness-110`}`}>
-                                <div className={`w-1 rounded-full shrink-0 self-stretch ${ovd ? "bg-red-400" : done ? "bg-green-400" : tc.dot}`} />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                                className={`rounded-xl border bg-card cursor-pointer transition-all hover:shadow-md flex overflow-hidden ${
+                                  done ? "border-border/40 opacity-60" :
+                                  ovd  ? "border-red-500/40 hover:border-red-500/60" :
+                                  "border-border/60 hover:border-border"}`}>
+                                <div className={`w-1.5 shrink-0 ${ovd ? "bg-red-600" : done ? "bg-green-500 opacity-50" : tc.bar}`} />
+                                <div className="flex-1 p-4 min-w-0">
+                                  <div className="flex items-start justify-between gap-2 mb-2">
                                     <div className="flex items-center gap-2">
                                       <span className="text-base shrink-0">{tc.icon}</span>
                                       <div>
-                                        <p className={`text-sm font-semibold leading-snug ${done ? "line-through text-muted" : ovd ? "text-red-300" : tc.text}`}>{plan.expected_outcome || plan.description || "—"}</p>
+                                        <p className={`text-sm font-semibold leading-snug ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>{plan.expected_outcome || plan.description || "—"}</p>
                                         {plan.customer_name && <p className="text-xs text-muted mt-0.5">🏢 {plan.customer_name}</p>}
                                       </div>
                                     </div>
-                                    <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium shrink-0 ${done?"bg-green-500/15 text-green-400":plan.status==="in_progress"?"bg-yellow-500/15 text-yellow-400":ovd?"bg-red-500/15 text-red-400":"bg-blue-500/15 text-blue-400"}`}>
+                                    <span className={`text-[10px] rounded px-2 py-0.5 font-semibold shrink-0 border ${done?"bg-green-500/10 border-green-500/25 text-green-500":plan.status==="in_progress"?"bg-amber-500/10 border-amber-500/25 text-amber-500":ovd?"bg-red-500/10 border-red-500/25 text-red-500":"bg-blue-500/10 border-blue-500/25 text-blue-500"}`}>
                                       {done ? "✓ เสร็จ" : plan.status === "in_progress" ? "ทำอยู่" : ovd ? "⚠ เกิน" : "รอ"}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className={`text-[11px] rounded-full px-2 py-0.5 border ${tc.bg} ${tc.border} ${tc.text}`}>{tc.icon} {tc.label}</span>
+                                    <span className={`text-[11px] rounded px-2 py-0.5 border font-semibold ${tc.bg} ${tc.border} ${tc.text}`}>{tc.icon} {tc.label}</span>
                                     {plan.assigned_to && !ownSalesOnly && <span className="text-[11px] text-muted">👤 {plan.assigned_to.split(" ")[0]}</span>}
                                     {linkedDeal && <Link href="/projects" onClick={e => e.stopPropagation()} className="text-[11px] text-accent hover:underline">🎯 {linkedDeal.name}</Link>}
                                   </div>
                                   <div className="flex gap-2 mt-2" onClick={e => e.stopPropagation()}>
-                                    {!done && <button onClick={() => updateActivity(plan.id!, {status:"done"})} className="text-[10px] text-green-400 border border-green-500/30 rounded px-2 py-0.5 hover:bg-green-500/10">✓ เสร็จ</button>}
-                                    {plan.status !== "in_progress" && !done && <button onClick={() => updateActivity(plan.id!, {status:"in_progress"})} className="text-[10px] text-yellow-400 border border-yellow-500/30 rounded px-2 py-0.5 hover:bg-yellow-500/10">▷ เริ่ม</button>}
-                                    <button onClick={() => deleteActivity(plan.id!)} className="text-[10px] text-muted border border-border rounded px-2 py-0.5 hover:bg-red-500/10 hover:text-red-400">ลบ</button>
+                                    {!done && <button onClick={() => updateActivity(plan.id!, {status:"done"})} className="text-[10px] text-green-500 border border-green-500/30 rounded px-2 py-0.5 hover:bg-green-500/10">✓ เสร็จ</button>}
+                                    {plan.status !== "in_progress" && !done && <button onClick={() => updateActivity(plan.id!, {status:"in_progress"})} className="text-[10px] text-amber-500 border border-amber-500/30 rounded px-2 py-0.5 hover:bg-amber-500/10">▷ เริ่ม</button>}
+                                    <button onClick={() => deleteActivity(plan.id!)} className="text-[10px] text-muted border border-border rounded px-2 py-0.5 hover:bg-red-500/10 hover:text-red-500">ลบ</button>
                                   </div>
                                 </div>
                               </div>
@@ -1181,38 +1188,34 @@ export default function SalesPage() {
                   const upPl   = allPlans.filter(p => (p.plan_date||"") >= today && p.status !== "done").sort((a,b) => (a.plan_date||"").localeCompare(b.plan_date||""));
                   const donePl = allPlans.filter(p => p.status === "done").sort((a,b) => (b.plan_date||"").localeCompare(a.plan_date||"")).slice(0, 20);
                   function ListCard({ plan }: { plan: SalesActivity }) {
-                    const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+                    const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
                     const ovd = (plan.plan_date||"") < today && plan.status !== "done";
+                    const done = plan.status === "done";
                     const linkedDeal = plan.converted_to_project_id ? projects.find(p => p.id === plan.converted_to_project_id) : null;
                     return (
                       <div onClick={() => setSelectedActivity(plan)}
-                        className={`rounded-xl border p-3.5 cursor-pointer hover:shadow-md transition-all ${
-                          plan.status==="done" ? "border-border/40 bg-card opacity-60" :
-                          ovd ? "border-red-500/30 bg-red-500/5 hover:border-red-500/50" :
-                          plan.plan_date===today ? "border-accent/40 bg-accent/5" :
-                          "border-border bg-card hover:border-border/80"}`}>
-                        <div className="flex items-start gap-3">
-                          <span className="text-xl shrink-0 mt-0.5">{tc.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm font-medium leading-snug">{plan.expected_outcome || plan.description || "—"}</p>
-                              <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium shrink-0 ${plan.status==="done"?"bg-green-500/15 text-green-400":plan.status==="in_progress"?"bg-yellow-500/15 text-yellow-400":"bg-blue-500/15 text-blue-400"}`}>
-                                {plan.status==="done"?"✓ เสร็จ":plan.status==="in_progress"?"ทำอยู่":"รอ"}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                              {plan.customer_name && <span className="text-[11px] text-muted">{plan.customer_type==="prospect"?"🔍":"🏢"} {plan.customer_name}</span>}
-                              {plan.plan_date && <span className={`text-[11px] ${ovd?"text-red-400 font-medium":"text-muted"}`}>📅 {plan.plan_date}{ovd?" ⚠":plan.plan_date===today?" (วันนี้)":""}</span>}
-                              {plan.assigned_to && !ownSalesOnly && <span className="text-[11px] text-muted">👤 {plan.assigned_to.split(" ")[0]}</span>}
-                            </div>
-                            {linkedDeal && (
-                              <div className="mt-1.5 flex items-center gap-1.5">
-                                <span className="text-[10px] text-muted">→ ดีล:</span>
-                                <Link href="/projects" onClick={e=>e.stopPropagation()} className="text-[11px] text-accent hover:underline">{linkedDeal.name}</Link>
-                                <span className={`text-[9px] rounded-full px-1.5 py-0.5 ${stageColor[linkedDeal.status]||""}`}>{linkedDeal.status}</span>
-                              </div>
-                            )}
+                        className={`rounded-xl border bg-card overflow-hidden cursor-pointer hover:shadow-md transition-all flex ${done ? "opacity-55" : ovd ? "border-red-500/40" : plan.plan_date===today ? "border-blue-500/40" : "border-border/60 hover:border-border"}`}>
+                        <div className={`w-1.5 shrink-0 ${done ? "bg-green-500 opacity-50" : ovd ? "bg-red-600" : plan.plan_date===today ? "bg-blue-600" : tc.bar}`} />
+                        <div className="flex-1 p-3.5 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className={`text-sm font-semibold leading-snug ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>{plan.expected_outcome || plan.description || "—"}</p>
+                            <span className={`text-[10px] rounded px-2 py-0.5 font-semibold shrink-0 border ${done?"bg-green-500/10 border-green-500/25 text-green-500":plan.status==="in_progress"?"bg-amber-500/10 border-amber-500/25 text-amber-500":ovd?"bg-red-500/10 border-red-500/25 text-red-500":"bg-blue-500/10 border-blue-500/25 text-blue-500"}`}>
+                              {done?"✓ เสร็จ":plan.status==="in_progress"?"ทำอยู่":ovd?"⚠ เกิน":"รอ"}
+                            </span>
                           </div>
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <span className={`text-[10px] rounded px-1.5 py-0.5 border font-semibold ${tc.bg} ${tc.border} ${tc.text}`}>{tc.icon} {tc.label}</span>
+                            {plan.customer_name && <span className="text-[11px] text-muted">{plan.customer_type==="prospect"?"🔍":"🏢"} {plan.customer_name}</span>}
+                            {plan.plan_date && <span className={`text-[11px] font-medium ${ovd?"text-red-500":plan.plan_date===today?"text-blue-500":"text-muted"}`}>📅 {plan.plan_date}{ovd?" ⚠":plan.plan_date===today?" · วันนี้":""}</span>}
+                            {plan.assigned_to && !ownSalesOnly && <span className="text-[11px] text-muted">👤 {plan.assigned_to.split(" ")[0]}</span>}
+                          </div>
+                          {linkedDeal && (
+                            <div className="mt-1.5 flex items-center gap-1.5">
+                              <span className="text-[10px] text-muted">→ ดีล:</span>
+                              <Link href="/projects" onClick={e=>e.stopPropagation()} className="text-[11px] text-accent hover:underline">{linkedDeal.name}</Link>
+                              <span className={`text-[9px] rounded px-1.5 py-0.5 font-medium ${stageColor[linkedDeal.status]||""}`}>{linkedDeal.status}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1229,7 +1232,7 @@ export default function SalesPage() {
               </div>
 
               {/* ── Right Side Panel ── */}
-              <div className="hidden xl:flex flex-col gap-3 w-56 shrink-0">
+              <div className="hidden xl:flex flex-col gap-3 w-44 shrink-0">
                 {/* Mini KPI */}
                 <div className="rounded-xl bg-card border border-border p-3">
                   <div className="flex items-center justify-between mb-2">
@@ -1237,25 +1240,29 @@ export default function SalesPage() {
                     <span className="text-xs font-bold">{allPlans.length} แผน</span>
                   </div>
                   {allPlans.length > 0 && <div className="h-1.5 rounded-full bg-background overflow-hidden mb-2.5"><div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${Math.round(kpiDone/allPlans.length*100)}%`}}/></div>}
-                  {[{label:"✓ เสร็จ",v:kpiDone,c:"text-green-400"},{label:"▷ ทำอยู่",v:kpiIP,c:"text-yellow-400"},{label:"○ รอ",v:kpiNew,c:"text-blue-400"},{label:"⚠ เกิน",v:overdueItems.length,c:overdueItems.length>0?"text-red-400":"text-muted"}].map(s=>(
+                  {[{label:"✓ เสร็จ",v:kpiDone,c:"text-green-500"},{label:"▷ ทำอยู่",v:kpiIP,c:"text-amber-500"},{label:"○ รอ",v:kpiNew,c:"text-blue-500"},{label:"⚠ เกิน",v:overdueItems.length,c:overdueItems.length>0?"text-red-500 font-black":"text-muted"}].map(s=>(
                     <div key={s.label} className="flex items-center justify-between text-[11px] py-0.5"><span className="text-muted">{s.label}</span><span className={`font-bold tabular-nums ${s.c}`}>{s.v}</span></div>
                   ))}
                 </div>
 
                 {/* Today */}
                 <div className="rounded-xl bg-card border border-border overflow-hidden">
-                  <div className="px-3 py-2 border-b border-border flex items-center justify-between bg-accent/5">
-                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent"/><p className="text-[11px] font-semibold">วันนี้</p></div>
-                    <span className="text-[10px] font-bold text-accent bg-accent/15 rounded-full px-2 py-0.5">{todayItems.length}</span>
+                  <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-600"/><p className="text-[11px] font-semibold">วันนี้</p></div>
+                    <span className="text-[10px] font-bold text-blue-600 bg-blue-500/10 border border-blue-500/20 rounded px-1.5 py-0.5">{todayItems.length}</span>
                   </div>
                   <div className="p-1.5 space-y-0.5 max-h-52 overflow-y-auto">
                     {todayItems.length === 0
                       ? <p className="text-[11px] text-muted text-center py-2.5">ไม่มีแผนวันนี้ ✓</p>
                       : todayItems.map(p => {
-                          const tc = TC[p.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+                          const tc = TC[p.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
                           return (
-                            <button key={p.id} onClick={() => setSelectedActivity(p)} className={`w-full text-left rounded-lg px-2 py-1.5 border transition-all hover:brightness-110 ${tc.bg} ${tc.border}`}>
-                              <div className="flex items-center gap-1.5"><span className="text-[11px]">{tc.icon}</span><p className={`text-[11px] truncate font-medium ${tc.text}`}>{p.expected_outcome || p.customer_name || "—"}</p></div>
+                            <button key={p.id} onClick={() => setSelectedActivity(p)}
+                              className="w-full flex items-stretch text-left rounded overflow-hidden border border-border/50 bg-card hover:bg-card-hover transition-all">
+                              <div className={`w-[3px] shrink-0 ${tc.bar}`} />
+                              <div className="flex-1 px-2 py-1 min-w-0">
+                                <p className={`text-[11px] truncate font-semibold ${tc.text}`}>{p.expected_outcome || p.customer_name || "—"}</p>
+                              </div>
                             </button>
                           );
                         })}
@@ -1264,16 +1271,20 @@ export default function SalesPage() {
 
                 {/* Overdue */}
                 {overdueItems.length > 0 && (
-                  <div className="rounded-xl bg-red-950/20 border border-red-800/40 overflow-hidden">
-                    <div className="px-3 py-2 border-b border-red-800/30 flex items-center justify-between">
-                      <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400"/><p className="text-[11px] font-semibold text-red-400">เกินกำหนด</p></div>
-                      <span className="text-[10px] text-red-400 font-bold bg-red-900/50 rounded-full px-2 py-0.5">{overdueItems.length}</span>
+                  <div className="rounded-xl bg-card border border-red-500/30 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-red-500/20 flex items-center justify-between bg-red-500/5">
+                      <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-600"/><p className="text-[11px] font-semibold text-red-500">เกินกำหนด</p></div>
+                      <span className="text-[10px] text-red-600 font-black bg-red-500/10 border border-red-500/25 rounded px-1.5 py-0.5">{overdueItems.length}</span>
                     </div>
                     <div className="p-1.5 space-y-0.5 max-h-48 overflow-y-auto">
                       {overdueItems.slice(0, 8).map(p => (
-                        <button key={p.id} onClick={() => setSelectedActivity(p)} className="w-full text-left rounded-lg px-2 py-1.5 border bg-red-500/10 border-red-500/30 hover:bg-red-500/20 transition-all">
-                          <div className="flex items-center gap-1"><span className="text-[10px]">⚠</span><p className="text-[11px] truncate font-medium text-red-300">{p.expected_outcome || p.customer_name || "—"}</p></div>
-                          <p className="text-[9px] text-red-400/70 mt-0.5 truncate">{p.plan_date}{p.customer_name ? ` · ${p.customer_name}` : ""}</p>
+                        <button key={p.id} onClick={() => setSelectedActivity(p)}
+                          className="w-full flex items-stretch text-left rounded overflow-hidden border border-red-500/25 bg-card hover:bg-red-500/5 transition-all">
+                          <div className="w-[3px] shrink-0 bg-red-600" />
+                          <div className="flex-1 px-2 py-1 min-w-0">
+                            <p className="text-[11px] truncate font-semibold text-red-500">⚠ {p.expected_outcome || p.customer_name || "—"}</p>
+                            <p className="text-[9px] text-muted mt-0.5 truncate">{p.plan_date}{p.customer_name ? ` · ${p.customer_name}` : ""}</p>
+                          </div>
                         </button>
                       ))}
                     </div>
@@ -1283,14 +1294,15 @@ export default function SalesPage() {
                 {/* Activity type legend + filter */}
                 <div className="rounded-xl bg-card border border-border p-3">
                   <p className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">ประเภท</p>
-                  <div className="space-y-0.5">
+                  <div className="space-y-px">
                     {(Object.entries(TC) as [string, typeof TC[string]][]).map(([type, tc]) => {
                       const cnt = allPlans.filter(p => p.type === type).length;
+                      const isActive = typeFilter === type;
                       return (
-                        <button key={type} onClick={() => setTypeFilter(typeFilter === type ? "" : type)}
-                          className={`w-full flex items-center gap-2 rounded-lg px-2 py-1 transition-all text-left ${typeFilter === type ? `${tc.bg} border ${tc.border}` : "hover:bg-card-hover"}`}>
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${tc.dot}`}/><span className="text-[11px] flex-1 text-muted">{tc.icon} {tc.label}</span>
-                          {cnt > 0 && <span className={`text-[10px] font-bold ${tc.text}`}>{cnt}</span>}
+                        <button key={type} onClick={() => setTypeFilter(isActive ? "" : type)}
+                          className={`w-full flex items-center gap-2 rounded px-2 py-1 transition-all text-left ${isActive ? `${tc.bg} border ${tc.border}` : "hover:bg-card-hover"}`}>
+                          <span className={`w-2 h-2 rounded-sm shrink-0 ${tc.dot}`}/><span className={`text-[11px] flex-1 ${isActive ? tc.text : "text-muted"}`}>{tc.label}</span>
+                          {cnt > 0 && <span className={`text-[10px] font-bold tabular-nums ${isActive ? tc.text : "text-muted/60"}`}>{cnt}</span>}
                         </button>
                       );
                     })}
@@ -1834,6 +1846,121 @@ export default function SalesPage() {
       </>)}
 
       </>)}
+
+      {/* ═══ DAY DETAIL DRAWER ═══ */}
+      {drawerDay && tab === "workplan" && (() => {
+        const thaiDayFullG = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
+        const thaiMG = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+        const TCG: Record<string, {bg:string;border:string;text:string;dot:string;bar:string;label:string;icon:string}> = {
+          phone_call:        {bg:"bg-blue-500/10",    border:"border-blue-500/25",    text:"text-blue-500",    dot:"bg-blue-600",    bar:"bg-blue-600",    label:"โทร",       icon:"📞"},
+          visit:             {bg:"bg-orange-500/10",  border:"border-orange-500/25",  text:"text-orange-500",  dot:"bg-orange-500",  bar:"bg-orange-500",  label:"เยี่ยม",    icon:"🤝"},
+          meeting:           {bg:"bg-purple-500/10",  border:"border-purple-500/25",  text:"text-purple-500",  dot:"bg-purple-600",  bar:"bg-purple-600",  label:"ประชุม",    icon:"💬"},
+          follow_up:         {bg:"bg-cyan-500/10",    border:"border-cyan-500/25",    text:"text-cyan-500",    dot:"bg-cyan-600",    bar:"bg-cyan-600",    label:"Follow-up", icon:"🔄"},
+          quotation_created: {bg:"bg-green-500/10",   border:"border-green-500/25",   text:"text-green-500",   dot:"bg-green-600",   bar:"bg-green-600",   label:"สร้าง QT",  icon:"📄"},
+          quotation_sent:    {bg:"bg-teal-500/10",    border:"border-teal-500/25",    text:"text-teal-500",    dot:"bg-teal-600",    bar:"bg-teal-600",    label:"ส่ง QT",    icon:"✉️"},
+          customer_update:   {bg:"bg-indigo-500/10",  border:"border-indigo-500/25",  text:"text-indigo-500",  dot:"bg-indigo-600",  bar:"bg-indigo-600",  label:"Update",    icon:"📊"},
+        };
+        const allPlansG = activities.filter(a => a.is_plan && (!apPersonFilter || a.assigned_to === apPersonFilter) && (!ownSalesOnly || !a.assigned_to || isOwnRecord(a, currentUser)));
+        const dp = (typeFilter ? allPlansG.filter(a => a.type === typeFilter) : allPlansG).filter(a => a.plan_date === drawerDay);
+        const isTd = drawerDay === today;
+        const isPast = drawerDay < today;
+        const dow = new Date(drawerDay + "T12:00:00").getDay();
+        const overdueInDay = dp.filter(p => p.status !== "done" && isPast);
+        const doneInDay = dp.filter(p => p.status === "done");
+        const activeInDay = dp.filter(p => p.status !== "done" && !isPast);
+        return (
+          <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setDrawerDay(null)}>
+            <div className="w-full max-w-xs lg:max-w-sm bg-card border-l border-border shadow-2xl h-full overflow-y-auto flex flex-col"
+                 style={{animation:"slideInRight 0.2s ease-out"}} onClick={e => e.stopPropagation()}>
+              {/* Drawer header */}
+              <div className={`px-4 py-3 border-b shrink-0 ${isTd ? "border-accent/30 bg-accent/8" : isPast && overdueInDay.length > 0 ? "border-red-500/30 bg-red-500/5" : "border-border"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className={`text-sm font-bold leading-tight ${isTd ? "text-accent" : ""}`}>
+                      {isTd && <span className="text-[10px] rounded-full bg-accent text-white px-2 py-0.5 mr-1.5 font-semibold">วันนี้</span>}
+                      วัน{thaiDayFullG[dow]}{isTd ? "" : `ที่ ${parseInt(drawerDay.slice(8))} ${thaiMG[parseInt(drawerDay.slice(5,7))-1]}`}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {overdueInDay.length > 0 && <span className="text-[10px] text-red-300 font-semibold">⚠ เกิน {overdueInDay.length}</span>}
+                      {activeInDay.length > 0 && <span className="text-[10px] text-accent">{activeInDay.length} กำลังจะมา</span>}
+                      {doneInDay.length > 0 && <span className="text-[10px] text-emerald-400">✓ {doneInDay.length} เสร็จ</span>}
+                      {dp.length === 0 && <span className="text-[10px] text-muted">ไม่มีแผน</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button onClick={() => { setDrawerDay(null); const form = { type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing"|"prospect", project_id: "", project_name: "", assigned_to: currentUser?.name || "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: currentUser?.name || "", next_action_date: "", is_plan: true, plan_date: drawerDay, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale"|"service", support_note: "" }; setActForm(form); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
+                      className="rounded-lg bg-accent px-3 py-1.5 text-[11px] font-medium text-white hover:bg-accent-hover">+ เพิ่ม</button>
+                    <button onClick={() => setDrawerDay(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover text-lg">✕</button>
+                  </div>
+                </div>
+              </div>
+              {/* Drawer content */}
+              <div className="flex-1 p-3 space-y-2 overflow-y-auto">
+                {dp.length === 0 ? (
+                  <div className="text-center py-16">
+                    <p className="text-3xl mb-2">📅</p>
+                    <p className="text-sm text-muted">ยังไม่มีแผนวันนี้</p>
+                    <p className="text-[11px] text-muted/60 mt-1">กด &quot;+ เพิ่ม&quot; เพื่อเพิ่มแผน</p>
+                  </div>
+                ) : dp.map(plan => {
+                  const tc = TCG[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
+                  const ovd = isPast && plan.status !== "done";
+                  const done = plan.status === "done";
+                  const linkedDeal = plan.converted_to_project_id ? projects.find(p => p.id === plan.converted_to_project_id) : null;
+                  return (
+                    <div key={plan.id} onClick={() => setSelectedActivity(plan)}
+                      className={`rounded-xl border bg-card overflow-hidden cursor-pointer transition-all hover:shadow-md active:scale-[0.99] ${
+                        done ? "border-border/30 opacity-55" :
+                        ovd  ? "border-red-500/40 hover:border-red-500/60" :
+                        "border-border/60 hover:border-border"}`}>
+                      <div className="flex items-stretch">
+                        <div className={`w-1.5 shrink-0 ${ovd ? "bg-red-600" : done ? "bg-green-500 opacity-50" : tc.bar}`} />
+                        <div className="flex-1 px-3 py-2.5 min-w-0">
+                          {/* Type badge + status */}
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className={`text-[10px] rounded px-1.5 py-0.5 border font-semibold ${tc.bg} ${tc.border} ${tc.text}`}>
+                              {tc.icon} {tc.label}
+                            </span>
+                            <span className={`text-[10px] rounded px-1.5 py-0.5 font-semibold border ${
+                              done ? "bg-green-500/10 border-green-500/25 text-green-500" :
+                              plan.status === "in_progress" ? "bg-amber-500/10 border-amber-500/25 text-amber-500" :
+                              ovd ? "bg-red-500/10 border-red-500/25 text-red-500" : "bg-blue-500/10 border-blue-500/25 text-blue-500"}`}>
+                              {done ? "✓ เสร็จ" : plan.status === "in_progress" ? "ทำอยู่" : ovd ? "⚠ เกิน" : "รอ"}
+                            </span>
+                          </div>
+                          {/* Description */}
+                          <p className={`text-sm font-semibold leading-tight ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>
+                            {plan.expected_outcome || plan.description || "—"}
+                          </p>
+                          {/* Meta */}
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {plan.customer_name && <span className="text-[11px] text-muted">🏢 {plan.customer_name}</span>}
+                            {plan.assigned_to && !ownSalesOnly && <span className="text-[11px] text-muted">👤 {plan.assigned_to.split(" ")[0]}</span>}
+                            {linkedDeal && <span className="text-[11px] text-accent">🎯 {linkedDeal.name.slice(0, 16)}</span>}
+                          </div>
+                        </div>
+                        {/* Quick actions */}
+                        <div className="flex flex-col items-center justify-center gap-1 px-2 border-l border-border/20 shrink-0" onClick={e => e.stopPropagation()}>
+                          {!done && (
+                            <button onClick={() => { updateActivity(plan.id!, {status:"done"}); }}
+                              className="w-7 h-7 flex items-center justify-center rounded-full bg-green-500/15 text-green-500 text-xs hover:bg-green-500/25 transition-colors font-bold" title="เสร็จ">✓</button>
+                          )}
+                          {!done && plan.status !== "in_progress" && (
+                            <button onClick={() => updateActivity(plan.id!, {status:"in_progress"})}
+                              className="w-7 h-7 flex items-center justify-center rounded-full bg-amber-500/15 text-amber-500 text-xs hover:bg-amber-500/25 transition-colors font-bold" title="เริ่มทำ">▷</button>
+                          )}
+                          <button onClick={() => setSelectedActivity(plan)}
+                            className="w-7 h-7 flex items-center justify-center text-muted/40 hover:text-muted text-xl">›</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ═══ ACTIVITY DETAIL MODAL ═══ */}
       {selectedActivity && (() => {

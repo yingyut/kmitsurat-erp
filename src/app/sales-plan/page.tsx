@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { SalesQuota } from "@/lib/types";
+import { useCurrentUser } from "@/lib/UserContext";
+import { canManageQuota } from "@/lib/ownership";
 
 const currentMonth = new Date().toISOString().slice(0, 7); // "2026-05"
 
@@ -50,6 +52,7 @@ const emptyForm = {
 };
 
 export default function SalesPlanPage() {
+  const { currentUser } = useCurrentUser();
   const [quotas, setQuotas] = useState<SalesQuota[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -219,25 +222,27 @@ export default function SalesPlanPage() {
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => setViewMode(viewMode === "admin" ? "sale" : "admin")}
             className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">
-            {viewMode === "admin" ? "View: All (Admin)" : "View: My Plan"}
+            {viewMode === "admin" ? "View: All" : "View: My Plan"}
           </button>
-          {monthFiltered.length === 0 && (
+          {canManageQuota(currentUser) && monthFiltered.length === 0 && (
             <button onClick={seedThisMonth} disabled={saving}
               className="rounded-lg border border-accent text-accent px-4 py-2 text-sm hover:bg-accent/10 disabled:opacity-50">
               📥 โหลดตัวอย่าง 5 ราย
             </button>
           )}
-          {monthFiltered.length > 0 && (
+          {canManageQuota(currentUser) && monthFiltered.length > 0 && (
             <button onClick={syncFromPipeline} disabled={syncing}
               className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50"
               title="นับ Won Deals ที่มี last_activity_date ตรงกับเดือนนี้">
               {syncing ? "กำลังดึง..." : "🔄 ดึงจาก Pipeline"}
             </button>
           )}
-          <button onClick={() => { if (showForm && editId) cancelForm(); else { setEditId(null); setForm({ ...emptyForm, month }); setShowForm(!showForm); } }}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">
-            {showForm ? "✕ ยกเลิก" : "+ Set Quota"}
-          </button>
+          {canManageQuota(currentUser) && (
+            <button onClick={() => { if (showForm && editId) cancelForm(); else { setEditId(null); setForm({ ...emptyForm, month }); setShowForm(!showForm); } }}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">
+              {showForm ? "✕ ยกเลิก" : "+ Set Quota"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -389,8 +394,8 @@ export default function SalesPlanPage() {
         </div>
       )}
 
-      {/* Add quota form */}
-      {showForm && (
+      {/* Add quota form — only for managers/admin */}
+      {showForm && canManageQuota(currentUser) && (
         <div className="rounded-xl bg-card border border-border p-5 mb-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold">{editId ? `✏️ แก้ไข Quota — ${form.user_name}` : "Set Sales Quota"}</h2>
@@ -452,7 +457,7 @@ export default function SalesPlanPage() {
       {loading ? <p className="text-muted text-sm">Loading...</p> : monthFiltered.length === 0 ? (
         <div className="rounded-xl bg-card border border-border p-8 text-center">
           <p className="text-muted text-sm mb-2">ยังไม่มีข้อมูล quota เดือน {month}</p>
-          <p className="text-[11px] text-muted">กด <b className="text-accent">📥 โหลดตัวอย่าง 5 ราย</b> เพื่อเริ่มอย่างเร็ว หรือ <b className="text-accent">+ Set Quota</b> เพื่อสร้างเอง</p>
+          {canManageQuota(currentUser) && <p className="text-[11px] text-muted">กด <b className="text-accent">📥 โหลดตัวอย่าง 5 ราย</b> เพื่อเริ่มอย่างเร็ว หรือ <b className="text-accent">+ Set Quota</b> เพื่อสร้างเอง</p>}
         </div>
       ) : filtered.length === 0 ? (
         <p className="text-muted text-sm">ไม่พบรายการตามตัวกรอง</p>
@@ -472,7 +477,7 @@ export default function SalesPlanPage() {
                 <th className="px-3 py-2.5 text-right" title="GP% จริง">GP%</th>
                 <th className="px-3 py-2.5 text-center" title="Won Deals">Deals</th>
                 <th className="px-3 py-2.5 text-center" title="จำนวน Activities">Activities</th>
-                <th className="px-3 py-2.5 w-20"></th>
+                {canManageQuota(currentUser) && <th className="px-3 py-2.5 w-20"></th>}
               </tr>
             </thead>
             <tbody>
@@ -493,12 +498,14 @@ export default function SalesPlanPage() {
                     <td className={`px-3 py-3 text-right text-xs ${gp >= 20 ? "text-green-400" : gp >= 10 ? "text-yellow-400" : gp > 0 ? "text-red-400" : "text-muted"}`}>{gp > 0 ? `${gp.toFixed(1)}%` : "—"}</td>
                     <td className="px-3 py-3 text-center font-semibold">{q.won_deals || 0}</td>
                     <td className="px-3 py-3 text-center text-muted">{q.total_activities || 0}</td>
-                    <td className="px-3 py-3">
-                      <div className="flex gap-2 justify-end">
-                        <button onClick={() => openEdit(q)} className="text-xs text-accent hover:underline">แก้ไข</button>
-                        <button onClick={() => handleDelete(q.id!)} className="text-xs text-danger hover:underline">ลบ</button>
-                      </div>
-                    </td>
+                    {canManageQuota(currentUser) && (
+                      <td className="px-3 py-3">
+                        <div className="flex gap-2 justify-end">
+                          <button onClick={() => openEdit(q)} className="text-xs text-accent hover:underline">แก้ไข</button>
+                          <button onClick={() => handleDelete(q.id!)} className="text-xs text-danger hover:underline">ลบ</button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

@@ -57,11 +57,13 @@ export const WIDGET_LABELS: Record<string, string> = {
 
 export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
   executive: [
-    { id: "exec-kpi-revenue",    visible: true,  span: "third" },
-    { id: "exec-kpi-target-pct", visible: true,  span: "third" },
-    { id: "exec-kpi-profit",     visible: true,  span: "third" },
+    // exec-kpi-revenue / target-pct / profit / overdue ซ่อนไว้เพราะ showHeroKpiStrip ครอบคลุมแล้ว
+    // เปิดได้ผ่าน Edit Mode → รีเซ็ต หรือคลิก widget ที่ซ่อนอยู่
+    { id: "exec-kpi-revenue",    visible: false, span: "third" },
+    { id: "exec-kpi-target-pct", visible: false, span: "third" },
+    { id: "exec-kpi-profit",     visible: false, span: "third" },
     { id: "exec-kpi-pipe-val",   visible: true,  span: "third" },
-    { id: "exec-kpi-overdue",    visible: true,  span: "third" },
+    { id: "exec-kpi-overdue",    visible: false, span: "third" },
     { id: "exec-kpi-sla",        visible: true,  span: "third" },
     { id: "exec-kpis",           visible: false, span: "full"  },
     { id: "exec-quarterly",      visible: true,  span: "half"  },
@@ -72,12 +74,12 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
     { id: "exec-contracts",      visible: true,  span: "half"  },
   ],
   sales: [
-    { id: "sales-person-cards", visible: true, span: "full" },
-    { id: "sales-kpis",         visible: true, span: "full" },
-    { id: "sales-table",        visible: true, span: "half" },
-    { id: "sales-qt-status",    visible: true, span: "half" },
-    { id: "sales-funnel",       visible: true, span: "half" },
-    { id: "sales-overdue",      visible: true, span: "half" },
+    { id: "sales-person-cards", visible: true,  span: "full" },
+    { id: "sales-overdue",      visible: true,  span: "full" },
+    { id: "sales-qt-status",    visible: true,  span: "half" },
+    { id: "sales-funnel",       visible: true,  span: "half" },
+    { id: "sales-kpis",         visible: false, span: "full" },
+    { id: "sales-table",        visible: false, span: "half" },
   ],
   presale: [
     { id: "pre-person-cards",  visible: true, span: "full" },

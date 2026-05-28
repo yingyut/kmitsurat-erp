@@ -107,7 +107,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     // Check primary role
     const legacyGranted: Partial<Record<string, Permission[]>> = {
       sale:    ["view_dashboard","view_own_projects","view_own_customers","create_customer","view_quote","create_quote"],
-      avenger: ["view_dashboard","view_own_projects","view_own_customers","create_customer","view_quote","create_quote"],
+      avenger: ["view_dashboard","view_all_projects","view_all_tickets","view_all_customers","create_customer","view_quote","create_quote","assign_job"],
       presale: ["view_dashboard","view_presale","manage_presale","use_presale_tools","view_quote","create_quote","view_products","view_vendors","view_catalog","view_own_customers","view_own_projects"],
       service: ["view_dashboard","view_own_tickets","create_ticket","view_own_customers","view_products","view_contracts"],
     };

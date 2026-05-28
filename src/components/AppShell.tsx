@@ -45,11 +45,28 @@ function AuthGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function MobileTopBar({ onMenuClick }: { onMenuClick: () => void }) {
+  return (
+    <div className="sm:hidden fixed top-0 left-0 right-0 z-30 flex items-center h-12 px-3 bg-sidebar border-b border-sidebar-hover/50">
+      <button
+        onClick={onMenuClick}
+        className="w-9 h-9 flex items-center justify-center rounded-md text-sidebar-muted hover:text-sidebar-fg hover:bg-sidebar-hover transition-colors text-lg"
+        aria-label="Open menu"
+      >
+        ☰
+      </button>
+      <span className="flex-1 text-center text-sm font-bold tracking-tight text-gradient pr-9">KMITSURAT</span>
+    </div>
+  );
+}
+
 function AppContent({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isLogin = pathname === "/login";
   const isDev = pathname.startsWith("/dev");
   const [deviceMode, setDeviceMode] = useState<DeviceMode>("desktop");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -62,6 +79,7 @@ function AppContent({ children }: { children: ReactNode }) {
 
   function changeDevice(m: DeviceMode) {
     setDeviceMode(m);
+    setNarrowSidebarOpen(false);
     try { localStorage.setItem("kmit_device_preview", m); } catch {}
   }
 
@@ -72,9 +90,12 @@ function AppContent({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex w-full min-h-screen">
-      {!isNarrow && <Sidebar />}
+      {!isNarrow && (
+        <Sidebar mobileOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
+      )}
 
-      <main className={`@container flex-1 min-h-screen pb-16 ${!isNarrow ? "ml-52" : ""}`}>
+      <main className={`@container flex-1 min-h-screen pb-16 ${!isNarrow ? "ml-52 pt-12 sm:pt-0" : ""}`}>
+        {!isNarrow && <MobileTopBar onMenuClick={() => setMobileSidebarOpen(true)} />}
         {isNarrow ? (
           /* ── Device preview wrapper ── */
           <div className="min-h-screen" style={{ background: "var(--border)" }}>
@@ -83,8 +104,21 @@ function AppContent({ children }: { children: ReactNode }) {
               {meta.icon} {meta.label} — กำลัง Preview อยู่ · ข้อมูลจริงทุกอย่าง
             </div>
             {/* Constrained frame */}
-            <div className="@container device-narrow mx-auto bg-background min-h-screen shadow-2xl overflow-x-auto"
+            <div className="@container device-narrow mx-auto bg-background min-h-screen shadow-2xl overflow-x-hidden relative"
               style={{ maxWidth: meta.width ?? undefined, width: "100%" }}>
+              {/* Sidebar for narrow preview (alwaysMobile keeps it hidden until opened) */}
+              <Sidebar alwaysMobile mobileOpen={narrowSidebarOpen} onClose={() => setNarrowSidebarOpen(false)} />
+              {/* Sticky top bar inside the frame */}
+              <div className="sticky top-0 z-30 flex items-center h-12 px-3 bg-sidebar border-b border-sidebar-hover/50">
+                <button
+                  onClick={() => setNarrowSidebarOpen(true)}
+                  className="w-9 h-9 flex items-center justify-center rounded-md text-sidebar-muted hover:text-sidebar-fg hover:bg-sidebar-hover transition-colors text-lg"
+                  aria-label="Open menu"
+                >
+                  ☰
+                </button>
+                <span className="flex-1 text-center text-sm font-bold tracking-tight text-gradient pr-9">KMITSURAT</span>
+              </div>
               {children}
             </div>
           </div>

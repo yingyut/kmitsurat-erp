@@ -65,17 +65,28 @@ const sections: Section[] = [
   },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+  alwaysMobile?: boolean;
+}
+
+export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = false }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
   const { currentUser, logout, hasAccess } = useCurrentUser();
 
   return (
-    <aside className="fixed left-0 top-0 flex h-full w-52 flex-col bg-sidebar border-r border-sidebar-hover/50 z-50">
-      <div className="px-4 py-4" title="ระบบบริหารงาน KMITSURAT">
+    <>
+      {mobileOpen && (
+        <div className={`fixed inset-0 bg-black/50 z-40 ${alwaysMobile ? "" : "sm:hidden"}`} onClick={onClose} />
+      )}
+      <aside className={`fixed left-0 top-0 flex h-full w-52 flex-col bg-sidebar border-r border-sidebar-hover/50 z-50 transition-transform duration-200 ease-in-out ${mobileOpen ? "translate-x-0" : "-translate-x-full"} ${alwaysMobile ? "" : "sm:translate-x-0"}`}>
+      <div className="px-4 py-4 relative" title="ระบบบริหารงาน KMITSURAT">
         <h1 className="text-base font-bold tracking-tight text-gradient">KMITSURAT</h1>
         <p className="text-[10px] text-sidebar-muted/70">Work Portal v1.6</p>
+        <button onClick={onClose} className="sm:hidden absolute right-3 top-3 w-7 h-7 flex items-center justify-center rounded-md text-sidebar-muted hover:text-sidebar-fg hover:bg-sidebar-hover transition-colors text-sm">✕</button>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 px-2 overflow-y-auto pb-3">
         {sections.map((section, i) => (
@@ -114,5 +125,6 @@ export default function Sidebar() {
         <button onClick={logout} className="w-full rounded-lg bg-sidebar-hover border border-sidebar-hover px-2 py-1.5 text-[10px] text-sidebar-fg hover:text-danger hover:border-danger/30 transition-colors">🚪 ออกจากระบบ</button>
       </div>
     </aside>
+    </>
   );
 }
