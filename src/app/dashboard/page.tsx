@@ -1560,8 +1560,10 @@ export default function DashboardPage() {
               {view==="executive"?"Executive Dashboard":view==="sales"?(seeAll?"Sales Dashboard":myName||"Sales Dashboard"):view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":"Projects Dashboard"}
             </h1>
             {view==="sales" && !seeAll && myMonthTarget > 0 && (
-              <span className="text-[11px] font-medium text-muted/70 bg-card border border-border/60 rounded-full px-2.5 py-0.5">
-                เป้า {(myMonthTarget/1000).toFixed(0)}K · {myMonthPct}%
+              <span className="text-[11px] font-medium text-muted/70 bg-card border border-border/60 rounded-full px-2.5 py-0.5 flex items-center gap-1">
+                เป้า <span className="text-blue-500 font-semibold">{(myMonthTarget/1000).toFixed(0)}K</span>
+                <span className="text-muted/40">·</span>
+                <span className={`font-semibold ${myMonthPct >= 100 ? "text-emerald-500" : myMonthPct >= 70 ? "text-amber-500" : "text-red-500"}`}>{myMonthPct}%</span>
               </span>
             )}
             {!loading&&(
