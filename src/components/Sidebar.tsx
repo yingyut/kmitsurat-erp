@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCurrentUser } from "@/lib/UserContext";
 import { useRouter } from "next/navigation";
 
@@ -71,11 +71,21 @@ interface SidebarProps {
   alwaysMobile?: boolean;
 }
 
+const SALES_TABS = [
+  { tab: "workplan",   label: "Action Plan", icon: "📅" },
+  { tab: "activities", label: "Activities",  icon: "📞" },
+  { tab: "pipeline",   label: "Pipeline",    icon: "🎯" },
+  { tab: "requests",   label: "Requests",    icon: "🙋" },
+];
+
 export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = false }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
   const { currentUser, logout, hasAccess } = useCurrentUser();
+  const onSalesPage = pathname === "/sales";
+  const activeTab = searchParams.get("tab") || "workplan";
 
   return (
     <>
@@ -102,11 +112,24 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
             {section.items.filter(item => hasAccess(item.href)).map((item) => {
               const active = isActive(item.href);
               return (
-                <Link key={item.href} href={item.href} title={item.thai}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all ${active ? "bg-accent/20 text-accent font-semibold border border-accent/30" : "text-sidebar-fg hover:bg-sidebar-hover border border-transparent"}`}>
-                  <span className="text-sm">{item.icon}</span>
-                  {item.label}
-                </Link>
+                <div key={item.href}>
+                  <Link href={item.href} title={item.thai}
+                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all ${active ? "bg-accent/20 text-accent font-semibold border border-accent/30" : "text-sidebar-fg hover:bg-sidebar-hover border border-transparent"}`}>
+                    <span className="text-sm">{item.icon}</span>
+                    {item.label}
+                  </Link>
+                  {item.href === "/sales" && onSalesPage && (
+                    <div className="ml-3 pl-3 border-l border-accent/30 mt-0.5 mb-1 space-y-0.5">
+                      {SALES_TABS.map(t => (
+                        <Link key={t.tab} href={`/sales?tab=${t.tab}`}
+                          className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-all ${activeTab === t.tab ? "text-accent font-semibold bg-accent/10" : "text-sidebar-muted hover:text-sidebar-fg hover:bg-sidebar-hover"}`}>
+                          <span className="text-[11px]">{t.icon}</span>
+                          {t.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

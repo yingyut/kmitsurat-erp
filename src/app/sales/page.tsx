@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
@@ -22,7 +23,13 @@ const nextMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 
 
 export default function SalesPage() {
   const { currentUser, hasPermission } = useCurrentUser();
-  const [tab, setTab] = useState<"dashboard" | "plan" | "workplan" | "activities" | "pipeline" | "requests">(showSalesDashboardMenu ? "dashboard" : "workplan");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const validTabs = ["workplan","activities","pipeline","requests","dashboard","plan"] as const;
+  type TabId = "dashboard" | "plan" | "workplan" | "activities" | "pipeline" | "requests";
+  const initTab = (validTabs as readonly string[]).includes(searchParams.get("tab") ?? "") ? searchParams.get("tab") as TabId : (showSalesDashboardMenu ? "dashboard" : "workplan");
+  const [tab, setTabState] = useState<TabId>(initTab);
+  function setTab(t: TabId) { setTabState(t); router.replace(`/sales?tab=${t}`, { scroll: false }); }
   const [activities, setActivities] = useState<SalesActivity[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
