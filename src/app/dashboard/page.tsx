@@ -74,7 +74,7 @@ function KpiCard({ label, value, sub, color, href, pct, alert }: {
 
 // ── Alert Row ──────────────────────────────────────────────────────────────────
 function AlertRow({ level, msg, href }: { level: "red" | "orange" | "green"; msg: string; href: string }) {
-  const dot = level === "red" ? "bg-orange-400" : level === "orange" ? "bg-amber-400" : "bg-emerald-400";
+  const dot = level === "red" ? "bg-red-600" : level === "orange" ? "bg-amber-600" : "bg-green-600";
   return (
     <Link href={href} className="flex items-center gap-3 rounded-lg border border-border/50 bg-card px-3 py-2 text-xs hover:bg-card-hover transition-colors">
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
@@ -584,7 +584,7 @@ export default function DashboardPage() {
               <p className={`text-xs font-bold ${q.isCurrent?"text-accent":"text-muted"}`}>{q.name}</p>
               <p className="text-lg font-bold mt-1">{q.actualK>0?`${q.actualK}K`:"—"}</p>
               <p className="text-[10px] text-muted">{q.targetK>0?`เป้า ${q.targetK}K`:"ไม่มีเป้า"}</p>
-              <p className={`text-[10px] font-medium mt-1 ${q.pct>=80?"text-green-400":q.pct>=50?"text-amber-400":q.pct>0?"text-rose-400":"text-muted"}`}>{q.pct>0?`${q.pct}%`:"—"}</p>
+              <p className={`text-[10px] font-medium mt-1 ${q.pct>=80?"text-green-500":q.pct>=50?"text-amber-500":q.pct>0?"text-red-500":"text-muted"}`}>{q.pct>0?`${q.pct}%`:"—"}</p>
             </div>
           ))}
         </div>
@@ -662,17 +662,17 @@ export default function DashboardPage() {
                     </td>
                     <td className="py-2.5 text-right text-muted">{p.targetK>0?p.targetK.toLocaleString():"—"}</td>
                     <td className="py-2.5 text-right font-semibold">{p.actualK>0?p.actualK.toLocaleString():"—"}</td>
-                    <td className="py-2.5 text-right text-purple-400/70">{p.pft>0?Math.round(p.pft/1000).toLocaleString():"—"}</td>
+                    <td className="py-2.5 text-right text-violet-500">{p.pft>0?Math.round(p.pft/1000).toLocaleString():"—"}</td>
                     <td className="py-2.5">
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-2 rounded-full bg-background overflow-hidden">
                           <div className={`h-full rounded-full ${p.pct>=80?"bg-green-500":p.pct>=50?"bg-amber-500":p.pct>0?"bg-rose-500":"bg-muted/30"}`} style={{ width:`${Math.min(p.pct,100)}%` }} />
                         </div>
-                        <span className={`text-xs w-9 text-right ${p.pct>=80?"text-green-400":p.pct>=50?"text-amber-400":p.pct>0?"text-rose-400":"text-muted"}`}>{p.tgt>0?`${p.pct}%`:"—"}</span>
+                        <span className={`text-xs w-9 text-right ${p.pct>=80?"text-green-500":p.pct>=50?"text-amber-500":p.pct>0?"text-red-500":"text-muted"}`}>{p.tgt>0?`${p.pct}%`:"—"}</span>
                       </div>
                     </td>
                     <td className="py-2.5 text-right text-muted">{p.acts||"—"}</td>
-                    <td className="py-2.5 text-right text-blue-400/70">{p.activeProj||"—"}</td>
+                    <td className="py-2.5 text-right text-blue-500">{p.activeProj||"—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -693,9 +693,9 @@ export default function DashboardPage() {
                   <div className="w-16 text-xs truncate">{p.isPool?<span className="text-muted/60">📦 กองกลาง</span>:<span className="text-muted">{p.name}</span>}</div>
                   <div className="flex-1 flex gap-1">
                     {total===0?<div className="h-6 rounded bg-background border border-border text-muted/50 text-[10px] flex items-center justify-center px-2 w-full">ว่าง</div>:(<>
-                      {p.pending>0&&<div className="h-6 rounded bg-amber-700/60 text-amber-200 text-[10px] flex items-center justify-center px-1.5 min-w-[22px]">{p.pending}</div>}
-                      {p.progress>0&&<div className="h-6 rounded bg-blue-700/60 text-blue-200 text-[10px] flex items-center justify-center px-1.5 min-w-[22px]">{p.progress}</div>}
-                      {p.done>0&&<div className="h-6 rounded bg-green-900/60 text-green-300 text-[10px] flex items-center justify-center px-1.5 min-w-[22px]">{p.done}</div>}
+                      {p.pending>0&&<div className="h-6 rounded bg-amber-500/15 text-amber-500 text-[10px] flex items-center justify-center px-1.5 min-w-[22px] font-semibold">{p.pending}</div>}
+                      {p.progress>0&&<div className="h-6 rounded bg-blue-500/15 text-blue-500 text-[10px] flex items-center justify-center px-1.5 min-w-[22px] font-semibold">{p.progress}</div>}
+                      {p.done>0&&<div className="h-6 rounded bg-green-500/15 text-green-500 text-[10px] flex items-center justify-center px-1.5 min-w-[22px] font-semibold">{p.done}</div>}
                     </>)}
                   </div>
                   <div className="text-[10px] text-muted w-10 text-right">{total>0?`${total} งาน`:"—"}</div>
@@ -703,9 +703,9 @@ export default function DashboardPage() {
               );
             })}
             <div className="flex gap-3 mt-2 text-[10px] text-muted">
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-amber-700/60 inline-block"/>รอ</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-blue-700/60 inline-block"/>กำลังทำ</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-green-900/60 inline-block"/>เสร็จ</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-amber-500/50 inline-block"/>รอ</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-blue-500/50 inline-block"/>กำลังทำ</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-green-500/50 inline-block"/>เสร็จ</span>
             </div>
           </div>
         )}
@@ -746,9 +746,9 @@ export default function DashboardPage() {
                 <Link key={t.name} href="/service" className={`flex items-center gap-2 hover:opacity-80 ${t.isPool?"border-t border-dashed border-border pt-2 mt-1":""}`}>
                   <div className="w-14 text-xs truncate shrink-0">{t.isPool?<span className="text-muted/60">📦</span>:<span className="text-muted">{t.name}</span>}</div>
                   <div className="flex-1 flex gap-0.5 h-5">
-                    {t.done>0&&<div className="h-full rounded-sm bg-green-700/70 text-[10px] text-green-200 flex items-center justify-center px-1 min-w-[18px]" style={{ width:`${t.done/maxTechTotal*100}%` }}>{t.done}</div>}
-                    {t.inProg>0&&<div className="h-full rounded-sm bg-amber-600/70 text-[10px] text-amber-100 flex items-center justify-center px-1 min-w-[18px]" style={{ width:`${t.inProg/maxTechTotal*100}%` }}>{t.inProg}</div>}
-                    {t.open>0&&<div className="h-full rounded-sm bg-blue-800/60 text-[10px] text-blue-200 flex items-center justify-center px-1 min-w-[18px]" style={{ width:`${t.open/maxTechTotal*100}%` }}>{t.open}</div>}
+                    {t.done>0&&<div className="h-full rounded-sm bg-green-500/20 text-[10px] text-green-500 flex items-center justify-center px-1 min-w-[18px] font-semibold" style={{ width:`${t.done/maxTechTotal*100}%` }}>{t.done}</div>}
+                    {t.inProg>0&&<div className="h-full rounded-sm bg-amber-500/20 text-[10px] text-amber-500 flex items-center justify-center px-1 min-w-[18px] font-semibold" style={{ width:`${t.inProg/maxTechTotal*100}%` }}>{t.inProg}</div>}
+                    {t.open>0&&<div className="h-full rounded-sm bg-blue-500/20 text-[10px] text-blue-500 flex items-center justify-center px-1 min-w-[18px] font-semibold" style={{ width:`${t.open/maxTechTotal*100}%` }}>{t.open}</div>}
                   </div>
                   <span className="text-[10px] text-muted w-10 text-right shrink-0">{t.total} งาน</span>
                 </Link>
@@ -762,12 +762,12 @@ export default function DashboardPage() {
     if (id === "exec-contracts" || id === "prj-contracts") return (
       <Section title="📄 สัญญาใกล้หมดอายุ" action={<Link href="/contracts" className="text-[11px] text-accent hover:underline">ดูสัญญา →</Link>}>
         <div className="grid grid-cols-2 gap-2 mb-3">
-          <Link href="/contracts" className="rounded-xl bg-orange-950/20 border border-orange-800/30 p-3 text-center hover:opacity-80">
-            <p className="text-2xl font-bold text-orange-400">{expiringContracts.length}</p>
+          <Link href="/contracts" className="rounded-xl bg-orange-500/10 border border-orange-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-orange-500">{expiringContracts.length}</p>
             <p className="text-[10px] text-muted/70 mt-0.5">หมดใน ≤30 วัน</p>
           </Link>
-          <Link href="/contracts" className="rounded-xl bg-amber-950/30 border border-amber-800/40 p-3 text-center hover:opacity-80">
-            <p className="text-2xl font-bold text-amber-400">{expiredContracts.length}</p>
+          <Link href="/contracts" className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-amber-500">{expiredContracts.length}</p>
             <p className="text-[10px] text-muted mt-0.5">หมดอายุแล้ว</p>
           </Link>
         </div>
@@ -775,7 +775,7 @@ export default function DashboardPage() {
           <div className="space-y-2">
             {topExpiring.slice(0,5).map(({c,d})=>(
               <Link key={c.id} href="/contracts" className="flex items-center gap-2 hover:opacity-80">
-                <div className={`text-xs font-bold w-9 text-center rounded px-1 py-0.5 ${d<=7?"bg-rose-900/50 text-rose-300":d<=30?"bg-amber-900/50 text-amber-300":"bg-background text-muted"}`}>{d}d</div>
+                <div className={`text-xs font-bold w-9 text-center rounded px-1 py-0.5 border ${d<=7?"bg-red-500/10 border-red-500/25 text-red-500":d<=30?"bg-amber-500/10 border-amber-500/25 text-amber-500":"border-border/40 bg-background text-muted"}`}>{d}d</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate">{c.title||c.customer_name}</p>
                   <p className="text-[10px] text-muted truncate">{c.customer_name}</p>
@@ -862,18 +862,18 @@ export default function DashboardPage() {
                       <p className="text-sm font-semibold">{p.short}</p>
                       <p className="text-[10px] text-muted truncate max-w-[140px]">{p.name}</p>
                     </div>
-                    <div className={`text-xs font-bold px-2 py-0.5 rounded-full ${p.pct>=80?"bg-green-900/50 text-green-300":p.pct>=50?"bg-amber-900/50 text-amber-300":p.tgt>0?"bg-rose-900/50 text-rose-300":"bg-muted/10 text-muted"}`}>
+                    <div className={`text-xs font-bold px-2 py-0.5 rounded-full border ${p.pct>=80?"bg-green-500/10 border-green-500/25 text-green-500":p.pct>=50?"bg-amber-500/10 border-amber-500/25 text-amber-500":p.tgt>0?"bg-red-500/10 border-red-500/25 text-red-500":"border-border/40 bg-muted/10 text-muted"}`}>
                       {p.tgt>0?`${p.pct}%`:"—"}
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs"><span className="text-muted">ยอดขาย</span><span className="font-semibold text-green-400">{p.actualK>0?`${p.actualK.toLocaleString()}K`:"—"}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-muted">ยอดขาย</span><span className="font-semibold text-green-500">{p.actualK>0?`${p.actualK.toLocaleString()}K`:"—"}</span></div>
                     <div className="flex justify-between text-xs"><span className="text-muted">เป้า</span><span className="text-muted">{p.targetK>0?`${p.targetK.toLocaleString()}K`:"—"}</span></div>
                     {p.tgt>0&&<div className="h-1.5 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${p.pct>=80?"bg-green-500":p.pct>=50?"bg-amber-500":"bg-rose-500"}`} style={{ width:`${Math.min(p.pct,100)}%` }}/></div>}
                     <div className="flex gap-3 mt-2 pt-2 border-t border-border">
                       <div className="text-center"><p className="text-xs font-bold">{p.acts}</p><p className="text-[10px] text-muted">Activity</p></div>
                       <div className="text-center"><p className="text-xs font-bold">{p.activeProj}</p><p className="text-[10px] text-muted">โปรเจค</p></div>
-                      <div className="text-center"><p className={`text-xs font-bold ${myOverdue>0?"text-rose-400":""}`}>{myOverdue}</p><p className="text-[10px] text-muted">ค้าง</p></div>
+                      <div className="text-center"><p className={`text-xs font-bold ${myOverdue>0?"text-red-500":""}`}>{myOverdue}</p><p className="text-[10px] text-muted">ค้าง</p></div>
                     </div>
                   </div>
                 </Link>
@@ -933,7 +933,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5">
             {salesOverdue.slice(0,8).map(a=>(
               <Link key={a.id} href="/sales" className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border/40 hover:bg-card-hover transition-colors">
-                <div className="text-xs text-orange-400/70 w-[88px] shrink-0 font-mono">{a.next_follow_up}</div>
+                <div className="text-xs text-orange-500 w-[88px] shrink-0 font-mono">{a.next_follow_up}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate font-medium">{a.customer_name||"—"}</p>
                   <p className="text-[10px] text-muted/60 truncate">{a.project_name||a.description?.slice(0,40)||"—"}</p>
@@ -960,15 +960,15 @@ export default function DashboardPage() {
                 className="flex-1 min-w-[180px] max-w-[250px] rounded-2xl bg-card border border-border p-4 hover:border-accent/50 hover:bg-card-hover transition-all">
                 <div className="flex items-start justify-between mb-3">
                   <div><p className="text-sm font-semibold">{p.name}</p><p className="text-[10px] text-muted truncate max-w-[130px]">{p.fullName}</p></div>
-                  <div className={`text-xs font-bold px-2 py-0.5 rounded-full ${myOverdue>0?"bg-rose-900/50 text-rose-300":total===0?"bg-muted/10 text-muted":"bg-blue-900/50 text-blue-300"}`}>
+                  <div className={`text-xs font-bold px-2 py-0.5 rounded-full border ${myOverdue>0?"bg-red-500/10 border-red-500/25 text-red-500":total===0?"border-border/40 bg-muted/10 text-muted":"bg-blue-500/10 border-blue-500/25 text-blue-500"}`}>
                     {myOverdue>0?`${myOverdue} ค้าง`:total===0?"ว่าง":`${total} งาน`}
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <div className="flex gap-2 flex-wrap">
-                    {p.pending>0&&<span className="text-[10px] rounded-full bg-amber-800/50 text-amber-200 px-2 py-0.5">รอ {p.pending}</span>}
-                    {p.progress>0&&<span className="text-[10px] rounded-full bg-blue-800/50 text-blue-200 px-2 py-0.5">ทำ {p.progress}</span>}
-                    {p.done>0&&<span className="text-[10px] rounded-full bg-green-900/50 text-green-300 px-2 py-0.5">เสร็จ {p.done}</span>}
+                    {p.pending>0&&<span className="text-[10px] rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-500 px-2 py-0.5">รอ {p.pending}</span>}
+                    {p.progress>0&&<span className="text-[10px] rounded-full bg-blue-500/10 border border-blue-500/25 text-blue-500 px-2 py-0.5">ทำ {p.progress}</span>}
+                    {p.done>0&&<span className="text-[10px] rounded-full bg-green-500/10 border border-green-500/25 text-green-500 px-2 py-0.5">เสร็จ {p.done}</span>}
                     {total===0&&<span className="text-[10px] text-muted">ยังไม่มีงาน</span>}
                   </div>
                   {total>0&&<div className="flex h-1.5 rounded-full overflow-hidden bg-background mt-1">
@@ -1005,7 +1005,7 @@ export default function DashboardPage() {
           <div className="space-y-1.5">
             {presaleOverdue.slice(0,8).map(r=>(
               <Link key={r.id} href="/presale" className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover transition-colors">
-                <div className="text-xs text-orange-400/80 w-20 shrink-0 font-mono">{r.due_date}</div>
+                <div className="text-xs text-orange-500 w-20 shrink-0 font-mono">{r.due_date}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate font-medium">{r.project_name||r.customer_name||"—"}</p>
                   <p className="text-[10px] text-muted truncate">{r.type?.replace(/_/g," ")||"—"}</p>
@@ -1038,7 +1038,7 @@ export default function DashboardPage() {
                     <td className="py-2 text-xs text-muted">{r.assigned_to?.split(" ")[0]||"—"}</td>
                     <td className="py-2 text-xs text-muted">{r.due_date||"—"}</td>
                     <td className="py-2 text-center">
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${r.status==="completed"?"bg-green-900/50 text-green-300":r.status==="in_progress"?"bg-blue-900/50 text-blue-300":"bg-amber-900/50 text-amber-300"}`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full border ${r.status==="completed"?"bg-green-500/10 border-green-500/25 text-green-500":r.status==="in_progress"?"bg-blue-500/10 border-blue-500/25 text-blue-500":"bg-amber-500/10 border-amber-500/25 text-amber-500"}`}>
                         {r.status==="completed"?"เสร็จ":r.status==="in_progress"?"กำลังทำ":"รอ"}
                       </span>
                     </td>
@@ -1063,13 +1063,13 @@ export default function DashboardPage() {
                 className="flex-1 min-w-[180px] max-w-[240px] rounded-2xl bg-card border border-border p-4 hover:border-accent/50 hover:bg-card-hover transition-all">
                 <div className="flex items-start justify-between mb-3">
                   <div><p className="text-sm font-semibold">{t.name}</p><p className="text-[10px] text-muted">{t.total} งานทั้งหมด</p></div>
-                  <div className={`text-xs font-bold px-2 py-0.5 rounded-full ${(t.open+t.inProg)>3?"bg-amber-900/50 text-amber-300":"bg-blue-900/50 text-blue-300"}`}>{t.open+t.inProg} active</div>
+                  <div className={`text-xs font-bold px-2 py-0.5 rounded-full border ${(t.open+t.inProg)>3?"bg-amber-500/10 border-amber-500/25 text-amber-500":"bg-blue-500/10 border-blue-500/25 text-blue-500"}`}>{t.open+t.inProg} active</div>
                 </div>
                 <div className="space-y-1.5">
                   <div className="flex gap-2 flex-wrap">
-                    {t.open>0&&<span className="text-[10px] rounded-full bg-blue-800/50 text-blue-200 px-2 py-0.5">รอ {t.open}</span>}
-                    {t.inProg>0&&<span className="text-[10px] rounded-full bg-amber-800/50 text-amber-200 px-2 py-0.5">ทำ {t.inProg}</span>}
-                    {t.done>0&&<span className="text-[10px] rounded-full bg-green-900/50 text-green-300 px-2 py-0.5">เสร็จ {t.done}</span>}
+                    {t.open>0&&<span className="text-[10px] rounded-full bg-blue-500/10 border border-blue-500/25 text-blue-500 px-2 py-0.5">รอ {t.open}</span>}
+                    {t.inProg>0&&<span className="text-[10px] rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-500 px-2 py-0.5">ทำ {t.inProg}</span>}
+                    {t.done>0&&<span className="text-[10px] rounded-full bg-green-500/10 border border-green-500/25 text-green-500 px-2 py-0.5">เสร็จ {t.done}</span>}
                   </div>
                   {t.total>0&&<>
                     <div className="flex h-1.5 rounded-full overflow-hidden bg-background mt-1">
@@ -1079,7 +1079,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex justify-between text-[10px] pt-1 border-t border-border mt-2">
                       <span className="text-muted">SLA</span>
-                      <span className={slaOk>=80?"text-green-400":slaOk>=60?"text-amber-400":"text-rose-400"}>{slaOk}%</span>
+                      <span className={slaOk>=80?"text-green-500":slaOk>=60?"text-amber-500":"text-red-500"}>{slaOk}%</span>
                     </div>
                   </>}
                 </div>
@@ -1111,7 +1111,7 @@ export default function DashboardPage() {
           <div className="space-y-1.5">
             {svcOverdue.slice(0,6).map(t=>(
               <Link key={t.id} href="/service" className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover transition-colors">
-                <div className="text-xs text-orange-400/80 w-20 shrink-0 font-mono">{t.service_date}</div>
+                <div className="text-xs text-orange-500 w-20 shrink-0 font-mono">{t.service_date}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate font-medium">{t.customer_name||"—"}</p>
                   <p className="text-[10px] text-muted truncate">{t.issue?.slice(0,40)||t.type?.replace(/_/g," ")||"—"}</p>
@@ -1128,8 +1128,8 @@ export default function DashboardPage() {
     if (id === "svc-pm") return (
       <Section title="🛠️ PM Schedule" action={<Link href="/assets/pm-schedule" className="text-[11px] text-accent hover:underline">ดูตาราง →</Link>}>
         <div className="grid grid-cols-2 gap-2 mb-3">
-          <Link href="/assets/pm-schedule" className="rounded-xl bg-orange-950/20 border border-orange-800/30 p-3 text-center hover:opacity-80">
-            <p className="text-2xl font-bold text-orange-400">{pmOverdue.length}</p><p className="text-[10px] text-muted/70 mt-0.5">PM เลยกำหนด</p>
+          <Link href="/assets/pm-schedule" className="rounded-xl bg-orange-500/10 border border-orange-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-orange-500">{pmOverdue.length}</p><p className="text-[10px] text-muted/70 mt-0.5">PM เลยกำหนด</p>
           </Link>
           <Link href="/assets/pm-schedule" className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-3 text-center hover:opacity-80">
             <p className="text-2xl font-bold text-amber-500">{pmDue30.length}</p><p className="text-[10px] text-muted/60 mt-0.5">PM ภายใน 30 วัน</p>
@@ -1137,7 +1137,7 @@ export default function DashboardPage() {
         </div>
         {pmOverdue.slice(0,4).map(a=>(
           <Link key={a.id} href="/assets/pm-schedule" className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover transition-colors">
-            <div className="text-xs text-orange-400/80 w-20 shrink-0 font-mono">{a.pm_next_date}</div>
+            <div className="text-xs text-orange-500 w-20 shrink-0 font-mono">{a.pm_next_date}</div>
             <div className="flex-1 min-w-0">
               <p className="text-xs truncate font-medium">{a.device_model||a.km_number}</p>
               <p className="text-[10px] text-muted truncate">{a.customer_name}</p>
@@ -1149,7 +1149,7 @@ export default function DashboardPage() {
 
     if (id === "svc-workload") {
       const TYPE_LABEL: Record<string, string> = { repair:"ซ่อม", after_sales:"After Sales", pm_service:"PM", installation:"ติดตั้ง", site_survey:"Survey", technical_survey:"Tech Survey" };
-      const STATUS_STYLE: Record<string, string> = { open:"bg-blue-900/50 text-blue-300", in_progress:"bg-amber-900/50 text-amber-300", resolved:"bg-green-900/50 text-green-300", closed:"bg-neutral-800 text-neutral-400" };
+      const STATUS_STYLE: Record<string, string> = { open:"bg-blue-500/10 border border-blue-500/25 text-blue-500", in_progress:"bg-amber-500/10 border border-amber-500/25 text-amber-500", resolved:"bg-green-500/10 border border-green-500/25 text-green-500", closed:"bg-neutral-500/10 border border-neutral-500/20 text-neutral-400" };
       const STATUS_TH: Record<string, string> = { open:"รอ", in_progress:"ทำ", resolved:"เสร็จ", closed:"ปิด" };
       const elapsedDays = (t: ServiceTicket) => {
         const start = t.opened_at || t.service_date;
@@ -1196,7 +1196,7 @@ export default function DashboardPage() {
                                   <td className="px-3 py-2 text-muted truncate max-w-[180px] hidden sm:table-cell">{t.issue?.slice(0,50)||"—"}</td>
                                   <td className="px-3 py-2 text-center text-muted">{TYPE_LABEL[t.type]||t.type}</td>
                                   <td className="px-3 py-2 text-center"><span className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS_STYLE[t.status]||""}`}>{STATUS_TH[t.status]||t.status}</span></td>
-                                  <td className={`px-3 py-2 text-center font-medium ${isActive&&days>7?"text-rose-400":isActive&&days>3?"text-amber-400":"text-muted"}`}>{days} วัน</td>
+                                  <td className={`px-3 py-2 text-center font-medium ${isActive&&days>7?"text-red-500":isActive&&days>3?"text-amber-500":"text-muted"}`}>{days} วัน</td>
                                 </tr>
                               );
                             })}
@@ -1249,7 +1249,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-xs font-bold">{c.count} ticket</p>
-                        {c.open>0&&<p className="text-[10px] text-amber-400">ค้างอยู่ {c.open}</p>}
+                        {c.open>0&&<p className="text-[10px] text-amber-500 font-semibold">ค้างอยู่ {c.open}</p>}
                       </div>
                     </div>
                   ))}
@@ -1266,7 +1266,7 @@ export default function DashboardPage() {
                         <p className="text-xs font-medium">{t.name}</p>
                         <p className="text-[10px] text-muted">Active {t.active} งาน</p>
                       </div>
-                      <div className={`text-xs font-bold px-2 py-0.5 rounded-full ${t.longRunning>0?"bg-rose-900/50 text-rose-300":"bg-green-900/50 text-green-300"}`}>
+                      <div className={`text-xs font-bold px-2 py-0.5 rounded-full border ${t.longRunning>0?"bg-red-500/10 border-red-500/25 text-red-500":"bg-green-500/10 border-green-500/25 text-green-500"}`}>
                         {t.longRunning>0?`ค้างนาน ${t.longRunning}`:"ปกติ"}
                       </div>
                     </div>
@@ -1301,7 +1301,7 @@ export default function DashboardPage() {
             <div key={q.name} className={`rounded-xl p-2.5 text-center border ${q.isCurrent?"border-accent bg-accent/10":"border-border bg-background"}`}>
               <p className={`text-xs font-bold ${q.isCurrent?"text-accent":"text-muted"}`}>{q.name}</p>
               <p className="text-base font-bold mt-1">{q.actualK>0?`${q.actualK}K`:"—"}</p>
-              <p className={`text-[10px] font-medium mt-0.5 ${q.pct>=80?"text-green-400":q.pct>=50?"text-amber-400":q.pct>0?"text-rose-400":"text-muted"}`}>{q.pct>0?`${q.pct}%`:"—"}</p>
+              <p className={`text-[10px] font-medium mt-0.5 ${q.pct>=80?"text-green-500":q.pct>=50?"text-amber-500":q.pct>0?"text-red-500":"text-muted"}`}>{q.pct>0?`${q.pct}%`:"—"}</p>
             </div>
           ))}
         </div>
@@ -1331,8 +1331,8 @@ export default function DashboardPage() {
     const expiring60 = contracts.filter(c => c.end_date && c.end_date > in30 && c.end_date <= in60);
     const expiring90 = contracts.filter(c => c.end_date && c.end_date > in60 && c.end_date <= in90);
     const PRIO_COLOR: Record<string, string> = {
-      urgent: "text-rose-400",  high: "text-amber-400",
-      medium: "text-blue-400",  low: "text-muted",
+      urgent: "text-red-500",  high: "text-amber-500",
+      medium: "text-blue-500",  low: "text-muted",
     };
     const PRIO_LABEL: Record<string, string> = {
       urgent: "ด่วนมาก", high: "ด่วน", medium: "ปกติ", low: "ต่ำ",
@@ -1369,12 +1369,12 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium truncate">{j.title}</p>
                   <p className="text-[11px] text-muted truncate">{j.customer_name} · {j.request_to_team === "presale" ? "Presale" : "Service"}</p>
                 </div>
-                <div className={`text-[10px] px-2 py-0.5 rounded-full shrink-0 font-medium
-                  ${j.status === "pending" ? "bg-amber-900/40 text-amber-300" : "bg-blue-900/40 text-blue-300"}`}>
+                <div className={`text-[10px] px-2 py-0.5 rounded-full shrink-0 font-medium border
+                  ${j.status === "pending" ? "bg-amber-500/10 border-amber-500/25 text-amber-500" : "bg-blue-500/10 border-blue-500/25 text-blue-500"}`}>
                   {j.status === "pending" ? "รอดำเนินการ" : "กำลังดำเนินการ"}
                 </div>
                 {j.due_date && (
-                  <p className={`text-[10px] shrink-0 ${j.due_date < today2 ? "text-rose-400 font-bold" : "text-muted"}`}>
+                  <p className={`text-[10px] shrink-0 ${j.due_date < today2 ? "text-red-500 font-bold" : "text-muted"}`}>
                     {j.due_date < today2 ? "เกิน!" : ""} {j.due_date}
                   </p>
                 )}
@@ -1391,24 +1391,24 @@ export default function DashboardPage() {
     if (id === "coord-tickets") return (
       <Section title="Ticket ทั้งหมด" action={<Link href="/service" className="text-xs text-accent hover:underline">ดูทั้งหมด →</Link>}>
         <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="rounded-xl bg-background border border-border p-3 text-center">
-            <p className="text-2xl font-bold text-blue-400">{svcOpenAll.length}</p>
+          <div className="rounded-xl bg-blue-500/10 border border-blue-500/25 p-3 text-center">
+            <p className="text-2xl font-bold text-blue-500">{svcOpenAll.length}</p>
             <p className="text-[11px] text-muted mt-0.5">รอดำเนินการ</p>
           </div>
-          <div className="rounded-xl bg-background border border-border p-3 text-center">
-            <p className="text-2xl font-bold text-amber-400">{svcInProgAll.length}</p>
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-3 text-center">
+            <p className="text-2xl font-bold text-amber-500">{svcInProgAll.length}</p>
             <p className="text-[11px] text-muted mt-0.5">กำลังดำเนินการ</p>
           </div>
-          <div className="rounded-xl bg-background border border-border p-3 text-center">
-            <p className="text-2xl font-bold text-green-400">{svcResolvedAll.length}</p>
+          <div className="rounded-xl bg-green-500/10 border border-green-500/25 p-3 text-center">
+            <p className="text-2xl font-bold text-green-500">{svcResolvedAll.length}</p>
             <p className="text-[11px] text-muted mt-0.5">เสร็จแล้ว</p>
           </div>
         </div>
         <div className="space-y-1.5">
           {[...svcOpenAll, ...svcInProgAll].slice(0, 8).map(t => (
             <div key={t.id} className="flex items-center gap-2 rounded-lg bg-background border border-border px-3 py-1.5">
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0
-                ${t.status === "open" ? "bg-blue-900/40 text-blue-300" : "bg-amber-900/40 text-amber-300"}`}>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border shrink-0
+                ${t.status === "open" ? "bg-blue-500/10 border-blue-500/25 text-blue-500" : "bg-amber-500/10 border-amber-500/25 text-amber-500"}`}>
                 {t.status === "open" ? "เปิด" : "กำลังทำ"}
               </span>
               <span className="text-[10px] text-muted shrink-0">{SVC_TYPE_LABEL[t.type] ?? t.type}</span>
@@ -1432,22 +1432,22 @@ export default function DashboardPage() {
           <div className="space-y-2">
             {expiring30.length > 0 && (
               <div>
-                <p className="text-[10px] text-rose-400 font-semibold mb-1.5">หมดภายใน 30 วัน ({expiring30.length})</p>
+                <p className="text-[10px] text-red-500 font-semibold mb-1.5">หมดภายใน 30 วัน ({expiring30.length})</p>
                 {expiring30.map(c => (
-                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-orange-500/8 border border-orange-500/20 px-3 py-1.5 mb-1">
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-red-500/8 border border-red-500/20 px-3 py-1.5 mb-1">
                     <p className="text-sm flex-1 truncate font-medium">{c.customer_name}</p>
-                    <p className="text-[11px] text-rose-300 shrink-0">{c.end_date}</p>
+                    <p className="text-[11px] text-red-500 shrink-0">{c.end_date}</p>
                   </div>
                 ))}
               </div>
             )}
             {expiring60.length > 0 && (
               <div>
-                <p className="text-[10px] text-amber-400 font-semibold mb-1.5">หมดภายใน 31–60 วัน ({expiring60.length})</p>
+                <p className="text-[10px] text-amber-500 font-semibold mb-1.5">หมดภายใน 31–60 วัน ({expiring60.length})</p>
                 {expiring60.map(c => (
-                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-amber-500/8 border border-amber-500/20 px-3 py-1.5 mb-1">
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/25 px-3 py-1.5 mb-1">
                     <p className="text-sm flex-1 truncate">{c.customer_name}</p>
-                    <p className="text-[11px] text-amber-300 shrink-0">{c.end_date}</p>
+                    <p className="text-[11px] text-amber-500 shrink-0">{c.end_date}</p>
                   </div>
                 ))}
               </div>
@@ -1483,7 +1483,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-[11px] text-muted uppercase tracking-wide mb-2">งานปิดในช่วง 30 วัน</p>
-              <p className="text-3xl font-bold text-green-400">{last30Resolved.length}</p>
+              <p className="text-3xl font-bold text-green-500">{last30Resolved.length}</p>
               <p className="text-[11px] text-muted mt-1">จากทั้งหมด {svcResolvedAll.length} รายการที่ปิดแล้ว</p>
               <div className="mt-3 space-y-1">
                 {(["installation","repair","pm_service","after_sales"] as const).map(type => {
@@ -1639,7 +1639,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-foreground/90">การแจ้งเตือน</span>
                 {alerts.filter(a=>a.level==="red").length>0&&(
-                  <span className="rounded-full bg-orange-600/20 text-orange-400 border border-orange-600/30 text-[10px] px-2 py-0.5 font-semibold">
+                  <span className="rounded-full bg-red-500/10 text-red-500 border border-red-500/25 text-[10px] px-2 py-0.5 font-semibold">
                     {alerts.filter(a=>a.level==="red").length} เรื่องด่วน
                   </span>
                 )}
