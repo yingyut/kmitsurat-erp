@@ -46,6 +46,10 @@ export default function QuotationsPage() {
   const [vatMode, setVatMode] = useState<"none" | "exclusive" | "inclusive">("exclusive");
   const [vatRate, setVatRate] = useState(7);
 
+  // Customer search combobox
+  const [custSearch, setCustSearch] = useState("");
+  const [custDropOpen, setCustDropOpen] = useState(false);
+
   // Picker
   const [pickerOpen, setPickerOpen] = useState<number | null>(null);
 
@@ -172,13 +176,13 @@ export default function QuotationsPage() {
     try {
       await quotations.add({
         quotation_number: qNum, customer_id: custId, customer_name: custName,
-        project_id: projId, project_name: projName, items,
+        project_id: projId === "other" ? "" : projId, project_name: projName, items,
         total_cost: totalCost, total_selling: subtotalSelling, total_discount: totalDiscount,
         gross_profit: grossProfit, gp_percent: gpPercent,
         vat_mode: vatMode, vat_rate: vatRate, vat_amount: vatAmount, grand_total: grandTotal,
         status: "draft", notes, created_by: creator?.name || "",
       } as unknown as Record<string, unknown>);
-      setCustId(""); setCustName(""); setProjId(""); setProjName(""); setItems([{ ...emptyItem }]); setNotes("");
+      setCustId(""); setCustName(""); setCustSearch(""); setProjId(""); setProjName(""); setItems([{ ...emptyItem }]); setNotes("");
       setVatMode("exclusive"); setVatRate(7);
       setShowForm(false); await load();
     } catch (e) { console.error(e); } finally { setSaving(false); }
@@ -257,7 +261,7 @@ export default function QuotationsPage() {
         notes, status: "revised",
       });
       setRevisionOf(null); setShowForm(false);
-      setCustId(""); setCustName(""); setProjId(""); setProjName(""); setItems([{ ...emptyItem }]); setNotes("");
+      setCustId(""); setCustName(""); setCustSearch(""); setProjId(""); setProjName(""); setItems([{ ...emptyItem }]); setNotes("");
       await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
@@ -355,11 +359,53 @@ export default function QuotationsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
             <div>
               <label className="text-[10px] text-muted">ลูกค้า *</label>
-              <select value={custId} onChange={(e) => { setCustId(e.target.value); setCustName(custs.find((c) => c.id === e.target.value)?.company_name || ""); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกลูกค้า --</option>{custs.map((c) => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select>
+              <div className="relative mt-1">
+                <input
+                  type="text"
+                  value={custDropOpen ? custSearch : custName}
+                  placeholder="-- พิมพ์ค้นหาลูกค้า --"
+                  onFocus={() => { setCustDropOpen(true); setCustSearch(""); }}
+                  onBlur={() => setTimeout(() => setCustDropOpen(false), 150)}
+                  onChange={(e) => { setCustSearch(e.target.value); setCustDropOpen(true); }}
+                  className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                />
+                {custDropOpen && (
+                  <div className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+                    {custs.filter(c => !custSearch || c.company_name.toLowerCase().includes(custSearch.toLowerCase())).length === 0
+                      ? <p className="px-3 py-2 text-sm text-muted">ไม่พบลูกค้า</p>
+                      : custs.filter(c => !custSearch || c.company_name.toLowerCase().includes(custSearch.toLowerCase())).map(c => (
+                        <button key={c.id} type="button"
+                          onMouseDown={() => { setCustId(c.id!); setCustName(c.company_name); setCustSearch(""); setCustDropOpen(false); setProjId(""); setProjName(""); }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-card-hover transition-colors ${custId === c.id ? "text-accent font-medium" : "text-foreground"}`}>
+                          {c.company_name}
+                        </button>
+                      ))
+                    }
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <label className="text-[10px] text-muted">โปรเจค</label>
-              <select value={projId} onChange={(e) => { setProjId(e.target.value); setProjName(projs.find((p) => p.id === e.target.value)?.name || ""); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกโปรเจค --</option>{projs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+              {projId === "other" ? (
+                <div className="flex gap-1 mt-1">
+                  <input type="text" value={projName} onChange={e => setProjName(e.target.value)}
+                    placeholder="ระบุชื่อโปรเจค..."
+                    className="flex-1 rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                  <button type="button" onClick={() => { setProjId(""); setProjName(""); }}
+                    className="px-2 rounded-lg border border-border text-muted hover:text-foreground hover:bg-card-hover text-sm">✕</button>
+                </div>
+              ) : (
+                <select value={projId} onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "other") { setProjId("other"); setProjName(""); }
+                  else { setProjId(v); setProjName(projs.find((p) => p.id === v)?.name || ""); }
+                }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                  <option value="">-- เลือกโปรเจค --</option>
+                  {projs.filter(p => !custId || p.customer_id === custId).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  <option value="other">✏️ อื่นๆ (ระบุเอง)</option>
+                </select>
+              )}
             </div>
             <div>
               <label className="text-[10px] text-muted">ผู้สร้าง / เซลล์ <span className="text-muted/60">(ใช้ใน QT number)</span></label>
