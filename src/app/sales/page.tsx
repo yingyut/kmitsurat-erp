@@ -605,12 +605,11 @@ export default function SalesPage() {
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col items-center justify-center gap-1.5 px-2 border-l border-border/20 shrink-0">
-                  {!done && (
-                    <button onClick={e=>{e.stopPropagation();updateActivity(plan.id!,{status:"done"});}}
-                      className="w-7 h-7 flex items-center justify-center rounded-full bg-green-500/15 text-green-500 text-xs active:bg-green-500/25 transition-colors font-bold" title="เสร็จ">✓</button>
-                  )}
-                  <button onClick={()=>setSelectedActivity(plan)} className="w-7 h-7 flex items-center justify-center text-muted/40 hover:text-muted text-xl">›</button>
+                <div className="flex flex-col items-center justify-center px-2 border-l border-border/20 shrink-0">
+                  <button onClick={e=>{e.stopPropagation();openEditActivity(plan);}}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors active:scale-95 ${done ? "bg-card-hover text-muted" : "bg-accent/10 text-accent border border-accent/30"}`}>
+                    {done ? "ดู" : "Update"}
+                  </button>
                 </div>
               </div>
             </div>
