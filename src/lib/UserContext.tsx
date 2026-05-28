@@ -7,7 +7,7 @@ import type { Permission } from "@/lib/rbac";
 // Legacy module-level permissions (old roles — unchanged for backward compat)
 export const defaultPermissions: Record<string, string[]> = {
   admin:   ["dashboard","projects","sales","quotations","sales-workflow","sales-plan","presale","project-management","service","contracts","customers","vendors","products","users","reports","settings","help"],
-  sale:    ["dashboard","projects","sales","quotations","sales-workflow","sales-plan","customers","help"],
+  sale:    ["dashboard","projects","sales","quotations","sales-workflow","customers","help"],
   avenger: ["dashboard","projects","sales","quotations","sales-workflow","sales-plan","customers","help"],
   presale: ["dashboard","presale","products","customers","quotations","help"],
   service: ["dashboard","service","contracts","customers","assets","help"],
