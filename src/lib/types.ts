@@ -278,6 +278,13 @@ export interface SalesActivity {
   next_action_type?: string;                 // ประเภทของ next action
   next_action_by?: string;                   // next action โดยใคร
   reminder_date?: string;                    // วันที่แจ้งเตือน
+  // Daily worklog fields
+  objective?: string;                        // เป้าหมายก่อนทำกิจกรรม (planning phase)
+  outcome?: string;                          // ผลที่เกิดขึ้นจริง (reporting phase)
+  plan_status?: "planned" | "in_progress" | "completed" | "rescheduled";
+  rescheduled_to?: string;                   // วันที่เลื่อนไป
+  completed_at?: string;                     // วันที่บันทึกว่าเสร็จ
+  auto_followup_created?: boolean;
 }
 
 export interface BomItem {

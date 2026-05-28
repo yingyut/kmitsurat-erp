@@ -62,9 +62,11 @@ export default function SalesPage() {
   const [calDayDate, setCalDayDate] = useState(today);
   const [typeFilter, setTypeFilter] = useState("");
   const [drawerDay, setDrawerDay] = useState<string | null>(null);
+  const [showMgDash, setShowMgDash] = useState(false);
+  const [mgDate, setMgDate] = useState(today);
 
   // Activity/Plan form
-  const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing" | "prospect", project_id: "", project_name: "", assigned_to: "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "" });
+  const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing" | "prospect", project_id: "", project_name: "", assigned_to: "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "", objective: "", outcome: "", plan_status: "planned" as "planned" | "in_progress" | "completed" | "rescheduled", rescheduled_to: "", auto_followup: false });
 
   // Request form
   const [reqForm, setReqForm] = useState({ request_from: "", request_to_team: "presale" as JobRequest["request_to_team"], request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium" as JobRequest["priority"], status: "pending" as JobRequest["status"], assigned_to: "", reject_reason: "", accept_note: "" });
@@ -128,11 +130,15 @@ export default function SalesPage() {
 
   // CRUD
   async function saveActivity(isPlan = false) {
-    if (!actForm.description.trim() && !actForm.expected_outcome?.trim()) return;
+    if (!actForm.objective?.trim() && !actForm.description.trim() && !actForm.expected_outcome?.trim()) return;
     setSaving(true);
     const { salesActivities, projects: projectsCol, logActivity, jobRequests } = await import("@/lib/firestore");
-    const { request_support, support_team, support_note, ...actData } = actForm;
-    const data = { ...actData, is_plan: isPlan, project_id: actForm.project_id === "__other__" ? "" : actForm.project_id };
+    const { request_support, support_team, support_note, auto_followup, ...actData } = actForm;
+    // Map plan_status → status; rescheduled updates plan_date
+    const planStatusMap = { planned: "new", in_progress: "in_progress", completed: "done", rescheduled: "new" } as const;
+    const finalStatus: SalesActivity["status"] = isPlan ? planStatusMap[actData.plan_status ?? "planned"] : actData.status;
+    const finalPlanDate = isPlan && actData.plan_status === "rescheduled" && actData.rescheduled_to ? actData.rescheduled_to : actData.plan_date;
+    const data = { ...actData, is_plan: isPlan, status: finalStatus, plan_date: finalPlanDate, project_id: actForm.project_id === "__other__" ? "" : actForm.project_id };
     try {
       if (editingActId) {
         await salesActivities.update(editingActId, data as unknown as Record<string, unknown>);
@@ -150,6 +156,9 @@ export default function SalesPage() {
             await jobRequests.add({ request_from: currentUser?.name ?? "", request_to_team: support_team, request_to_person: "", customer_id: data.customer_id, customer_name: data.customer_name, project_id: data.project_id, project_name: data.project_name, title: `ขอสนับสนุน: ${data.description.slice(0, 60)}`, description: support_note || data.description, value: 0, due_date: data.next_action_date || "", priority: "medium", status: "pending", assigned_to: "", reject_reason: "", accept_note: "" } as unknown as Record<string, unknown>);
           } catch (e) { console.error("job request error", e); }
         }
+        if (isPlan && auto_followup && actData.next_action_date) {
+          await createAutoFollowup(actData);
+        }
       }
       resetActForm(); setShowForm(false); setShowPlanForm(false); setEditingActId(null); setSelectedActivity(null);
       await load();
@@ -158,8 +167,33 @@ export default function SalesPage() {
   }
 
   function resetActForm() {
-    setActForm({ type: "phone_call", customer_id: "", customer_name: "", customer_type: "existing", project_id: "", project_name: "", assigned_to: currentUser?.name || "", contact_person: "", description: "", status: "new", next_follow_up: "", result: "", next_action: "", next_action_type: "", next_action_by: currentUser?.name || "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "" });
+    setActForm({ type: "phone_call", customer_id: "", customer_name: "", customer_type: "existing", project_id: "", project_name: "", assigned_to: currentUser?.name || "", contact_person: "", description: "", status: "new", next_follow_up: "", result: "", next_action: "", next_action_type: "", next_action_by: currentUser?.name || "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "", objective: "", outcome: "", plan_status: "planned" as "planned" | "in_progress" | "completed" | "rescheduled", rescheduled_to: "", auto_followup: false });
     setCustSearch(""); setCustOpen(false);
+  }
+
+  function mapNextActionToType(nat: string): SalesActivity["type"] {
+    const m: Record<string, SalesActivity["type"]> = { "ทำใบเสนอราคา": "quotation_created", "ส่ง QT / เอกสารเพิ่ม": "quotation_sent", "นัดประชุม / Demo": "meeting", "เข้าพบครั้งถัดไป": "visit", "โทรติดตาม": "phone_call" };
+    return m[nat] || "follow_up";
+  }
+
+  async function createAutoFollowup(src: { customer_id: string; customer_name: string; customer_type?: string; project_id: string; project_name: string; assigned_to: string; next_action?: string; next_action_type?: string; next_action_date?: string; }) {
+    try {
+      const { salesActivities } = await import("@/lib/firestore");
+      const tid = (currentUser as unknown as Record<string,string>)?.tenant_id || "";
+      await salesActivities.add({ tenant_id: tid, type: mapNextActionToType(src.next_action_type || ""), customer_id: src.customer_id, customer_name: src.customer_name, customer_type: src.customer_type || "existing", project_id: src.project_id || "", project_name: src.project_name, assigned_to: src.assigned_to, description: src.next_action || src.next_action_type || "Follow-up", objective: src.next_action || src.next_action_type || "", expected_outcome: src.next_action || src.next_action_type || "", status: "new", next_follow_up: src.next_action_date || "", is_plan: true, plan_date: src.next_action_date || "", plan_status: "planned", next_action: "", next_action_type: "", next_action_date: "", result: "" } as unknown as Record<string, unknown>);
+    } catch (e) { console.error("autoFollowup error", e); }
+  }
+
+  async function quickUpdatePlanStatus(id: string, planStatus: "planned" | "in_progress" | "completed" | "rescheduled", extra?: Record<string, unknown>) {
+    setSaving(true);
+    try {
+      const { salesActivities } = await import("@/lib/firestore");
+      const sm = { planned: "new", in_progress: "in_progress", completed: "done", rescheduled: "new" } as const;
+      const upd: Record<string, unknown> = { plan_status: planStatus, status: sm[planStatus], ...extra };
+      if (planStatus === "completed") upd.completed_at = today;
+      await salesActivities.update(id, upd);
+      await load(); setSelectedActivity(null);
+    } finally { setSaving(false); }
   }
 
   function openEditActivity(a: SalesActivity) {
@@ -176,9 +210,13 @@ export default function SalesPage() {
       is_plan: a.is_plan || false, plan_date: a.plan_date || today, expected_outcome: a.expected_outcome || "",
       reminder_date: (a.reminder_date as string) || "", request_support: false,
       support_team: "presale" as "presale" | "service", support_note: "",
+      objective: (a.objective as string) || "", outcome: (a.outcome as string) || "",
+      plan_status: ((a.plan_status as string) || "planned") as "planned" | "in_progress" | "completed" | "rescheduled",
+      rescheduled_to: (a.rescheduled_to as string) || "", auto_followup: false,
     });
     setCustSearch(a.customer_name || ""); setCustOpen(false);
-    setActValidate(false); setShowForm(true); setSelectedActivity(null); setTab("activities");
+    if (a.is_plan) { setShowPlanForm(true); setSelectedActivity(null); }
+    else { setActValidate(false); setShowForm(true); setSelectedActivity(null); setTab("activities"); }
   }
 
   async function updateActivity(id: string, data: Record<string, unknown>) {
@@ -581,84 +619,340 @@ export default function SalesPage() {
 
         return (
           <>
-            {/* Plan form */}
-            {showPlanForm && (
-              <div className="rounded-xl bg-card border border-border p-5 mb-4">
-                <h2 className="text-base font-semibold mb-1">วางแผนกิจกรรม</h2>
-                <p className="text-[10px] text-muted mb-3">วางแผนว่าจะทำอะไร วันไหน — ไม่บังคับต้องครบทุกช่อง</p>
-                <div className="mb-3">
-                  <p className="text-[10px] text-muted mb-1.5">เลือกกิจกรรม <span className="opacity-60">(คลิกเพื่อเติมอัตโนมัติ)</span></p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {["โทรแนะนำตัว","โทรติดตามงาน","เข้าพบแนะนำบริษัท","เข้าพบนำเสนอ Solution","ส่งข้อมูล / Catalog","ติดตามใบเสนอราคา","นัดประชุม / Demo","ติดตามปิดดีล"].map(p => (
-                      <button key={p} type="button" onClick={() => setActForm({...actForm, expected_outcome: p, description: p})}
-                        className={`rounded-full px-3 py-1 text-[11px] border transition-colors ${actForm.expected_outcome === p ? "bg-accent text-white border-accent" : "border-border text-muted hover:border-accent/60 hover:text-foreground"}`}>{p}</button>
-                    ))}
+            {/* ══ DAILY WORKLOG FORM ══ */}
+            {showPlanForm && (() => {
+              const ps = actForm.plan_status ?? "planned";
+              const isReporting = ps === "in_progress" || ps === "completed" || ps === "rescheduled";
+              return (
+                <div className="rounded-xl bg-card border border-border overflow-hidden mb-4 shadow-sm">
+                  {/* Header */}
+                  <div className="px-5 py-3 border-b border-border flex items-center justify-between bg-card-hover/20">
+                    <div>
+                      <h2 className="text-sm font-semibold">{editingActId ? "✏️ แก้ไขแผนงาน" : "📋 วางแผนกิจกรรม"}</h2>
+                      <p className="text-[10px] text-muted">Plan → Activity → Result → Next Action</p>
+                    </div>
+                    <button onClick={() => { setShowPlanForm(false); setEditingActId(null); resetActForm(); }} className="text-muted hover:text-foreground text-lg leading-none w-7 h-7 flex items-center justify-center rounded hover:bg-card-hover transition-colors">✕</button>
                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-                  <div><label className="text-[10px] text-muted">วันที่วางแผน</label><input type="date" value={actForm.plan_date || today} onChange={e => setActForm({...actForm, plan_date: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-                  <div><label className="text-[10px] text-muted">ประเภท</label>
-                    <select value={actForm.type} onChange={e => setActForm({...actForm, type: e.target.value as SalesActivity["type"]})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
-                      {actTypes.map(t => <option key={t} value={t}>{TC[t]?.icon ?? ""} {typeLabels[t]}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between"><label className="text-[10px] text-muted">ลูกค้า (ไม่บังคับ)</label>
-                      <div className="flex rounded overflow-hidden border border-border text-[9px]">
-                        <button type="button" onClick={() => setActForm({...actForm, customer_type:"existing", customer_id:"", customer_name:""})} className={`px-2 py-0.5 ${actForm.customer_type !== "prospect" ? "bg-accent text-white" : "text-muted hover:bg-card-hover"}`}>ในระบบ</button>
-                        <button type="button" onClick={() => setActForm({...actForm, customer_type:"prospect", customer_id:""})} className={`px-2 py-0.5 ${actForm.customer_type === "prospect" ? "bg-orange-600 text-white" : "text-muted hover:bg-card-hover"}`}>Prospect</button>
+
+                  <div className="p-5 space-y-5">
+                    {/* ─── PHASE 1: PLANNING ─── */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-5 h-5 rounded-full bg-blue-600 text-white text-[9px] font-bold flex items-center justify-center shrink-0">1</div>
+                        <span className="text-[11px] font-semibold text-blue-500 uppercase tracking-wider">วางแผน (Plan)</span>
+                      </div>
+
+                      {/* Objective — primary field */}
+                      <div className="mb-3">
+                        <label className="text-[10px] text-muted font-medium">🎯 วัตถุประสงค์ (Objective) *</label>
+                        <input placeholder="เช่น โทรนัดประชุม / เข้าพบเสนอ Solution / ปิด QT / ขอ Referral"
+                          value={actForm.objective}
+                          onChange={e => setActForm({...actForm, objective: e.target.value, expected_outcome: e.target.value})}
+                          className="w-full rounded-lg bg-background border border-blue-500/30 px-3 py-2 text-sm focus:outline-none focus:border-blue-500 mt-1 font-medium" />
+                      </div>
+
+                      {/* Activity type */}
+                      <div className="mb-3">
+                        <p className="text-[10px] text-muted mb-1.5">ประเภทกิจกรรม</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(Object.entries(TC) as [SalesActivity["type"], typeof TC[keyof typeof TC]][]).map(([t, tc]) => (
+                            <button key={t} type="button" onClick={() => setActForm({...actForm, type: t})}
+                              className={`rounded-full px-3 py-1 text-[11px] border transition-colors flex items-center gap-1 ${actForm.type === t ? `${tc.bg} ${tc.border} ${tc.text} font-semibold` : "border-border text-muted hover:border-border/80 hover:text-foreground"}`}>
+                              {tc.icon} {tc.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Date + Customer + Assigned */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] text-muted">วันที่วางแผน</label>
+                          <input type="date" value={actForm.plan_date || today} onChange={e => setActForm({...actForm, plan_date: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[10px] text-muted">ลูกค้า</label>
+                            <div className="flex rounded overflow-hidden border border-border text-[9px]">
+                              <button type="button" onClick={() => setActForm({...actForm, customer_type:"existing", customer_id:"", customer_name:""})} className={`px-2 py-0.5 ${actForm.customer_type !== "prospect" ? "bg-accent text-white" : "text-muted hover:bg-card-hover"}`}>ในระบบ</button>
+                              <button type="button" onClick={() => setActForm({...actForm, customer_type:"prospect", customer_id:""})} className={`px-2 py-0.5 ${actForm.customer_type === "prospect" ? "bg-orange-600 text-white" : "text-muted hover:bg-card-hover"}`}>Prospect</button>
+                            </div>
+                          </div>
+                          {actForm.customer_type === "prospect"
+                            ? <input placeholder="ชื่อบริษัท / องค์กร" value={actForm.customer_name} onChange={e => setActForm({...actForm, customer_name: e.target.value})} className="w-full rounded-lg bg-background border border-orange-500/40 px-3 py-2 text-sm focus:outline-none focus:border-orange-500" />
+                            : <div className="relative">
+                                <input placeholder="ค้นหาลูกค้า..." value={custSearch}
+                                  onChange={e => { setCustSearch(e.target.value); setCustOpen(true); if (!e.target.value) setActForm({...actForm, customer_id:"", customer_name:""}); }}
+                                  onFocus={() => setCustOpen(true)} onBlur={() => setTimeout(() => setCustOpen(false), 180)}
+                                  className={`w-full rounded-lg bg-background border px-3 py-2 text-sm focus:outline-none ${actForm.customer_id ? "border-accent/50 focus:border-accent" : "border-border focus:border-accent"}`} />
+                                {actForm.customer_id && <p className="text-[10px] text-accent mt-0.5">✓ {actForm.customer_name}</p>}
+                                {custOpen && (
+                                  <div className="absolute z-30 w-full mt-1 rounded-lg bg-card border border-border shadow-2xl max-h-52 overflow-y-auto">
+                                    {customers.filter(c => !custSearch || c.company_name.toLowerCase().includes(custSearch.toLowerCase())).slice(0, 30).map(c => (
+                                      <button key={c.id} type="button" onMouseDown={() => { if (c.id) selectCust(c.id, "act"); setCustSearch(c.company_name); setCustOpen(false); }}
+                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-card-hover ${actForm.customer_id === c.id ? "text-accent font-medium" : ""}`}>{c.company_name}</button>
+                                    ))}
+                                    {customers.filter(c => !custSearch || c.company_name.toLowerCase().includes(custSearch.toLowerCase())).length === 0 && <p className="px-3 py-2 text-xs text-muted">ไม่พบลูกค้า</p>}
+                                  </div>
+                                )}
+                              </div>
+                          }
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted">ผู้รับผิดชอบ</label>
+                          <select value={actForm.assigned_to} onChange={e => setActForm({...actForm, assigned_to: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                            <option value="">— เลือก —</option>
+                            {users.filter(u => salesRoles.includes(u.role) || (u.extra_roles??[]).some(r=>salesRoles.includes(r))).map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Prep notes */}
+                      <div className="mt-3">
+                        <label className="text-[10px] text-muted">หมายเหตุ / การเตรียมตัว</label>
+                        <textarea placeholder="รายละเอียดเพิ่มเติม สิ่งที่ต้องเตรียม" value={actForm.description}
+                          onChange={e => setActForm({...actForm, description: e.target.value})}
+                          className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-[52px] resize-y" />
                       </div>
                     </div>
-                    {actForm.customer_type === "prospect"
-                      ? <input placeholder="ชื่อบริษัท / องค์กร" value={actForm.customer_name} onChange={e => setActForm({...actForm, customer_name: e.target.value})} className="w-full rounded-lg bg-background border border-orange-800/50 px-3 py-2 text-sm focus:outline-none focus:border-orange-500 mt-1" />
-                      : <div className="relative mt-1">
-                          <input placeholder="ค้นหาลูกค้า..." value={custSearch}
-                            onChange={e => { setCustSearch(e.target.value); setCustOpen(true); if (!e.target.value) setActForm({...actForm, customer_id:"", customer_name:""}); }}
-                            onFocus={() => setCustOpen(true)} onBlur={() => setTimeout(() => setCustOpen(false), 180)}
-                            className={`w-full rounded-lg bg-background border px-3 py-2 text-sm focus:outline-none ${actForm.customer_id ? "border-accent/50 focus:border-accent" : "border-border focus:border-accent"}`} />
-                          {actForm.customer_id && <p className="text-[10px] text-accent mt-0.5">✓ {actForm.customer_name}</p>}
-                          {custOpen && (
-                            <div className="absolute z-30 w-full mt-1 rounded-lg bg-card border border-border shadow-2xl max-h-52 overflow-y-auto">
-                              {customers.filter(c => !custSearch || c.company_name.toLowerCase().includes(custSearch.toLowerCase())).slice(0, 30).map(c => (
-                                <button key={c.id} type="button" onMouseDown={() => { if (c.id) selectCust(c.id, "act"); setCustSearch(c.company_name); setCustOpen(false); }}
-                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-card-hover ${actForm.customer_id === c.id ? "text-accent font-medium" : ""}`}>{c.company_name}</button>
-                              ))}
-                              {customers.filter(c => !custSearch || c.company_name.toLowerCase().includes(custSearch.toLowerCase())).length === 0 && <p className="px-3 py-2 text-xs text-muted">ไม่พบลูกค้า</p>}
+
+                    {/* ─── PHASE 2: REPORTING ─── */}
+                    <div className="border-t border-border pt-5">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className={`w-5 h-5 rounded-full text-white text-[9px] font-bold flex items-center justify-center shrink-0 ${isReporting ? "bg-green-600" : "bg-muted/30"}`}>2</div>
+                        <span className={`text-[11px] font-semibold uppercase tracking-wider ${isReporting ? "text-green-500" : "text-muted"}`}>รายงานผล (Report)</span>
+                        <span className="text-[10px] text-muted/60">— กรอกหลังดำเนินการ</span>
+                      </div>
+
+                      {/* Status selector */}
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {([
+                          {v:"planned",     label:"📋 วางแผน",          bg:"bg-blue-500/10",   border:"border-blue-500/30",   text:"text-blue-500"},
+                          {v:"in_progress", label:"⚡ กำลังดำเนินการ",   bg:"bg-amber-500/10",  border:"border-amber-500/30",  text:"text-amber-500"},
+                          {v:"completed",   label:"✅ เสร็จแล้ว",        bg:"bg-green-500/10",  border:"border-green-500/30",  text:"text-green-500"},
+                          {v:"rescheduled", label:"📅 เลื่อนนัด",        bg:"bg-orange-500/10", border:"border-orange-500/30", text:"text-orange-500"},
+                        ] as const).map(s => (
+                          <button key={s.v} type="button"
+                            onClick={() => setActForm({...actForm, plan_status: s.v, status: s.v==="completed"?"done":s.v==="in_progress"?"in_progress":"new"})}
+                            className={`px-3 py-1.5 rounded-full text-[11px] font-medium border transition-all ${ps===s.v ? `${s.bg} ${s.border} ${s.text}` : "border-border/50 text-muted hover:border-border hover:text-foreground"}`}>
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Rescheduled → new date */}
+                      {ps === "rescheduled" && (
+                        <div className="mb-3 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                          <label className="text-[10px] text-orange-500 font-medium">เลื่อนไปวันที่</label>
+                          <input type="date" value={actForm.rescheduled_to}
+                            onChange={e => setActForm({...actForm, rescheduled_to: e.target.value})}
+                            className="w-full rounded-lg bg-background border border-orange-500/30 px-3 py-2 text-sm focus:outline-none focus:border-orange-500 mt-1" />
+                        </div>
+                      )}
+
+                      {/* Outcome + result + next action */}
+                      {(ps === "in_progress" || ps === "completed") && (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-[10px] text-muted font-medium">📝 ผลที่เกิดขึ้นจริง (Outcome){ps==="completed"?" *":""}</label>
+                            <textarea placeholder="สิ่งที่เกิดขึ้น เช่น ลูกค้าสนใจ / นัดดูหน้างาน / ไม่รับสาย"
+                              value={actForm.outcome}
+                              onChange={e => setActForm({...actForm, outcome: e.target.value})}
+                              className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-[60px] resize-y" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] text-muted">ผลลัพธ์</label>
+                              <select value={actForm.result || ""} onChange={e => setActForm({...actForm, result: e.target.value as SalesActivity["result"]})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                                <option value="">— เลือก —</option>
+                                <option value="success">✅ สำเร็จ / ปิดได้</option>
+                                <option value="interested">⭐ สนใจ</option>
+                                <option value="pending">⏳ รอผล</option>
+                                <option value="no_answer">📵 ไม่รับสาย</option>
+                                <option value="rejected">❌ ปฏิเสธ</option>
+                              </select>
                             </div>
+                            <div>
+                              <label className="text-[10px] text-muted">Next Action ประเภท</label>
+                              <select value={actForm.next_action_type || ""} onChange={e => setActForm({...actForm, next_action_type: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                                <option value="">— เลือก —</option>
+                                <option value="ทำใบเสนอราคา">📄 ทำใบเสนอราคา</option>
+                                <option value="นัดประชุม / Demo">💬 นัดประชุม / Demo</option>
+                                <option value="เข้าพบครั้งถัดไป">🤝 เข้าพบครั้งถัดไป</option>
+                                <option value="โทรติดตาม">📞 โทรติดตาม</option>
+                                <option value="รอลูกค้าตัดสินใจ">⏳ รอลูกค้าตัดสินใจ</option>
+                                <option value="ส่ง QT / เอกสารเพิ่ม">📎 ส่ง QT / เอกสาร</option>
+                                <option value="ปิดดีล / ลงนาม">🎉 ปิดดีล</option>
+                                <option value="ยุติ">🚫 ยุติ</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] text-muted">วันที่ Follow-up ถัดไป</label>
+                              <input type="date" value={actForm.next_action_date || ""}
+                                onChange={e => setActForm({...actForm, next_action_date: e.target.value, next_follow_up: e.target.value})}
+                                className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-muted">รายละเอียด Next Action</label>
+                              <input placeholder="สิ่งที่ต้องทำต่อ" value={actForm.next_action || ""}
+                                onChange={e => setActForm({...actForm, next_action: e.target.value})}
+                                className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                            </div>
+                          </div>
+                          {/* Auto follow-up suggestion */}
+                          {actForm.next_action_date && ps === "completed" && !editingActId && (
+                            <label className="flex items-start gap-2.5 text-sm cursor-pointer p-3 rounded-lg border border-dashed border-blue-500/30 hover:border-blue-500/50 bg-blue-500/5 transition-colors">
+                              <input type="checkbox" checked={actForm.auto_followup}
+                                onChange={e => setActForm({...actForm, auto_followup: e.target.checked})}
+                                className="w-4 h-4 rounded mt-0.5 shrink-0 accent-blue-500" />
+                              <span>
+                                <span className="font-medium text-blue-500 text-[12px]">สร้างแผนติดตามอัตโนมัติ</span>
+                                <span className="text-muted text-[11px] block mt-0.5">วันที่ {actForm.next_action_date} · {actForm.next_action_type || "Follow-up"} · {actForm.customer_name || "ลูกค้าเดิม"}</span>
+                              </span>
+                            </label>
                           )}
                         </div>
-                    }
-                  </div>
-                  <div><label className="text-[10px] text-muted">ผู้รับผิดชอบ</label>
-                    <select value={actForm.assigned_to} onChange={e => setActForm({...actForm, assigned_to: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
-                      <option value="">— เลือก —</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียด <span className="opacity-60">(หรือพิมพ์กิจกรรมเองได้เลย)</span></label>
-                    <textarea placeholder="เช่น โทรหา คุณสมชาย เพื่อนัดประชุมสัปดาห์หน้า" value={actForm.expected_outcome} onChange={e => setActForm({...actForm, expected_outcome: e.target.value, description: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-14 resize-y" />
-                  </div>
-                </div>
-                <div className="border-t border-border pt-3 mt-1">
-                  <p className="text-[10px] text-muted font-semibold uppercase tracking-wider mb-2.5">รายงานผล <span className="font-normal opacity-60 normal-case">(กรณีทำแล้ว — ไม่บังคับ)</span></p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div><label className="text-[10px] text-muted">ผลลัพธ์</label>
-                      <select value={actForm.result || ""} onChange={e => setActForm({...actForm, result: e.target.value as SalesActivity["result"]})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
-                        <option value="">— ยังไม่รายงาน —</option><option value="success">✅ สำเร็จ / ปิดได้</option><option value="interested">⭐ สนใจ</option><option value="pending">⏳ รอผล</option><option value="no_answer">📵 ไม่รับสาย / ไม่ตอบ</option><option value="rejected">❌ ปฏิเสธ</option>
-                      </select>
-                    </div>
-                    <div><label className="text-[10px] text-muted">ขั้นตอนถัดไป</label>
-                      <select value={actForm.next_action_type || ""} onChange={e => setActForm({...actForm, next_action_type: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
-                        <option value="">— เลือก —</option><option value="ทำใบเสนอราคา">📄 ทำใบเสนอราคา</option><option value="นัดประชุม / Demo">💬 นัดประชุม / Demo</option><option value="เข้าพบครั้งถัดไป">🤝 เข้าพบครั้งถัดไป</option><option value="โทรติดตาม">📞 โทรติดตาม</option><option value="รอลูกค้าตัดสินใจ">⏳ รอลูกค้าตัดสินใจ</option><option value="ส่ง QT / เอกสารเพิ่ม">📎 ส่ง QT / เอกสารเพิ่ม</option><option value="ปิดดีล / ลงนาม">🎉 ปิดดีล / ลงนาม</option><option value="ยุติ">🚫 ยุติ</option>
-                      </select>
+                      )}
                     </div>
                   </div>
+
+                  {/* Footer */}
+                  <div className="px-5 py-3 border-t border-border flex items-center gap-2 flex-wrap bg-card-hover/10">
+                    <button onClick={() => saveActivity(true)} disabled={saving || !actForm.objective?.trim()}
+                      className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">
+                      {saving ? "..." : editingActId ? "บันทึกการแก้ไข" : ps === "completed" ? "บันทึก + รายงานผล" : "บันทึกแผน"}
+                    </button>
+                    <button onClick={() => { setShowPlanForm(false); setEditingActId(null); resetActForm(); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+                    {ps === "completed" && actForm.outcome && <span className="text-[11px] text-green-500 ml-1">✓ มีผลลัพธ์บันทึก</span>}
+                    {actForm.auto_followup && <span className="text-[11px] text-blue-500 ml-1">+ Auto Follow-up</span>}
+                  </div>
                 </div>
-                <div className="flex gap-2 mt-3">
-                  <button onClick={() => saveActivity(true)} disabled={saving || (!actForm.expected_outcome?.trim() && !actForm.next_action_type)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึกแผน"}</button>
-                  <button onClick={() => setShowPlanForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+              );
+            })()}
+
+            {/* ══ MANAGER DASHBOARD ══ */}
+            {!ownSalesOnly && (() => {
+              const salesRolesM = ["sale","avenger","Sales Executive","Sales Manager","Branch Manager"];
+              const salesTeamM = users.filter(u => salesRolesM.includes(u.role) || (u.extra_roles??[]).some(r=>salesRolesM.includes(r)));
+              const mgPlans = activities.filter(a => a.is_plan && a.plan_date === mgDate);
+              const mgRows = salesTeamM.map(u => {
+                const mp = mgPlans.filter(p => p.assigned_to === u.name);
+                const cmpd = mp.filter(p => p.plan_status === "completed" || p.status === "done").length;
+                const inPg = mp.filter(p => p.plan_status === "in_progress").length;
+                const rsch = mp.filter(p => p.plan_status === "rescheduled").length;
+                const pld  = mp.filter(p => !p.plan_status || p.plan_status === "planned").length;
+                const wObj = mp.filter(p => p.objective).length;
+                const wOut = mp.filter(p => p.outcome).length;
+                const rate = mp.length > 0 ? Math.round((cmpd / mp.length) * 100) : null;
+                return { name: u.name, short: u.name.split(" ")[0], total: mp.length, pld, inPg, cmpd, rsch, wObj, wOut, rate };
+              });
+              const noActivity = salesTeamM.filter(u => mgPlans.filter(p => p.assigned_to === u.name).length === 0).map(u => u.name.split(" ")[0]);
+              const totalPlanned = mgRows.reduce((s,r)=>s+r.total,0);
+              const totalDone = mgRows.reduce((s,r)=>s+r.cmpd,0);
+              return (
+                <div className="mb-4">
+                  <button onClick={() => setShowMgDash(v => !v)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-left transition-colors ${showMgDash ? "bg-card border-accent/30" : "bg-card border-border/60 hover:border-border"}`}>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-sm font-semibold">📊 Manager Dashboard</span>
+                      <span className="text-[10px] text-muted">{mgDate} · ทีม {salesTeamM.length} คน · แผน {totalPlanned} รายการ · เสร็จ {totalDone}</span>
+                      {noActivity.length > 0 && <span className="rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-500 text-[10px] px-2 py-0.5">⚠ {noActivity.length} คนไม่มีแผน</span>}
+                    </div>
+                    <span className="text-muted text-xs">{showMgDash ? "▲" : "▼"}</span>
+                  </button>
+
+                  {showMgDash && (
+                    <div className="rounded-xl bg-card border border-border overflow-hidden mt-1">
+                      {/* Controls */}
+                      <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-wrap">
+                        <span className="text-[11px] text-muted font-medium uppercase tracking-wide">วันที่</span>
+                        <input type="date" value={mgDate} onChange={e => setMgDate(e.target.value)}
+                          className="rounded-lg bg-background border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                        <button onClick={() => setMgDate(today)} className="text-[11px] text-accent hover:underline">วันนี้</button>
+                        <div className="ml-auto flex items-center gap-3 text-[11px] text-muted">
+                          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block"/>วางแผน</span>
+                          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block"/>กำลังทำ</span>
+                          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block"/>เสร็จ</span>
+                          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block"/>เลื่อน</span>
+                        </div>
+                      </div>
+
+                      {/* No activity alert */}
+                      {noActivity.length > 0 && (
+                        <div className="px-4 py-2.5 bg-amber-500/5 border-b border-amber-500/20 flex items-center gap-2">
+                          <span className="text-amber-500 text-sm">⚠</span>
+                          <span className="text-[11px] text-amber-500">ยังไม่มีแผนวันนี้: <strong>{noActivity.join(", ")}</strong></span>
+                        </div>
+                      )}
+
+                      {/* Team table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm min-w-[600px]">
+                          <thead>
+                            <tr className="text-left text-[10px] text-muted uppercase tracking-wider border-b border-border bg-card-hover/30">
+                              <th className="px-4 py-2.5 font-medium">ชื่อ</th>
+                              <th className="px-3 py-2.5 font-medium text-blue-500">วางแผน</th>
+                              <th className="px-3 py-2.5 font-medium text-amber-500">กำลังทำ</th>
+                              <th className="px-3 py-2.5 font-medium text-green-500">เสร็จ</th>
+                              <th className="px-3 py-2.5 font-medium text-orange-500">เลื่อน</th>
+                              <th className="px-3 py-2.5 font-medium">Rate</th>
+                              <th className="px-3 py-2.5 font-medium">Objective</th>
+                              <th className="px-3 py-2.5 font-medium">Outcome</th>
+                              <th className="px-4 py-2.5 font-medium">Progress</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {mgRows.map(r => (
+                              <tr key={r.name} className="hover:bg-card-hover/50">
+                                <td className="px-4 py-2.5">
+                                  <p className="font-medium text-xs">{r.short}</p>
+                                  {r.total === 0 && <p className="text-[10px] text-muted/50">ไม่มีแผน</p>}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">{r.pld > 0 ? <span className="text-blue-500 font-semibold text-xs">{r.pld}</span> : <span className="text-muted/30 text-xs">—</span>}</td>
+                                <td className="px-3 py-2.5 text-center">{r.inPg > 0 ? <span className="text-amber-500 font-semibold text-xs">{r.inPg}</span> : <span className="text-muted/30 text-xs">—</span>}</td>
+                                <td className="px-3 py-2.5 text-center">{r.cmpd > 0 ? <span className="text-green-500 font-semibold text-xs">{r.cmpd}</span> : <span className="text-muted/30 text-xs">—</span>}</td>
+                                <td className="px-3 py-2.5 text-center">{r.rsch > 0 ? <span className="text-orange-500 font-semibold text-xs">{r.rsch}</span> : <span className="text-muted/30 text-xs">—</span>}</td>
+                                <td className="px-3 py-2.5 text-center">
+                                  {r.rate !== null ? <span className={`text-xs font-bold ${r.rate>=80?"text-green-500":r.rate>=50?"text-amber-500":"text-red-500"}`}>{r.rate}%</span> : <span className="text-muted/30 text-xs">—</span>}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  {r.total > 0 ? <span className={`text-xs ${r.wObj===r.total?"text-green-500":r.wObj>0?"text-amber-500":"text-red-500"}`}>{r.wObj}/{r.total}</span> : <span className="text-muted/30 text-xs">—</span>}
+                                </td>
+                                <td className="px-3 py-2.5 text-center">
+                                  {r.cmpd > 0 ? <span className={`text-xs ${r.wOut===r.cmpd?"text-green-500":r.wOut>0?"text-amber-500":"text-red-500"}`}>{r.wOut}/{r.cmpd}</span> : <span className="text-muted/30 text-xs">—</span>}
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  {r.total > 0 ? (
+                                    <div className="flex h-2 rounded-full overflow-hidden bg-border/30 min-w-[80px]">
+                                      {r.cmpd>0&&<div className="bg-green-500" style={{width:`${r.cmpd/r.total*100}%`}}/>}
+                                      {r.inPg>0&&<div className="bg-amber-500" style={{width:`${r.inPg/r.total*100}%`}}/>}
+                                      {r.rsch>0&&<div className="bg-orange-500" style={{width:`${r.rsch/r.total*100}%`}}/>}
+                                      {r.pld>0&&<div className="bg-blue-500/40" style={{width:`${r.pld/r.total*100}%`}}/>}
+                                    </div>
+                                  ) : <span className="text-muted/30 text-xs">—</span>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Quality summary */}
+                      {totalPlanned > 0 && (
+                        <div className="px-4 py-3 border-t border-border bg-card-hover/20 flex flex-wrap gap-5 text-[11px]">
+                          <div className="flex items-center gap-1.5"><span className="text-muted">แผนทั้งหมด:</span><span className="font-semibold">{totalPlanned}</span></div>
+                          <div className="flex items-center gap-1.5"><span className="text-muted">เสร็จแล้ว:</span><span className={`font-semibold ${totalDone/totalPlanned>=0.8?"text-green-500":"text-amber-500"}`}>{totalDone} ({Math.round(totalDone/totalPlanned*100)}%)</span></div>
+                          <div className="flex items-center gap-1.5"><span className="text-muted">มี Objective:</span><span className="font-semibold text-blue-500">{mgRows.reduce((s,r)=>s+r.wObj,0)}/{totalPlanned}</span></div>
+                          <div className="flex items-center gap-1.5"><span className="text-muted">มี Outcome:</span><span className="font-semibold text-green-500">{mgRows.reduce((s,r)=>s+r.wOut,0)}/{Math.max(totalDone,1)}</span></div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* ══ MOBILE / NARROW AGENDA VIEW (@lg:hidden) ══ */}
             <div className="@lg:hidden -mx-6">
@@ -1888,7 +2182,7 @@ export default function SalesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <button onClick={() => { setDrawerDay(null); const form = { type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing"|"prospect", project_id: "", project_name: "", assigned_to: currentUser?.name || "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: currentUser?.name || "", next_action_date: "", is_plan: true, plan_date: drawerDay, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale"|"service", support_note: "" }; setActForm(form); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
+                    <button onClick={() => { setDrawerDay(null); const form = { type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing"|"prospect", project_id: "", project_name: "", assigned_to: currentUser?.name || "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: currentUser?.name || "", next_action_date: "", is_plan: true, plan_date: drawerDay, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale"|"service", support_note: "", objective: "", outcome: "", plan_status: "planned" as "planned"|"in_progress"|"completed"|"rescheduled", rescheduled_to: "", auto_followup: false }; setActForm(form); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
                       className="rounded-lg bg-accent px-3 py-1.5 text-[11px] font-medium text-white hover:bg-accent-hover">+ เพิ่ม</button>
                     <button onClick={() => setDrawerDay(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover text-lg">✕</button>
                   </div>
@@ -1965,74 +2259,113 @@ export default function SalesPage() {
       {/* ═══ ACTIVITY DETAIL MODAL ═══ */}
       {selectedActivity && (() => {
         const a = selectedActivity;
-        const isOverdue = ((a.next_follow_up && a.next_follow_up < today) || (a.next_action_date && a.next_action_date < today)) && a.status !== "done";
+        const isPlan = a.is_plan;
+        const ps = (a.plan_status as string) || (a.status === "done" ? "completed" : a.status === "in_progress" ? "in_progress" : "planned");
+        const isOverdue = ((a.next_follow_up && a.next_follow_up < today) || (a.plan_date && a.plan_date < today && a.next_action_date && a.next_action_date < today)) && a.status !== "done";
+        const psLabel: Record<string, string> = { planned:"วางแผน", in_progress:"กำลังทำ", completed:"เสร็จแล้ว", rescheduled:"เลื่อนนัด" };
+        const psCls: Record<string, string> = { planned:"bg-blue-500/10 border-blue-500/25 text-blue-500", in_progress:"bg-amber-500/10 border-amber-500/25 text-amber-500", completed:"bg-green-500/10 border-green-500/25 text-green-500", rescheduled:"bg-orange-500/10 border-orange-500/25 text-orange-500" };
+        const tc = (a.type in (selectedActivity as unknown as Record<string,unknown>)) ? undefined : undefined; // just for reference
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setSelectedActivity(null)}>
-            <div className="w-full max-w-xl rounded-2xl bg-card border border-border shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="w-full max-w-xl rounded-2xl bg-card border border-border shadow-2xl overflow-hidden max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
               {/* Header */}
-              <div className="px-5 py-4 border-b border-border flex items-start justify-between gap-3 shrink-0">
+              <div className="px-5 py-3.5 border-b border-border flex items-start justify-between gap-3 shrink-0">
                 <div className="flex flex-wrap gap-1.5 items-center">
-                  <span className="rounded-full bg-card-hover px-2.5 py-1 text-xs">{typeLabels[a.type]}</span>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${a.status === "done" ? "bg-green-900/50 text-green-400" : a.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}>
-                    {a.status === "done" ? "เสร็จแล้ว" : a.status === "in_progress" ? "กำลังทำ" : "ใหม่"}
-                  </span>
+                  <span className="rounded-full bg-card-hover px-2.5 py-1 text-xs font-medium">{typeLabels[a.type]}</span>
+                  {isPlan ? (
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium border ${psCls[ps] || psCls.planned}`}>{psLabel[ps] || ps}</span>
+                  ) : (
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${a.status === "done" ? "bg-green-500/10 border-green-500/25 text-green-500 border" : a.status === "in_progress" ? "bg-amber-500/10 border-amber-500/25 text-amber-500 border" : "bg-blue-500/10 border-blue-500/25 text-blue-500 border"}`}>
+                      {a.status === "done" ? "เสร็จแล้ว" : a.status === "in_progress" ? "กำลังทำ" : "ใหม่"}
+                    </span>
+                  )}
                   {a.result && <span className={`text-xs font-medium ${resultColor[a.result] || "text-muted"}`}>{resultLabels[a.result]}</span>}
-                  {isOverdue && <span className="rounded-full bg-red-900/50 text-red-400 px-2.5 py-1 text-xs">⚠ Overdue</span>}
-                  {a.converted_to_project_id && <span className="rounded-full bg-green-900/50 text-green-400 px-2.5 py-1 text-xs">→ Pipeline</span>}
+                  {isOverdue && <span className="rounded-full bg-red-500/10 border border-red-500/25 text-red-500 px-2.5 py-1 text-xs">⚠ Overdue</span>}
+                  {a.converted_to_project_id && <span className="rounded-full bg-green-500/10 border border-green-500/25 text-green-500 px-2.5 py-1 text-xs">→ Pipeline</span>}
+                  {(a.auto_followup_created as boolean) && <span className="rounded-full bg-blue-500/10 border border-blue-500/25 text-blue-500 px-2.5 py-1 text-xs">↻ Auto FU สร้างแล้ว</span>}
                 </div>
-                <button onClick={() => setSelectedActivity(null)} className="text-muted hover:text-foreground text-xl leading-none shrink-0">✕</button>
+                <button onClick={() => setSelectedActivity(null)} className="text-muted hover:text-foreground text-xl leading-none shrink-0 w-7 h-7 flex items-center justify-center rounded hover:bg-card-hover transition-colors">✕</button>
               </div>
+
+              {/* Status flow bar (plans only) */}
+              {isPlan && (
+                <div className="px-5 py-3 border-b border-border bg-background/60 flex items-center gap-1">
+                  {(["planned","in_progress","completed","rescheduled"] as const).map((s, i) => {
+                    const active = ps === s;
+                    const past = (["planned","in_progress","completed"].indexOf(ps) > i) && s !== "rescheduled";
+                    return (
+                      <div key={s} className={`flex items-center ${i < 3 ? "flex-1" : ""} gap-1`}>
+                        <button onClick={() => { if (a.id) quickUpdatePlanStatus(a.id, s); }}
+                          className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium border transition-all hover:opacity-80 ${active ? psCls[s] : past ? "bg-green-500/5 border-green-500/15 text-green-500/60" : "border-border/40 text-muted/40 hover:border-border hover:text-muted"}`}>
+                          <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] ${active ? "bg-current/20" : ""}`}>
+                            {past ? "✓" : i+1}
+                          </span>
+                          <span className="hidden sm:inline">{psLabel[s]}</span>
+                        </button>
+                        {i < 3 && <div className={`flex-1 h-px mx-1 ${past || active ? "bg-border" : "bg-border/30"}`} />}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Body */}
               <div className="overflow-y-auto flex-1 p-5 space-y-4">
-                {/* Description */}
+
+                {/* Objective — prominent for plans */}
+                {isPlan && (a.objective as string) && (
+                  <div className="rounded-lg bg-blue-500/5 border border-blue-500/20 p-3.5">
+                    <p className="text-[10px] text-blue-500 font-semibold uppercase tracking-wider mb-1.5">🎯 วัตถุประสงค์ (Objective)</p>
+                    <p className="text-sm font-medium">{a.objective as string}</p>
+                  </div>
+                )}
+
+                {/* Main title */}
                 <div>
                   <p className="text-base font-semibold leading-snug">{a.description || a.expected_outcome}</p>
-                  {a.customer_type === "prospect" && <span className="text-[10px] rounded bg-orange-900/40 text-orange-400 px-1.5 py-0.5 mt-1.5 inline-block">🔍 Prospect</span>}
+                  {a.customer_type === "prospect" && <span className="text-[10px] rounded bg-orange-500/10 border border-orange-500/25 text-orange-500 px-1.5 py-0.5 mt-1.5 inline-block">🔍 Prospect</span>}
                 </div>
 
                 {/* Info grid */}
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  {a.assigned_to && (
-                    <div>
-                      <p className="text-[10px] text-muted mb-0.5 uppercase">ผู้รับผิดชอบ</p>
-                      <p className="font-medium">👤 {a.assigned_to}</p>
-                    </div>
-                  )}
-                  {a.customer_name && (
-                    <div>
-                      <p className="text-[10px] text-muted mb-0.5 uppercase">ลูกค้า</p>
-                      <p className="font-medium">🏢 {a.customer_name}</p>
-                    </div>
-                  )}
-                  {a.contact_person && (
-                    <div>
-                      <p className="text-[10px] text-muted mb-0.5 uppercase">ติดต่อ</p>
-                      <p>👤 {a.contact_person}</p>
-                    </div>
-                  )}
-                  {a.project_name && (
-                    <div>
-                      <p className="text-[10px] text-muted mb-0.5 uppercase">โปรเจค</p>
-                      <p>📁 {a.project_name}</p>
-                    </div>
-                  )}
-                  {a.next_follow_up && (
-                    <div>
-                      <p className="text-[10px] text-muted mb-0.5 uppercase">Follow-up</p>
-                      <p className={a.next_follow_up < today && a.status !== "done" ? "text-red-400 font-medium" : ""}>📅 {a.next_follow_up}</p>
-                    </div>
-                  )}
+                  {a.assigned_to && <div><p className="text-[10px] text-muted mb-0.5 uppercase">ผู้รับผิดชอบ</p><p className="font-medium">👤 {a.assigned_to}</p></div>}
+                  {a.customer_name && <div><p className="text-[10px] text-muted mb-0.5 uppercase">ลูกค้า</p><p className="font-medium">🏢 {a.customer_name}</p></div>}
+                  {a.contact_person && <div><p className="text-[10px] text-muted mb-0.5 uppercase">ติดต่อ</p><p>👤 {a.contact_person as string}</p></div>}
+                  {a.project_name && <div><p className="text-[10px] text-muted mb-0.5 uppercase">โปรเจค</p><p>📁 {a.project_name}</p></div>}
+                  {isPlan && a.plan_date && <div><p className="text-[10px] text-muted mb-0.5 uppercase">วันที่แผน</p><p className={(a.plan_date < today && a.status !== "done") ? "text-red-500 font-medium" : ""}>📅 {a.plan_date}</p></div>}
+                  {!isPlan && a.next_follow_up && <div><p className="text-[10px] text-muted mb-0.5 uppercase">Follow-up</p><p className={a.next_follow_up < today && a.status !== "done" ? "text-red-500 font-medium" : ""}>📅 {a.next_follow_up}</p></div>}
                 </div>
+
+                {/* Outcome — highlighted when filled */}
+                {(a.outcome as string) && (
+                  <div className="rounded-lg bg-green-500/5 border border-green-500/20 p-3.5">
+                    <p className="text-[10px] text-green-500 font-semibold uppercase tracking-wider mb-1.5">📝 ผลที่เกิดขึ้นจริง (Outcome)</p>
+                    <p className="text-sm">{a.outcome as string}</p>
+                  </div>
+                )}
+
+                {/* Rescheduled info */}
+                {ps === "rescheduled" && (a.rescheduled_to as string) && (
+                  <div className="rounded-lg bg-orange-500/5 border border-orange-500/20 p-3">
+                    <p className="text-[10px] text-orange-500 font-semibold uppercase mb-1">📅 เลื่อนไปวันที่</p>
+                    <p className="text-sm font-medium">{a.rescheduled_to as string}</p>
+                  </div>
+                )}
 
                 {/* Next Action block */}
                 {(a.next_action || a.next_action_type || a.next_action_date) && (
                   <div className="rounded-xl bg-background border border-border p-4">
-                    <p className="text-[10px] text-muted uppercase mb-2">Next Action</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[10px] text-muted uppercase font-semibold">Next Action</p>
+                      {!(a.auto_followup_created as boolean) && (a.next_action_date as string) && a.status === "done" && !editingActId && (
+                        <button onClick={async () => { await createAutoFollowup({ customer_id: a.customer_id, customer_name: a.customer_name, customer_type: a.customer_type, project_id: a.project_id, project_name: a.project_name, assigned_to: a.assigned_to, next_action: a.next_action as string, next_action_type: a.next_action_type as string, next_action_date: a.next_action_date as string }); await quickUpdatePlanStatus(a.id!, (a.plan_status as "planned"|"in_progress"|"completed"|"rescheduled") || "completed", { auto_followup_created: true }); }}
+                          className="text-[10px] text-blue-500 hover:underline font-medium">+ สร้าง Follow-up</button>
+                      )}
+                    </div>
                     <div className="space-y-1 text-sm">
-                      {a.next_action_type && <p>→ <span className="text-blue-400 font-medium">{a.next_action_type as string}</span></p>}
-                      {a.next_action && <p>{a.next_action as string}</p>}
+                      {a.next_action_type && <p>→ <span className="text-blue-500 font-medium">{a.next_action_type as string}</span></p>}
+                      {a.next_action && <p className="text-muted">{a.next_action as string}</p>}
                       {(a.next_action_date || a.next_action_by) && (
                         <p className="text-xs text-muted">
                           {a.next_action_date && <>📅 {a.next_action_date as string}</>}
@@ -2042,19 +2375,40 @@ export default function SalesPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Quick report prompt — when plan is planned/in_progress and no outcome yet */}
+                {isPlan && ps !== "completed" && ps !== "rescheduled" && !(a.outcome as string) && (
+                  <div className="rounded-lg border border-dashed border-border p-3 text-center">
+                    <p className="text-[11px] text-muted mb-2">ดำเนินการแล้ว? บันทึกผลและ next action</p>
+                    <button onClick={() => openEditActivity(a)} className="rounded-lg bg-green-500/10 border border-green-500/25 text-green-500 px-4 py-1.5 text-xs font-medium hover:bg-green-500/20 transition-colors">✏️ รายงานผล</button>
+                  </div>
+                )}
               </div>
 
               {/* Footer */}
-              <div className="px-5 py-4 border-t border-border flex items-center gap-2 shrink-0 flex-wrap">
-                <button onClick={() => openEditActivity(a)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">✏️ แก้ไข</button>
+              <div className="px-5 py-3.5 border-t border-border flex items-center gap-2 shrink-0 flex-wrap">
+                {/* Quick status buttons for plans */}
+                {isPlan && ps !== "completed" && (
+                  <button onClick={() => { if (a.id) quickUpdatePlanStatus(a.id, "completed"); }}
+                    className="rounded-lg bg-green-500/10 border border-green-500/25 text-green-500 px-3 py-1.5 text-xs font-medium hover:bg-green-500/20 transition-colors" disabled={saving}>
+                    {saving ? "..." : "✓ เสร็จแล้ว"}
+                  </button>
+                )}
+                {isPlan && ps !== "in_progress" && ps !== "completed" && (
+                  <button onClick={() => { if (a.id) quickUpdatePlanStatus(a.id, "in_progress"); }}
+                    className="rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-500 px-3 py-1.5 text-xs font-medium hover:bg-amber-500/20 transition-colors" disabled={saving}>
+                    ⚡ เริ่มแล้ว
+                  </button>
+                )}
+                <button onClick={() => openEditActivity(a)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover">✏️ แก้ไข</button>
                 {!a.converted_to_project_id && a.status !== "done" && (
-                  <button onClick={() => { setSelectedActivity(null); convertActivityToPipeline(a); }} className="rounded-lg bg-blue-900/50 text-blue-400 border border-blue-700/50 px-4 py-2 text-sm hover:bg-blue-900">→ สร้างดีล</button>
+                  <button onClick={() => { setSelectedActivity(null); convertActivityToPipeline(a); }} className="rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-500 px-3 py-1.5 text-xs hover:bg-blue-500/20">→ สร้างดีล</button>
                 )}
                 {canReassign && (
-                  <button onClick={() => { setSelectedActivity(null); setReassigningId(a.id!); setReassignTarget(a.assigned_to || ""); setTab("activities"); }} className="rounded-lg bg-amber-900/50 text-amber-400 border border-amber-700/50 px-4 py-2 text-sm hover:bg-amber-900">โยกงาน</button>
+                  <button onClick={() => { setSelectedActivity(null); setReassigningId(a.id!); setReassignTarget(a.assigned_to || ""); setTab("activities"); }} className="rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-500 px-3 py-1.5 text-xs hover:bg-amber-500/20">โยกงาน</button>
                 )}
                 <div className="flex-1" />
-                <button onClick={() => { setSelectedActivity(null); deleteActivity(a.id!); }} className="rounded-lg border border-red-800/50 text-red-400 px-4 py-2 text-sm hover:bg-red-900/20">ลบ</button>
+                <button onClick={() => { setSelectedActivity(null); deleteActivity(a.id!); }} className="rounded-lg border border-red-500/30 text-red-500 px-3 py-1.5 text-xs hover:bg-red-500/10">ลบ</button>
               </div>
             </div>
           </div>
