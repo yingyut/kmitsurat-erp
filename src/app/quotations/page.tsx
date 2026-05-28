@@ -62,6 +62,12 @@ export default function QuotationsPage() {
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }
   useEffect(() => { setMounted(true); load(); }, []);
+  useEffect(() => {
+    if (users.length > 0 && currentUser && !createdById) {
+      const me = users.find(u => u.name === currentUser.name || u.email === currentUser.email);
+      if (me?.id) setCreatedById(me.id);
+    }
+  }, [users, currentUser]);
 
   // Own-data isolation: sale / avenger / Sales Executive (and any new role without view_all_projects) see only their own quotations
   const myRole = currentUser?.role ?? "";
@@ -183,6 +189,7 @@ export default function QuotationsPage() {
         status: "draft", notes, created_by: creator?.name || "",
       } as unknown as Record<string, unknown>);
       setCustId(""); setCustName(""); setCustSearch(""); setProjId(""); setProjName(""); setItems([{ ...emptyItem }]); setNotes("");
+      const me = users.find(u => u.name === currentUser?.name || u.email === currentUser?.email); if (me?.id) setCreatedById(me.id);
       setVatMode("exclusive"); setVatRate(7);
       setShowForm(false); await load();
     } catch (e) { console.error(e); } finally { setSaving(false); }
@@ -262,6 +269,7 @@ export default function QuotationsPage() {
       });
       setRevisionOf(null); setShowForm(false);
       setCustId(""); setCustName(""); setCustSearch(""); setProjId(""); setProjName(""); setItems([{ ...emptyItem }]); setNotes("");
+      const me = users.find(u => u.name === currentUser?.name || u.email === currentUser?.email); if (me?.id) setCreatedById(me.id);
       await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
