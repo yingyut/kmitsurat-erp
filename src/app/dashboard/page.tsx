@@ -896,9 +896,9 @@ export default function DashboardPage() {
       <div>
         <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">Sales KPI · {filterLabel}</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <KpiCard label="ยอดขายรวม" value={`${(actual/1e6).toFixed(1)}M`} sub="THB" color="green" href="/sales" />
-          <KpiCard label="บรรลุเป้า" value={`${targetPct.toFixed(0)}%`} sub={`${(actual/1000).toFixed(0)}K / ${(target/1000).toFixed(0)}K`} color={targetPct>=80?"green":targetPct>=50?"amber":"red"} pct={targetPct} href="/reports" />
-          <KpiCard label="กำไรรวม (GP)" value={actualProfit>0?`${(actualProfit/1e6).toFixed(2)}M`:"—"} sub={`GP ${gpPct.toFixed(1)}%`} color={gpPct>=20?"green":gpPct>=10?"amber":actualProfit>0?"red":"muted"} pct={profitPct} href="/reports" />
+          {seeAll && <KpiCard label="ยอดขายรวม" value={`${(actual/1e6).toFixed(1)}M`} sub="THB" color="green" href="/sales" />}
+          {seeAll && <KpiCard label="บรรลุเป้า" value={`${targetPct.toFixed(0)}%`} sub={`${(actual/1000).toFixed(0)}K / ${(target/1000).toFixed(0)}K`} color={targetPct>=80?"green":targetPct>=50?"amber":"red"} pct={targetPct} href="/reports" />}
+          {seeAll && <KpiCard label="กำไรรวม (GP)" value={actualProfit>0?`${(actualProfit/1e6).toFixed(2)}M`:"—"} sub={`GP ${gpPct.toFixed(1)}%`} color={gpPct>=20?"green":gpPct>=10?"amber":actualProfit>0?"red":"muted"} pct={profitPct} href="/reports" />}
           <KpiCard label="Activity ทั้งหมด" value={String(filtSales.length)} sub={filterLabel} color="blue" href="/sales" />
           <KpiCard label="Follow-up ค้าง" value={String(salesOverdue.length)} sub={salesOverdue.length>0?"ต้องติดตาม":"ปกติ"} color={salesOverdue.length>0?"red":"green"} alert={salesOverdue.length>0} href="/sales" />
           <KpiCard label="QT Approved" value={String(qtApproved)} sub={approvedGP>0?`GP ${(approvedGP/1000).toFixed(0)}K`:"—"} color="cyan" href="/quotations" />
@@ -1667,39 +1667,16 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── PERSONAL QUOTA STRIP — เฉพาะ sales view ที่ไม่ใช่ admin ── */}
+        {/* ── PERSONAL QUOTA CARDS — เฉพาะ sales view ที่ไม่ใช่ admin ── */}
         {view === "sales" && !seeAll && (
-          <div className="rounded-xl bg-card border border-border p-4">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[11px] text-muted uppercase tracking-wider font-medium">เป้าหมายเดือนนี้ · {thisMonth}</p>
-              {myMonthTarget === 0 && <span className="text-[10px] text-amber-500 border border-amber-500/30 bg-amber-500/10 rounded px-2 py-0.5">ยังไม่มีเป้า</span>}
+          <div>
+            <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">เป้าหมายเดือนนี้ · {thisMonth}</p>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <KpiCard label="เป้า (Target)" value={myMonthTarget > 0 ? `${(myMonthTarget/1000).toFixed(0)}K` : "—"} sub={myMonthTarget > 0 ? `${myMonthTarget.toLocaleString()} THB` : "ยังไม่มีเป้า"} color="blue" href="/sales" alert={myMonthTarget === 0} />
+              <KpiCard label="ยอดจริง (Actual)" value={myMonthActual > 0 ? `${(myMonthActual/1000).toFixed(0)}K` : "—"} sub={`${myMonthActual.toLocaleString()} THB`} color={myMonthActual >= myMonthTarget && myMonthTarget > 0 ? "green" : "muted"} href="/sales" />
+              <KpiCard label="Achievement" value={myMonthTarget > 0 ? `${myMonthPct}%` : "—"} sub={myMonthTarget > 0 ? `${(myMonthActual/1000).toFixed(0)}K / ${(myMonthTarget/1000).toFixed(0)}K` : "ยังไม่ได้ตั้งเป้า"} color={myMonthPct >= 100 ? "green" : myMonthPct >= 70 ? "amber" : myMonthTarget > 0 ? "red" : "muted"} pct={myMonthPct} href="/reports" />
+              <KpiCard label="กำไร GP เดือนนี้" value={myMonthProfit > 0 ? `${(myMonthProfit/1000).toFixed(0)}K` : "—"} sub={myMonthActual > 0 ? `GP ${myMonthActual > 0 ? ((myMonthProfit/myMonthActual)*100).toFixed(1) : 0}%` : "—"} color={myMonthProfit > 0 ? "cyan" : "muted"} href="/reports" />
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <p className="text-[10px] text-muted mb-0.5">เป้า (Target)</p>
-                <p className="text-xl font-bold text-foreground">{myMonthTarget > 0 ? `${(myMonthTarget/1000).toFixed(0)}K` : "—"}</p>
-                <p className="text-[10px] text-muted mt-0.5">{myMonthTarget.toLocaleString()} THB</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted mb-0.5">ยอดจริง (Actual)</p>
-                <p className={`text-xl font-bold ${myMonthActual >= myMonthTarget && myMonthTarget > 0 ? "text-emerald-500" : "text-foreground"}`}>{myMonthActual > 0 ? `${(myMonthActual/1000).toFixed(0)}K` : "—"}</p>
-                <p className="text-[10px] text-muted mt-0.5">{myMonthActual.toLocaleString()} THB</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted mb-0.5">Achievement</p>
-                <p className={`text-xl font-bold ${myMonthPct >= 100 ? "text-emerald-500" : myMonthPct >= 70 ? "text-amber-500" : myMonthTarget > 0 ? "text-red-500" : "text-muted"}`}>{myMonthTarget > 0 ? `${myMonthPct}%` : "—"}</p>
-                {myMonthProfit > 0 && <p className="text-[10px] text-muted mt-0.5">GP {(myMonthProfit/1000).toFixed(0)}K</p>}
-              </div>
-            </div>
-            {myMonthTarget > 0 && (
-              <div className="mt-3">
-                <div className="h-1.5 rounded-full bg-border/50 overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${myMonthPct >= 100 ? "bg-emerald-500" : myMonthPct >= 70 ? "bg-amber-500" : "bg-red-500"}`}
-                    style={{ width: `${Math.min(myMonthPct, 100)}%` }} />
-                </div>
-                <p className="text-[10px] text-muted mt-1">{myMonthActual.toLocaleString()} / {myMonthTarget.toLocaleString()} THB</p>
-              </div>
-            )}
           </div>
         )}
 
