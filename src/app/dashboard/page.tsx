@@ -48,17 +48,17 @@ function quarterRange(qNum: 1 | 2 | 3 | 4, fyStart: number) {
 }
 
 // ── KPI Card ──────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, sub, color, href, pct, alert }: {
+function KpiCard({ label, value, sub, color, href, pct, alert, size }: {
   label: string; value: string; sub?: string;
   color: "green" | "blue" | "purple" | "amber" | "red" | "cyan" | "muted";
-  href?: string; pct?: number; alert?: boolean;
+  href?: string; pct?: number; alert?: boolean; size?: "sm" | "md";
 }) {
   const valColor = { green: "text-emerald-500", blue: "text-blue-500", purple: "text-violet-500", amber: "text-amber-500", red: "text-orange-500", cyan: "text-sky-500", muted: "text-muted" }[color];
   const barColor = { green: "bg-emerald-500", blue: "bg-blue-500", purple: "bg-violet-500", amber: "bg-amber-500", red: "bg-orange-500", cyan: "bg-sky-500", muted: "bg-muted" }[color];
   const inner = (
     <div className={`rounded-xl bg-card border p-4 min-h-[110px] flex flex-col justify-between transition-colors ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500" : "border-border/60 hover:border-border/90"}`}>
       <p className="text-[11px] font-medium text-muted/60 uppercase tracking-wider leading-none">{label}</p>
-      <p className={`text-[1.75rem] font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
+      <p className={`${size === "sm" ? "text-2xl" : "text-[1.75rem]"} font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
       <div className="space-y-1.5">
         {pct !== undefined && (
           <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
@@ -1671,11 +1671,11 @@ export default function DashboardPage() {
         {view === "sales" && !seeAll && (
           <div>
             <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">เป้าหมายเดือนนี้ · {thisMonth}</p>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <KpiCard label="เป้า (Target)" value={myMonthTarget > 0 ? `${(myMonthTarget/1000).toFixed(0)}K` : "—"} sub={myMonthTarget > 0 ? `${myMonthTarget.toLocaleString()} THB` : "ยังไม่มีเป้า"} color="blue" href="/sales" alert={myMonthTarget === 0} />
-              <KpiCard label="ยอดจริง (Actual)" value={myMonthActual > 0 ? `${(myMonthActual/1000).toFixed(0)}K` : "—"} sub={`${myMonthActual.toLocaleString()} THB`} color={myMonthActual >= myMonthTarget && myMonthTarget > 0 ? "green" : "muted"} href="/sales" />
-              <KpiCard label="Achievement" value={myMonthTarget > 0 ? `${myMonthPct}%` : "—"} sub={myMonthTarget > 0 ? `${(myMonthActual/1000).toFixed(0)}K / ${(myMonthTarget/1000).toFixed(0)}K` : "ยังไม่ได้ตั้งเป้า"} color={myMonthPct >= 100 ? "green" : myMonthPct >= 70 ? "amber" : myMonthTarget > 0 ? "red" : "muted"} pct={myMonthPct} href="/reports" />
-              <KpiCard label="กำไร GP เดือนนี้" value={myMonthProfit > 0 ? `${(myMonthProfit/1000).toFixed(0)}K` : "—"} sub={myMonthActual > 0 ? `GP ${myMonthActual > 0 ? ((myMonthProfit/myMonthActual)*100).toFixed(1) : 0}%` : "—"} color={myMonthProfit > 0 ? "cyan" : "muted"} href="/reports" />
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <KpiCard size="sm" label="เป้า (Target)" value={myMonthTarget > 0 ? `${(myMonthTarget/1000).toFixed(0)}K` : "—"} sub={myMonthTarget > 0 ? `${myMonthTarget.toLocaleString()} THB` : "ยังไม่มีเป้า"} color="blue" href="/sales" alert={myMonthTarget === 0} />
+              <KpiCard size="sm" label="ยอดจริง (Actual)" value={myMonthActual > 0 ? `${(myMonthActual/1000).toFixed(0)}K` : "—"} sub={`${myMonthActual.toLocaleString()} THB`} color={myMonthActual >= myMonthTarget && myMonthTarget > 0 ? "green" : "muted"} href="/sales" />
+              <KpiCard size="sm" label="Achievement" value={myMonthTarget > 0 ? `${myMonthPct}%` : "—"} sub={myMonthTarget > 0 ? `${(myMonthActual/1000).toFixed(0)}K / ${(myMonthTarget/1000).toFixed(0)}K` : "ยังไม่ได้ตั้งเป้า"} color={myMonthPct >= 100 ? "green" : myMonthPct >= 70 ? "amber" : myMonthTarget > 0 ? "red" : "muted"} pct={myMonthPct} href="/reports" />
+              <KpiCard size="sm" label="กำไร GP เดือนนี้" value={myMonthProfit > 0 ? `${(myMonthProfit/1000).toFixed(0)}K` : "—"} sub={myMonthActual > 0 ? `GP ${myMonthActual > 0 ? ((myMonthProfit/myMonthActual)*100).toFixed(1) : 0}%` : "—"} color={myMonthProfit > 0 ? "cyan" : "muted"} href="/reports" />
             </div>
           </div>
         )}
