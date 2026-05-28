@@ -1672,19 +1672,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── PERSONAL QUOTA CARDS — เฉพาะ sales view ที่ไม่ใช่ admin ── */}
-        {view === "sales" && !seeAll && (
-          <div>
-            <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">เป้าหมายเดือนนี้ · {thisMonth}</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <KpiCard size="sm" label="เป้า" value={myMonthTarget > 0 ? `${(myMonthTarget/1000).toFixed(0)}K` : "—"} sub={myMonthTarget > 0 ? `${(myMonthTarget/1000).toFixed(0)}K THB` : "ยังไม่มีเป้า"} color="blue" href="/sales" alert={myMonthTarget === 0} />
-              <KpiCard size="sm" label="ยอดจริง" value={myMonthActual > 0 ? `${(myMonthActual/1000).toFixed(0)}K` : "—"} sub={`${(myMonthActual/1000).toFixed(0)}K THB`} color={myMonthActual >= myMonthTarget && myMonthTarget > 0 ? "green" : "muted"} href="/sales" />
-              <KpiCard size="sm" label="Achievement" value={myMonthTarget > 0 ? `${myMonthPct}%` : "—"} sub={myMonthTarget > 0 ? `${(myMonthActual/1000).toFixed(0)}K / ${(myMonthTarget/1000).toFixed(0)}K` : "ยังไม่มีเป้า"} color={myMonthPct >= 100 ? "green" : myMonthPct >= 70 ? "amber" : myMonthTarget > 0 ? "red" : "muted"} pct={myMonthPct} href="/reports" />
-              <KpiCard size="sm" label="กำไร GP" value={myMonthProfit > 0 ? `${(myMonthProfit/1000).toFixed(0)}K` : "—"} sub={myMonthActual > 0 ? `GP ${((myMonthProfit/myMonthActual)*100).toFixed(1)}%` : "—"} color={myMonthProfit > 0 ? "cyan" : "muted"} href="/reports" />
-            </div>
-          </div>
-        )}
-
         {/* ── HERO KPI STRIP — ซ่อนสำหรับ sales view ส่วนตัว (person card ครอบคลุมแล้ว) ── */}
         {showHeroKpiStrip && !(view === "sales" && !seeAll) && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
