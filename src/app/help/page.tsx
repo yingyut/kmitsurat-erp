@@ -11,24 +11,28 @@ const sections: Section[] = [
 
 ### เข้าสู่ระบบ
 1. เปิดเบราว์เซอร์ไปที่ **http://localhost:3000**
-2. เลือกผู้ใช้ที่ **Sidebar ด้านล่าง** (dropdown เลือกชื่อ)
-3. ระบบจะจำชื่อผู้ใช้ไว้ ไม่ต้องเลือกใหม่ทุกครั้ง
+2. กรอก **ชื่อผู้ใช้** และ **รหัสผ่าน** ที่หน้า Login
+3. ระบบจำการเข้าสู่ระบบไว้ — ไม่ต้องกรอกใหม่ทุกครั้ง
+4. กด **ออกจากระบบ** ที่ด้านล่าง Sidebar
 
 ### โครงสร้างเมนู (Sidebar)
-เมนูแบ่งเป็น 5 กลุ่ม:
+เมนูแสดงเฉพาะที่ Role มีสิทธิ์เข้าถึง:
 
 **SALES** — ก่อนปิดดีล:
+- 📅 **Action Plan** — วางแผนงานรายวัน (ปฏิทิน)
+- 📞 **Activities** — บันทึกกิจกรรมงานขาย
 - 🎯 **Pipeline** — โอกาสขาย (Lead → Won/Lost)
-- 📞 **Activities** — บันทึกกิจกรรม + วางแผน + Job Request
 - 💰 **Quotations** — ใบเสนอราคา + Revision
-- 🔄 **Sales Workflow** — ติดตาม Timeline QT → PO → ส่งมอบ
 - 📈 **Sales Plan** — แผนยอดขาย / Quota
+- 🙋 **Requests** — Job Request ไป Presale/Service
 
 **OPERATIONS** — หลังได้ดีล:
 - 📋 **Presale Tasks** — งาน BOQ / Solution + ปฏิทิน
 - 🗂️ **Project Execution** — ดำเนินโปรเจค
 - 🔧 **Service Tickets** — งานติดตั้ง / ซ่อม / PM
 - 🛡️ **Contracts** — สัญญา / รับประกัน / MA
+- 🖥️ **Assets** — อุปกรณ์ / Serial Tracking
+- 🔧 **PM Schedule** — ตารางงาน PM อุปกรณ์
 
 **MASTER DATA** — ฐานข้อมูล:
 - 🏢 **Customers** — ลูกค้า + แผนที่
@@ -43,8 +47,8 @@ const sections: Section[] = [
 
 ### เคล็ดลับ
 - เอาเม้าไปชี้ที่เมนู → เห็น **คำอธิบายภาษาไทย**
-- ทุกปุ่ม ทุกตัวเลข ทุกการ์ด **กดได้** → ไปหน้าที่เกี่ยวข้อง
-- Neon Dark Theme — input กด focus เห็น glow สีม่วง`,
+- กดเมนู SALES ใดก็ตาม → เปิด Tab ที่ตรงกันบนหน้า Sales โดยตรง
+- ทุกปุ่ม ทุกตัวเลข ทุกการ์ด **กดได้** → ไปหน้าที่เกี่ยวข้อง`,
   },
   {
     title: "Dashboard",
@@ -75,45 +79,41 @@ const sections: Section[] = [
 - Alerts: 🔴 ด่วน / 🟠 เตือน / 🟢 ข้อมูล — กดไปหน้าที่เกี่ยวข้อง`,
   },
   {
-    title: "Sales (5 Tabs)",
-    thai: "งานขาย — 5 Tabs",
-    content: `## Sales — งานขาย (5 Tabs)
+    title: "Sales (4 Tabs)",
+    thai: "งานขาย — 4 Tabs",
+    content: `## Sales — งานขาย (4 Tabs + Requests)
 
-### Flow: Plan → Activity → Pipeline → Quotation
+### Flow: Action Plan → Activities → Pipeline → Quotation
 
-### Tab 1: Dashboard
-- KPI: Target/Pipeline/Won/Overdue — **กดแต่ละใบไปหน้าที่เกี่ยวข้อง**
-- **Conversion Flow**: Plans → Activities → Pipeline → Won — **กดแต่ละช่องได้**
-- Today / Overdue / Plans — **กดหัวข้อหรือแต่ละ item ได้**
+### Tab 1: Action Plan (📅)
+- **ปฏิทินรายเดือน** — คลิกวันใดก็ได้เพื่อดูและเพิ่มแผน
+- กด **"+ วางแผน"** → ใส่ วันที่/ประเภท/ลูกค้า/เป้าหมาย
+- กดที่แผนที่มีอยู่ → แก้ไข / อัปเดตสถานะ / ลบ
+- สถานะ: วางแผน → กำลังทำ → เสร็จ / เลื่อน
+- กด **"Update"** บนมือถือเพื่อแก้ไขแผนรายวัน
 
-### Tab 2: Plan / Quota
-**วางแผนกิจกรรม:**
-- กด **"+ วางแผน"** → ใส่ วันที่/ประเภท/ลูกค้า(ไม่บังคับ)/คาดหวัง
-- กด **"✓ ทำแล้ว"** → convert เป็น Activity อัตโนมัติ
-
-**เป้ายอดขาย:**
-- KPI Summary: เป้า/ยอดจริง/เหลือ/Achievement% + 🏆 Top Performer
-- การ์ดแต่ละเซลล์: 🥇🥈🥉 เรียงตาม % + Progress bar + แถบสี
-- กด **"✏️ แก้ไข"** → เปิดฟอร์มพร้อมข้อมูลเดิม
-- กด **"🗑 ลบ"** → ลบพร้อมยืนยัน
-
-### Tab 3: Activities
+### Tab 2: Activities (📞)
 - กด **"+ บันทึกกิจกรรม"** → ประเภท/ลูกค้า/โปรเจค/ผลลัพธ์/Next Action
 - **ผลลัพธ์**: สำเร็จ / ไม่รับสาย / สนใจ / ปฏิเสธ / รอผล
 - **Filters**: ทั้งหมด / วันนี้ / สัปดาห์นี้ / Overdue (badge แดง)
-- กด **"→ ดีล"** → convert เป็น Pipeline (สร้าง Project อัตโนมัติ)
-- เปลี่ยนสถานะ dropdown: New → ทำอยู่ → เสร็จ
+- กด **"→ ดีล"** → convert เป็น Pipeline อัตโนมัติ
+- ⬇ **Export CSV** ได้จากปุ่มในแถว filter
 
-### Tab 4: Pipeline
+### Tab 3: Pipeline (🎯)
 - Stage summary: Lead/Opportunity/Proposal/Negotiation/Won/Lost
-- ตาราง: Project/Customer/Value/Stage/Probability/%/Close Date/Next Action
+- ตาราง: Project/Customer/Value/Stage/%/Close Date/Next Action
 - เปลี่ยน Stage ได้จาก dropdown
 - ปุ่ม convert: **QT** / **PS** (Presale) / **SV** (Service)
+- ⬇ **Export CSV** ได้จากปุ่มในแถว filter
 
-### Tab 5: Requests
+### Quota Set (เฉพาะ Manager)
+- ตั้งเป้ายอดขายรายคน/รายเดือน
+- KPI Summary: เป้า/ยอดจริง/เหลือ/% + 🏆 Top Performer
+
+### Requests (🙋) — ขวาสุด
 - สร้าง **Job Request** ไป Presale หรือ Service
-- ระบุ: หัวข้อ/ทีม/ลูกค้า/วันที่/ความเร่งด่วน/รายละเอียด
-- Badge แดงแสดงจำนวน request ที่รอ`,
+- ระบุ: หัวข้อ/ทีม/ลูกค้า(ค้นหาได้)/วันที่/ความเร่งด่วน/รายละเอียด
+- Badge แดงแสดงจำนวน request ที่รอดำเนินการ`,
   },
   {
     title: "Sales Pipeline",
@@ -148,23 +148,21 @@ const sections: Section[] = [
     content: `## Quotations — ใบเสนอราคา
 
 ### สร้างใบเสนอราคา
-1. เลือก ลูกค้า + โปรเจค
-2. เพิ่ม Line Items → เลือกสินค้าจาก dropdown
-3. ระบบ auto-fill: รหัส, ชื่อ, ราคาทุน, ราคาขาย
+1. **ค้นหาลูกค้า** — พิมพ์ชื่อบางส่วนเพื่อกรอง
+2. เลือก **โปรเจค** (เฉพาะของลูกค้านั้น) หรือเลือก "✏️ อื่นๆ" พิมพ์เอง
+3. เพิ่ม Line Items → เลือกสินค้าจาก dropdown → auto-fill ราคา
 4. แก้ไข จำนวน / ราคา / ส่วนลด → คำนวณ Total, Margin%, GP% อัตโนมัติ
 5. เลือกระดับราคา: ทั่วไป / สมาชิก / พิเศษ
-6. ตั้งค่า VAT: ไม่มี / ราคา+VAT / รวม VAT แล้ว
+6. ตั้งค่า VAT: ไม่มี / บวก VAT / รวม VAT แล้ว
+7. **ผู้สร้าง** — auto-set เป็น user ที่ login (sale role เห็นเฉพาะตัวเอง)
 
 ### Revision (แก้ไขเวอร์ชัน)
 - กดปุ่ม **"Revise"** → เก็บเวอร์ชันเดิมไว้ + สร้างเวอร์ชันใหม่
 - กดปุ่ม **"📋 History"** → ดูทุก revision เปรียบเทียบมูลค่า/GP
 - แต่ละ revision เก็บ: items ทั้งหมด + ราคา + เหตุผลที่แก้ + ผู้แก้
 
-### Sales Workflow (/sales-workflow)
-- Timeline: Draft → Sent → Follow-up → Revised → Won/PO → Lost
-- Quick actions: 📧 ส่ง / 📞 Follow-up / ✏️ Revise / ✅ ได้ PO / 💔 Lost
-- หลังได้ PO → สร้าง 6 ขั้นตอนอัตโนมัติ (สั่งซื้อ → ติดตั้ง → ส่งมอบ)
-- Team assignments: Presale/Sales/Procurement/Service`,
+### Export
+- ⬇ **Export CSV** — ดาวน์โหลดรายการใบเสนอราคา (กรองตาม filter ปัจจุบัน)`,
   },
   {
     title: "Presale",
@@ -228,9 +226,14 @@ Open → In Progress → Resolved → Closed
 - ค้นหาชื่อ/ผู้ติดต่อ/จังหวัด
 - กรองตามจังหวัด + ประเภทหน่วยงาน
 - เรียงลำดับ: ใหม่สุด/เก่าสุด/ชื่อ/จังหวัด
+- กรองตาม: ของฉัน / ทีม / ทั้งหมด
 
 ### Hover Popup
 เอาเม้าชี้ที่ลูกค้า → popup: โปรเจค/มูลค่า/ใบเสนอราคา/งานบริการ/PM/งานค้าง
+
+### Import / Export CSV
+- ⬇ **Export** — ดาวน์โหลดข้อมูลลูกค้าทั้งหมดเป็น CSV
+- ⬆ **Import** — นำเข้าจาก CSV (header ภาษาไทยตาม template ที่ Export มา)
 
 ### แผนที่ (ด้านล่าง)
 - แผนที่ประเทศไทย (Leaflet) — ซูมเข้า/ออก/ลากได้
@@ -245,18 +248,22 @@ Open → In Progress → Resolved → Closed
 ### สินค้า
 - รหัส / ชื่อ / ยี่ห้อ / หมวดหมู่ / หน่วย
 - ราคาทุน / ราคาขาย / ราคาสมาชิก / ราคาพิเศษ / ส่วนลดเริ่มต้น
-- ประเภท: สินค้า / บริการ
-- Active/Inactive
+- ประเภท: สินค้า / บริการ — Active/Inactive
 
 ### Vendor Prices
 - กดแถวสินค้าเพื่อขยาย → เพิ่มราคาจาก Vendor ต่างๆ
 - ติดตาม Price History อัตโนมัติ
 - แสดง Trend ราคา (ขึ้น/ลง/คงที่)
 
+### Import / Export CSV (Products)
+- ⬇ **Export** — ดาวน์โหลดรายการสินค้าทั้งหมด
+- ⬆ **Import** — นำเข้าสินค้าจาก CSV (ราคาแปลงเป็นตัวเลขอัตโนมัติ)
+
 ### Vendors (/vendors)
 - จัดการข้อมูลผู้ขาย/Supplier
 - ประเภท: Distributor / ผู้รับเหมา(บริษัท) / ผู้รับเหมา(บุคคล) / ทีมภายใน
-- ข้อมูล: ชื่อ / เบอร์ / อีเมล / เงื่อนไขชำระ / Tax ID / VAT / WHT`,
+- ข้อมูล: ชื่อ / เบอร์ / อีเมล / เงื่อนไขชำระ / Tax ID / VAT / WHT
+- ⬇⬆ **Import / Export CSV** ได้เช่นกัน`,
   },
   {
     title: "Contracts",
@@ -283,19 +290,22 @@ Open → In Progress → Resolved → Closed
 
 ### Users tab
 - รูป / ชื่อเล่น / ชื่อจริง-นามสกุล / ตำแหน่ง / แผนก / Role / อีเมล / เบอร์
-- เพิ่ม / แก้ไข / ลบ ได้ครบ
-- คลิกที่แถว → เปิดรายละเอียด
+- เพิ่ม / แก้ไข / ลบ ได้ครบ — คลิกที่แถว → เปิดรายละเอียด
 
-### Roles
+### Roles (สิทธิ์การใช้งาน)
 - **admin** — ดูแลระบบ (เห็นทุกอย่าง)
-- **sale** — เซลล์ (Activities, Quotations, Job Requests)
-- **presale** — พรีเซลล์ (BOQ, Solution Design)
-- **service** — ช่างบริการ (ติดตั้ง, ซ่อม, PM)
-- **avenger** — Avenger (เหมือน Sales + สนับสนุนสาขา)
+- **sale** — เซลล์ (Action Plan, Activities, Quotations, Requests) — เห็นเฉพาะข้อมูลตัวเอง
+- **presale** — พรีเซลล์ (BOQ, Solution Design, Presale Tools)
+- **service** — ช่างบริการ (ติดตั้ง, ซ่อม, PM, Assets)
+- **avenger** — Senior Sales (เหมือน sale + เห็นข้อมูลทีม + Sales Plan)
 
-### ผู้ใช้ปัจจุบัน
-- เลือกที่ **Sidebar ด้านล่าง** (dropdown)
-- ระบบจำไว้ใน localStorage`,
+### โปรไฟล์ผู้ใช้
+- กดชื่อ/รูปที่ด้านล่าง Sidebar → หน้าโปรไฟล์
+- แก้ไขชื่อ / เปลี่ยนรหัสผ่าน / เลือกการแสดงชื่อ (ชื่อเล่น/ชื่อจริง)
+
+### Dashboard ส่วนตัว (sale/avenger)
+- หน้า Dashboard แสดงชื่อ + เป้ายอดขายเดือนนี้ + % ที่ทำได้
+- ตัวเลขเป้าแสดงเป็น badge ข้างชื่อ (สีตาม % ที่ทำได้)`,
   },
   {
     title: "Notifications",
@@ -349,17 +359,48 @@ Open → In Progress → Resolved → Closed
 - ตั้งค่า Workflow แจ้งเตือน Email/LINE/Teams/Webhook`,
   },
   {
+    title: "Import / Export CSV",
+    thai: "นำเข้า / ส่งออกข้อมูล",
+    content: `## Import / Export CSV — นำเข้า/ส่งออกข้อมูล
+
+### หน้าที่รองรับ
+- 🏢 **Customers** — Export + Import
+- 📦 **Products** — Export + Import
+- 🏪 **Vendors** — Export + Import
+- 🎯 **Pipeline** — Export อย่างเดียว
+- 💰 **Quotations** — Export อย่างเดียว
+- 📞 **Activities** — Export อย่างเดียว
+
+### วิธี Export
+1. กดปุ่ม **⬇ Export** ในแถว filter ของแต่ละหน้า
+2. ไฟล์ .csv ดาวน์โหลดอัตโนมัติ — ชื่อไฟล์มีวันที่
+3. เปิดใน Excel หรือ Google Sheets ได้โดยตรง (รองรับภาษาไทย)
+
+### วิธี Import
+1. **Export ก่อนเสมอ** เพื่อดู format header ที่ถูกต้อง
+2. แก้ไขหรือเพิ่มข้อมูลใน Excel ตาม column header ภาษาไทย
+3. บันทึกเป็น .csv
+4. กดปุ่ม **⬆ Import** → เลือกไฟล์ → ยืนยัน
+5. ระบบจะแสดงจำนวนแถวที่พบก่อน confirm
+
+### หมายเหตุ
+- Import จะ **เพิ่มข้อมูลใหม่** เท่านั้น ไม่ได้ overwrite ข้อมูลเดิม
+- ราคา (cost_price, selling_price) ใส่เป็นตัวเลขล้วน ไม่ต้องใส่ ฿ หรือ ,
+- สถานะ active ใส่ true หรือ false`,
+  },
+  {
     title: "Tips & Tricks",
     thai: "เคล็ดลับ + การแก้ปัญหา",
     content: `## เคล็ดลับการใช้งาน
 
 ### การนำทาง
-- ใช้ Sidebar ด้านซ้าย — Active menu มี **glow สีม่วง**
-- ทุก KPI card, ตัวเลข, รายการ **กดได้** → ไปหน้าที่เกี่ยวข้อง
+- ใช้ Sidebar ด้านซ้าย — Active menu มี **highlight สีน้ำเงิน**
+- กดเมนู Sales ใดก็ตาม → ไปที่ Tab นั้นบนหน้า Sales โดยตรง
+- Sidebar ซ่อน section ที่ Role ไม่มีสิทธิ์อัตโนมัติ
 
 ### ฟอร์ม
 - ช่องที่มี ***** คือบังคับกรอก
-- ทุกช่องมี **label** บอกว่าต้องใส่อะไร
+- ช่องค้นหาลูกค้า — พิมพ์บางส่วนเพื่อกรอง dropdown
 - กด "บันทึก" / "ยกเลิก"
 
 ### Pipeline
@@ -401,7 +442,7 @@ export default function HelpPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-bold text-gradient" title="คู่มือการใช้งาน">Help / คู่มือการใช้งาน</h1>
-          <p className="text-xs text-muted">KMITSURAT Work Portal v1.6 — คู่มือสำหรับผู้ใช้งาน</p>
+          <p className="text-xs text-muted">KMITSURAT Work Portal v1.6 — อัปเดต {new Date().toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" })}</p>
         </div>
       </div>
 

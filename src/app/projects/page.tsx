@@ -4,6 +4,19 @@ import type { Project, Customer, User, ProjectType, ServiceContract } from "@/li
 import Link from "next/link";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
+import CsvImportExport from "@/components/CsvImportExport";
+
+const PROJ_COLS = [
+  { key: "name",          label: "ชื่อโปรเจค" },
+  { key: "customer_name", label: "ลูกค้า" },
+  { key: "status",        label: "สถานะ" },
+  { key: "value",         label: "มูลค่า (THB)" },
+  { key: "assigned_to",   label: "เจ้าของ" },
+  { key: "type",          label: "ประเภทงาน" },
+  { key: "probability",   label: "โอกาสชนะ (%)" },
+  { key: "expected_close_date", label: "วันปิดดีล" },
+  { key: "notes",         label: "หมายเหตุ" },
+];
 
 const OVERVIEW_DATE_LABELS = { all: "ทั้งหมด", month: "เดือนนี้", quarter: "ไตรมาสนี้", year: "ปีนี้" } as const;
 type OverviewDateMode = keyof typeof OVERVIEW_DATE_LABELS;
@@ -660,6 +673,11 @@ export default function ProjectsPage() {
         <button onClick={expandAll} title="กางทั้งหมด" className="rounded-lg border border-border px-2 py-1.5 text-[10px] text-muted hover:bg-card-hover">⊞</button>
         <button onClick={collapseAll} title="หุบทั้งหมด" className="rounded-lg border border-border px-2 py-1.5 text-[10px] text-muted hover:bg-card-hover">⊟</button>
         <p className="text-[10px] text-muted">{filteredFinal.length} รายการ</p>
+        <CsvImportExport
+          filename={`pipeline-${new Date().toISOString().slice(0,10)}`}
+          columns={PROJ_COLS}
+          getData={() => filteredFinal as unknown as Record<string, unknown>[]}
+        />
       </div>
 
       {/* Form */}

@@ -2,6 +2,22 @@
 import { useEffect, useState } from "react";
 import type { Vendor, VendorPrice } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
+import CsvImportExport from "@/components/CsvImportExport";
+
+const VENDOR_COLS = [
+  { key: "name",                  label: "ชื่อ" },
+  { key: "contact_name",          label: "ผู้ติดต่อ" },
+  { key: "phone",                 label: "โทรศัพท์" },
+  { key: "email",                 label: "อีเมล" },
+  { key: "address",               label: "ที่อยู่" },
+  { key: "vendor_type",           label: "ประเภท" },
+  { key: "has_vat",               label: "จด VAT (true/false)" },
+  { key: "withholding_tax_rate",  label: "% หัก ณ ที่จ่าย" },
+  { key: "payment_terms",         label: "เครดิต" },
+  { key: "tax_id",                label: "เลขภาษี" },
+  { key: "notes",                 label: "หมายเหตุ" },
+  { key: "active",                label: "สถานะ (true/false)" },
+];
 
 type VendorType = Vendor["vendor_type"];
 
@@ -338,6 +354,25 @@ export default function VendorsPage() {
           <option value="products_desc">สินค้าเยอะที่สุด</option>
         </select>
         <p className="text-xs text-muted self-center">{sorted.length} รายการ</p>
+        <CsvImportExport
+          filename={`vendors-${new Date().toISOString().slice(0,10)}`}
+          columns={VENDOR_COLS}
+          getData={() => list as unknown as Record<string, unknown>[]}
+          onImport={async (rows) => {
+            const fs = await import("@/lib/firestore");
+            const labelToKey = Object.fromEntries(VENDOR_COLS.map(c => [c.label, c.key]));
+            for (const row of rows) {
+              const obj: Record<string, unknown> = {};
+              for (const [h, v] of Object.entries(row)) { obj[labelToKey[h] ?? h] = v; }
+              if (!obj.name) continue;
+              obj.has_vat = String(obj.has_vat) !== "false";
+              obj.active = String(obj.active) !== "false";
+              obj.withholding_tax_rate = parseFloat(String(obj.withholding_tax_rate)) || 0;
+              await fs.vendors.add(obj);
+            }
+            await load();
+          }}
+        />
       </div>
 
       {loading ? <p className="text-muted text-sm">Loading...</p> : sorted.length === 0 ? (

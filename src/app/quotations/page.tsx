@@ -5,6 +5,21 @@ import type { Quotation, QuotationItem, Customer, Project, Product, User } from 
 import { generateNumber } from "@/lib/numbering";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
+import CsvImportExport from "@/components/CsvImportExport";
+
+const QT_COLS = [
+  { key: "quotation_number", label: "เลขที่ใบเสนอราคา" },
+  { key: "customer_name",    label: "ลูกค้า" },
+  { key: "project_name",     label: "โปรเจค" },
+  { key: "total_selling",    label: "มูลค่ารวม (THB)" },
+  { key: "grand_total",      label: "ยอดสุทธิ (THB)" },
+  { key: "gp_percent",       label: "%GP" },
+  { key: "status",           label: "สถานะ" },
+  { key: "created_by",       label: "ผู้สร้าง" },
+  { key: "sent_date",        label: "วันที่ส่ง" },
+  { key: "po_number",        label: "เลขที่ PO" },
+  { key: "notes",            label: "หมายเหตุ" },
+];
 
 const emptyItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0, price_tier: "general" };
 
@@ -617,9 +632,14 @@ export default function QuotationsPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <input placeholder="ค้นหาเลขที่ / ลูกค้า..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <input placeholder="ค้นหาเลขที่ / ลูกค้า..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
         <p className="text-xs text-muted shrink-0">{filtered.length} รายการ {statusFilter !== "all" && <span className="text-accent">· {statusLabel[statusFilter]}</span>}</p>
+        <CsvImportExport
+          filename={`quotations-${new Date().toISOString().slice(0,10)}`}
+          columns={QT_COLS}
+          getData={() => filtered as unknown as Record<string, unknown>[]}
+        />
       </div>
       {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? <p className="text-muted text-sm">ไม่พบใบเสนอราคา</p> : (
         <div className="space-y-2">{filtered.map((q) => (

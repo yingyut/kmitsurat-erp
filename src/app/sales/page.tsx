@@ -6,6 +6,28 @@ import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest } f
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
 import { isOwnRecord, isOwner, canSeeAll, canManageQuota } from "@/lib/ownership";
+import CsvImportExport from "@/components/CsvImportExport";
+
+const ACT_COLS = [
+  { key: "type",            label: "ประเภท" },
+  { key: "customer_name",   label: "ลูกค้า" },
+  { key: "description",     label: "รายละเอียด" },
+  { key: "assigned_to",     label: "ผู้รับผิดชอบ" },
+  { key: "status",          label: "สถานะ" },
+  { key: "result",          label: "ผลลัพธ์" },
+  { key: "next_follow_up",  label: "Follow-up" },
+  { key: "next_action_date",label: "วันนัดหมาย" },
+  { key: "plan_date",       label: "วันที่วางแผน" },
+];
+const PIPELINE_COLS = [
+  { key: "name",          label: "ชื่อโปรเจค" },
+  { key: "customer_name", label: "ลูกค้า" },
+  { key: "status",        label: "สถานะ" },
+  { key: "value",         label: "มูลค่า (THB)" },
+  { key: "probability",   label: "โอกาสชนะ (%)" },
+  { key: "assigned_to",   label: "เจ้าของ" },
+  { key: "expected_close_date", label: "วันปิดดีล" },
+];
 import { showSalesDashboardMenu } from "@/lib/featureFlags";
 
 const actTypes = ["phone_call","visit","quotation_created","quotation_sent","follow_up","meeting","customer_update"] as const;
@@ -30,6 +52,10 @@ export default function SalesPage() {
   const initTab = (validTabs as readonly string[]).includes(searchParams.get("tab") ?? "") ? searchParams.get("tab") as TabId : (showSalesDashboardMenu ? "dashboard" : "workplan");
   const [tab, setTabState] = useState<TabId>(initTab);
   function setTab(t: TabId) { setTabState(t); router.replace(`/sales?tab=${t}`, { scroll: false }); }
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t && (validTabs as readonly string[]).includes(t)) setTabState(t as TabId);
+  }, [searchParams]);
   const [activities, setActivities] = useState<SalesActivity[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -46,6 +72,8 @@ export default function SalesPage() {
   const [editingActId, setEditingActId] = useState<string | null>(null);
   const [custSearch, setCustSearch] = useState("");
   const [custOpen, setCustOpen] = useState(false);
+  const [reqCustSearch, setReqCustSearch] = useState("");
+  const [reqCustOpen, setReqCustOpen] = useState(false);
 
   // Forms
   const [showForm, setShowForm] = useState(false);
@@ -364,11 +392,10 @@ export default function SalesPage() {
           { id: "workplan",   label: "Action Plan", tip: "วางแผนงานทีมขาย" },
           { id: "activities", label: "Activities",  tip: "บันทึกกิจกรรมจริง" },
           { id: "pipeline",   label: "Pipeline",    tip: "ติดตามดีล" },
-          { id: "requests",   label: "Requests",    tip: "ขอช่วย Presale/Service" },
           ...(showSalesDashboardMenu ? [{ id: "dashboard", label: "Dashboard", tip: "ภาพรวม" }] : []),
           ...(canManageQuota(currentUser) ? [{ id: "plan", label: "Quota Set", tip: "ตั้งเป้ายอดขายรายคน" }] : []),
         ] as { id: typeof tab; label: string; tip: string }[]).map(t => {
-          const badge = t.id === "requests" ? jobReqs.filter(r => r.status === "pending").length : t.id === "activities" ? overdueActs.length : 0;
+          const badge = t.id === "activities" ? overdueActs.length : 0;
           return (
             <button key={t.id} onClick={() => setTab(t.id)} title={t.tip}
               className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${tab === t.id ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
@@ -382,6 +409,12 @@ export default function SalesPage() {
           className="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-muted hover:text-foreground transition-colors shrink-0 flex items-center gap-1">
           Quotation <span className="text-[10px] opacity-50">↗</span>
         </Link>
+        {/* Requests — rightmost tab */}
+        <button onClick={() => setTab("requests")} title="ขอช่วย Presale/Service"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${tab === "requests" ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
+          Requests
+          {jobReqs.filter(r => r.status === "pending").length > 0 && <span className="rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold">{jobReqs.filter(r => r.status === "pending").length}</span>}
+        </button>
       </div>
 
       {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
@@ -2002,6 +2035,7 @@ export default function SalesPage() {
             </button>
           ))}
           <input placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 rounded-lg bg-card border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent" />
+          <CsvImportExport filename={`activities-${new Date().toISOString().slice(0,10)}`} columns={ACT_COLS} getData={() => filteredActs as unknown as Record<string, unknown>[]} />
         </div>
 
         {filteredActs.length === 0 ? <p className="text-muted text-sm">ไม่พบกิจกรรม</p> : (
@@ -2079,6 +2113,7 @@ export default function SalesPage() {
             return <button key={s} onClick={() => setStageFilter(stageFilter === s ? "all" : s)} className={`rounded-lg border p-2 text-center min-w-[80px] transition-colors ${stageFilter === s ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}><p className="text-base font-bold">{c}</p><p className="text-[9px] text-muted">{s}</p><p className="text-[9px] text-muted">{(v/1000).toFixed(0)}K</p></button>;
           })}
           <input placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[150px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+          <CsvImportExport filename={`pipeline-${new Date().toISOString().slice(0,10)}`} columns={PIPELINE_COLS} getData={() => filteredPipeline as unknown as Record<string, unknown>[]} />
         </div>
 
         {filteredPipeline.length === 0 ? <p className="text-muted text-sm">ไม่พบดีล</p> : (
@@ -2118,7 +2153,23 @@ export default function SalesPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
               <div><label className="text-[10px] text-muted">หัวข้อ *</label><input value={reqForm.title} onChange={e => setReqForm({ ...reqForm, title: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
               <div><label className="text-[10px] text-muted">ส่งถึงทีม</label><select value={reqForm.request_to_team} onChange={e => setReqForm({ ...reqForm, request_to_team: e.target.value as JobRequest["request_to_team"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="presale">Presale</option><option value="service">Service</option></select></div>
-              <div><label className="text-[10px] text-muted">ลูกค้า</label><select value={reqForm.customer_id} onChange={e => selectCust(e.target.value, "req")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">--</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select></div>
+              <div className="relative"><label className="text-[10px] text-muted">ลูกค้า</label>
+                <input placeholder="ค้นหาลูกค้า..." value={reqCustSearch}
+                  onChange={e => { setReqCustSearch(e.target.value); setReqCustOpen(true); if (!e.target.value) setReqForm({ ...reqForm, customer_id: "", customer_name: "" }); }}
+                  onFocus={() => setReqCustOpen(true)}
+                  onBlur={() => setTimeout(() => setReqCustOpen(false), 150)}
+                  className={`w-full rounded-lg bg-background border px-3 py-2 text-sm focus:outline-none mt-1 ${reqForm.customer_id ? "border-accent/50 focus:border-accent" : "border-border focus:border-accent"}`} />
+                {reqForm.customer_id && <p className="text-[10px] text-accent mt-0.5">✓ {reqForm.customer_name}</p>}
+                {reqCustOpen && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {customers.filter(c => !reqCustSearch || c.company_name.toLowerCase().includes(reqCustSearch.toLowerCase())).map(c => (
+                      <button key={c.id} type="button" onMouseDown={() => { selectCust(c.id!, "req"); setReqCustSearch(c.company_name); setReqCustOpen(false); }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-card-hover ${reqForm.customer_id === c.id ? "text-accent font-medium" : ""}`}>{c.company_name}</button>
+                    ))}
+                    {customers.filter(c => !reqCustSearch || c.company_name.toLowerCase().includes(reqCustSearch.toLowerCase())).length === 0 && <p className="px-3 py-2 text-xs text-muted">ไม่พบลูกค้า</p>}
+                  </div>
+                )}
+              </div>
               <div><label className="text-[10px] text-muted">วันที่ต้องการ</label><input type="date" value={reqForm.due_date} onChange={e => setReqForm({ ...reqForm, due_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
               <div><label className="text-[10px] text-muted">ความเร่งด่วน</label><select value={reqForm.priority} onChange={e => setReqForm({ ...reqForm, priority: e.target.value as JobRequest["priority"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="low">ปกติ</option><option value="medium">ค่อนข้างด่วน</option><option value="high">ด่วน</option><option value="urgent">ด่วนมาก</option></select></div>
               <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียด *</label><textarea value={reqForm.description} onChange={e => setReqForm({ ...reqForm, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-16 resize-y" /></div>

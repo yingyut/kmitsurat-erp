@@ -4,6 +4,19 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Product, ProductCategory, Vendor, VendorPrice, PriceHistory } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
+import CsvImportExport from "@/components/CsvImportExport";
+
+const PROD_COLS = [
+  { key: "code",          label: "รหัสสินค้า" },
+  { key: "name",          label: "ชื่อสินค้า" },
+  { key: "brand",         label: "ยี่ห้อ" },
+  { key: "category",      label: "หมวดหมู่" },
+  { key: "unit",          label: "หน่วย" },
+  { key: "cost_price",    label: "ราคาทุน" },
+  { key: "selling_price", label: "ราคาขาย" },
+  { key: "type",          label: "ประเภท (product/service)" },
+  { key: "active",        label: "สถานะ (true/false)" },
+];
 
 const empty = { code: "", name: "", brand: "", category: "", unit: "pcs", cost_price: 0, selling_price: 0, price_member: 0, price_special: 0, default_discount: 0, active: true, type: "product" as Product["type"] };
 const emptyVp = { vendor_id: "", current_price: 0, min_qty: 1, lead_time_days: 0, notes: "" };
@@ -342,6 +355,25 @@ function ProductsContent() {
         </select>
         <Link href="/settings/product-categories" title="จัดการหมวดหมู่" className="rounded-lg border border-border px-3 py-2 text-xs text-accent hover:bg-card-hover">⚙️</Link>
         <p className="text-xs text-muted self-center">{filtered.length} รายการ</p>
+        <CsvImportExport
+          filename={`products-${new Date().toISOString().slice(0,10)}`}
+          columns={PROD_COLS}
+          getData={() => list as unknown as Record<string, unknown>[]}
+          onImport={async (rows) => {
+            const fs = await import("@/lib/firestore");
+            const labelToKey = Object.fromEntries(PROD_COLS.map(c => [c.label, c.key]));
+            for (const row of rows) {
+              const obj: Record<string, unknown> = {};
+              for (const [h, v] of Object.entries(row)) { obj[labelToKey[h] ?? h] = v; }
+              if (!obj.name) continue;
+              obj.cost_price = parseFloat(String(obj.cost_price)) || 0;
+              obj.selling_price = parseFloat(String(obj.selling_price)) || 0;
+              obj.active = String(obj.active) !== "false";
+              await fs.products.add(obj);
+            }
+            await load();
+          }}
+        />
       </div>
 
       {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? <p className="text-muted text-sm">ไม่พบรายการ</p> : (

@@ -4,6 +4,19 @@ import Link from "next/link";
 import type { Customer, Project, Quotation, ServiceTicket, User } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
+import CsvImportExport from "@/components/CsvImportExport";
+
+const CUST_COLS = [
+  { key: "company_name", label: "ชื่อบริษัท/องค์กร" },
+  { key: "contact_name", label: "ผู้ติดต่อ" },
+  { key: "phone",        label: "โทรศัพท์" },
+  { key: "email",        label: "อีเมล" },
+  { key: "address",      label: "ที่อยู่" },
+  { key: "province",     label: "จังหวัด" },
+  { key: "org_type",     label: "ประเภท" },
+  { key: "assigned_to",  label: "เจ้าของ" },
+  { key: "notes",        label: "หมายเหตุ" },
+];
 
 const ThailandMap = lazy(() => import("@/components/ThailandMap"));
 
@@ -253,7 +266,7 @@ export default function CustomersPage() {
       </div>
 
       {/* ── Secondary filters ── */}
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex gap-2 mb-4 flex-wrap items-center">
         <input placeholder="ค้นหาลูกค้า..." value={search} onChange={e => setSearch(e.target.value)}
           className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
         <select value={provinceFilter} onChange={e => setProvinceFilter(e.target.value)} className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
@@ -272,6 +285,22 @@ export default function CustomersPage() {
           <option value="province">จังหวัด ก-ฮ</option>
           <option value="org_type">ประเภทหน่วยงาน</option>
         </select>
+        <CsvImportExport
+          filename={`customers-${new Date().toISOString().slice(0,10)}`}
+          columns={CUST_COLS}
+          getData={() => list as unknown as Record<string, unknown>[]}
+          onImport={async (rows) => {
+            const fs = await import("@/lib/firestore");
+            const labelToKey = Object.fromEntries(CUST_COLS.map(c => [c.label, c.key]));
+            for (const row of rows) {
+              const obj: Record<string, unknown> = {};
+              for (const [h, v] of Object.entries(row)) { obj[labelToKey[h] ?? h] = v; }
+              if (!obj.company_name) continue;
+              await fs.customers.add(obj);
+            }
+            await load();
+          }}
+        />
       </div>
 
       {/* ── Add / Edit Form ── */}
