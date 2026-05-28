@@ -317,6 +317,13 @@ export default function DashboardPage() {
   const targetPct = target > 0 ? (actual / target * 100) : 0;
   const profitTarget = filtQuotas.reduce((s, q) => s + (q.profit_target || 0), 0);
   const actualProfit = filtQuotas.reduce((s, q) => s + (q.actual_profit || 0), 0);
+
+  // ── Personal monthly quota (always current month, for personal header strip) ─
+  const myMonthQ = sc.quotas.filter(q => q.month === thisMonth);
+  const myMonthTarget = myMonthQ.reduce((s, q) => s + (q.quota_target || 0), 0);
+  const myMonthActual = myMonthQ.reduce((s, q) => s + (q.actual_sales || 0), 0);
+  const myMonthProfit = myMonthQ.reduce((s, q) => s + (q.actual_profit || 0), 0);
+  const myMonthPct   = myMonthTarget > 0 ? Math.round(myMonthActual / myMonthTarget * 100) : 0;
   const profitPct = profitTarget > 0 ? (actualProfit / profitTarget * 100) : 0;
   const gpPct = actual > 0 ? (actualProfit / actual * 100) : 0;
   const pipeline = sc.projects.filter(p => !["won","lost"].includes(p.status)).reduce((s, p) => s + (p.value || 0), 0);
@@ -1550,7 +1557,7 @@ export default function DashboardPage() {
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              {view==="executive"?"Executive Dashboard":view==="sales"?"Sales Dashboard":view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":"Projects Dashboard"}
+              {view==="executive"?"Executive Dashboard":view==="sales"?(seeAll?"Sales Dashboard":myName||"Sales Dashboard"):view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":"Projects Dashboard"}
             </h1>
             {!loading&&(
               <span className="flex items-center gap-1.5">
@@ -1657,6 +1664,42 @@ export default function DashboardPage() {
         ) : !seeAll && (
           <div className="rounded-xl border border-border/40 p-3 text-center text-xs text-muted/70">
             ไม่มีงานเร่งด่วน
+          </div>
+        )}
+
+        {/* ── PERSONAL QUOTA STRIP — เฉพาะ sales view ที่ไม่ใช่ admin ── */}
+        {view === "sales" && !seeAll && (
+          <div className="rounded-xl bg-card border border-border p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] text-muted uppercase tracking-wider font-medium">เป้าหมายเดือนนี้ · {thisMonth}</p>
+              {myMonthTarget === 0 && <span className="text-[10px] text-amber-500 border border-amber-500/30 bg-amber-500/10 rounded px-2 py-0.5">ยังไม่มีเป้า</span>}
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <p className="text-[10px] text-muted mb-0.5">เป้า (Target)</p>
+                <p className="text-xl font-bold text-foreground">{myMonthTarget > 0 ? `${(myMonthTarget/1000).toFixed(0)}K` : "—"}</p>
+                <p className="text-[10px] text-muted mt-0.5">{myMonthTarget.toLocaleString()} THB</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted mb-0.5">ยอดจริง (Actual)</p>
+                <p className={`text-xl font-bold ${myMonthActual >= myMonthTarget && myMonthTarget > 0 ? "text-emerald-500" : "text-foreground"}`}>{myMonthActual > 0 ? `${(myMonthActual/1000).toFixed(0)}K` : "—"}</p>
+                <p className="text-[10px] text-muted mt-0.5">{myMonthActual.toLocaleString()} THB</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted mb-0.5">Achievement</p>
+                <p className={`text-xl font-bold ${myMonthPct >= 100 ? "text-emerald-500" : myMonthPct >= 70 ? "text-amber-500" : myMonthTarget > 0 ? "text-red-500" : "text-muted"}`}>{myMonthTarget > 0 ? `${myMonthPct}%` : "—"}</p>
+                {myMonthProfit > 0 && <p className="text-[10px] text-muted mt-0.5">GP {(myMonthProfit/1000).toFixed(0)}K</p>}
+              </div>
+            </div>
+            {myMonthTarget > 0 && (
+              <div className="mt-3">
+                <div className="h-1.5 rounded-full bg-border/50 overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${myMonthPct >= 100 ? "bg-emerald-500" : myMonthPct >= 70 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${Math.min(myMonthPct, 100)}%` }} />
+                </div>
+                <p className="text-[10px] text-muted mt-1">{myMonthActual.toLocaleString()} / {myMonthTarget.toLocaleString()} THB</p>
+              </div>
+            )}
           </div>
         )}
 
