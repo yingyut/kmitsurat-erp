@@ -4,6 +4,8 @@ import Link from "next/link";
 import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
+import { isOwnRecord, isOwner, canSeeAll, canManageQuota } from "@/lib/ownership";
+import { showSalesDashboardMenu } from "@/lib/featureFlags";
 
 const actTypes = ["phone_call","visit","quotation_created","quotation_sent","follow_up","meeting","customer_update"] as const;
 const typeLabels: Record<string, string> = { phone_call: "โทร", visit: "เยี่ยม", quotation_created: "สร้าง QT", quotation_sent: "ส่ง QT", follow_up: "Follow-up", meeting: "ประชุม", customer_update: "Update" };
@@ -20,7 +22,7 @@ const nextMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 
 
 export default function SalesPage() {
   const { currentUser, hasPermission } = useCurrentUser();
-  const [tab, setTab] = useState<"dashboard" | "plan" | "workplan" | "activities" | "pipeline" | "requests">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "plan" | "workplan" | "activities" | "pipeline" | "requests">(showSalesDashboardMenu ? "dashboard" : "workplan");
   const [activities, setActivities] = useState<SalesActivity[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -46,11 +48,19 @@ export default function SalesPage() {
   const [stageFilter, setStageFilter] = useState("all");
   const [timeFilter, setTimeFilter] = useState<"all"|"today"|"week"|"overdue">("all");
   const [planMonthFilter, setPlanMonthFilter] = useState(currentMonth);
-  const [apView, setApView] = useState<"daily" | "weekly" | "monthly">("weekly");
+  const [apView, setApView] = useState<"year" | "month" | "week" | "day" | "list">("month");
   const [apPersonFilter, setApPersonFilter] = useState("");
   const [showRepeatReport, setShowRepeatReport] = useState(false);
   const [expandedRepeatRow, setExpandedRepeatRow] = useState<string | null>(null);
   const [actValidate, setActValidate] = useState(false);
+  const [calNavDate, setCalNavDate] = useState(today.slice(0, 7));
+  const [calWeekStart, setCalWeekStart] = useState(() => {
+    const dow = new Date().getDay();
+    const monOff = dow === 0 ? 6 : dow - 1;
+    return new Date(Date.now() - monOff * 86400000).toISOString().slice(0, 10);
+  });
+  const [calDayDate, setCalDayDate] = useState(today);
+  const [typeFilter, setTypeFilter] = useState("");
 
   // Activity/Plan form
   const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing" | "prospect", project_id: "", project_name: "", assigned_to: "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "" });
@@ -83,16 +93,21 @@ export default function SalesPage() {
     else setReqForm({ ...reqForm, project_id: id, project_name: p?.name || "" });
   }
 
-  // KPIs
-  const monthQuota = quotas.filter(q => q.month === currentMonth);
+  // Admin / Avenger เท่านั้นที่เห็นข้อมูลรวมทุกคนได้
+  const ownSalesOnly = !canSeeAll(currentUser);
+  const canReassign = hasPermission("assign_job");
+  const myName = currentUser?.name ?? "";
+
+  // KPIs — scoped to own data when ownSalesOnly (isOwner รองรับ name + email)
+  const monthQuota = quotas.filter(q => q.month === currentMonth && (!ownSalesOnly || isOwnRecord({ user_name: q.user_name }, currentUser)));
   const totalTarget = monthQuota.reduce((s, q) => s + (q.quota_target || 0), 0);
   const totalActual = monthQuota.reduce((s, q) => s + (q.actual_sales || 0), 0);
-  const pipelineValue = projects.filter(p => !["won","lost"].includes(p.status)).reduce((s, p) => s + (p.value || 0), 0);
-  const wonDeals = projects.filter(p => p.status === "won").length;
+  const pipelineValue = projects.filter(p => !["won","lost"].includes(p.status) && (!ownSalesOnly || !p.assigned_to || isOwnRecord(p, currentUser))).reduce((s, p) => s + (p.value || 0), 0);
+  const wonDeals = projects.filter(p => p.status === "won" && (!ownSalesOnly || !p.assigned_to || isOwnRecord(p, currentUser))).length;
 
-  // Plans & Activities
-  const plans = activities.filter(a => a.is_plan && a.status !== "done");
-  const realActivities = activities.filter(a => !a.is_plan);
+  // Plans & Activities — scoped to own data when ownSalesOnly
+  const plans = activities.filter(a => a.is_plan && a.status !== "done" && (!ownSalesOnly || !a.assigned_to || isOwnRecord(a, currentUser)));
+  const realActivities = activities.filter(a => !a.is_plan && (!ownSalesOnly || !a.assigned_to || isOwnRecord(a, currentUser)));
   const overdueActs = realActivities.filter(a => (a.next_follow_up && a.next_follow_up < today || a.next_action_date && a.next_action_date < today) && a.status !== "done");
   const todayActs = realActivities.filter(a => a.next_follow_up === today || a.next_action_date === today);
 
@@ -234,19 +249,15 @@ export default function SalesPage() {
     const { projects: ps } = await import("@/lib/firestore"); await ps.update(id, { status }); await load();
   }
 
-  // Data isolation for new roles without view_all_projects
-  const ownSalesOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_projects");
-  const canReassign = hasPermission("assign_job");
-
-  // Filtered lists
+  // Filtered lists — isOwner รองรับ match ทั้ง name และ email
   const filteredActs = realActivities.filter(a => {
-    if (ownSalesOnly && a.assigned_to && a.assigned_to !== currentUser?.name) return false;
+    if (ownSalesOnly && a.assigned_to && !isOwnRecord(a, currentUser)) return false;
     const s = search.toLowerCase();
     const matchSearch = !s || a.description.toLowerCase().includes(s) || a.customer_name.toLowerCase().includes(s);
     return matchSearch && matchTimeFilter(a);
   });
   const filteredPipeline = projects.filter(p => {
-    if (ownSalesOnly && p.assigned_to && p.assigned_to !== currentUser?.name) return false;
+    if (ownSalesOnly && p.assigned_to && !isOwnRecord(p, currentUser)) return false;
     const s = search.toLowerCase();
     const matchSearch = !s || p.name.toLowerCase().includes(s) || p.customer_name.toLowerCase().includes(s);
     const matchStage = stageFilter === "all" || p.status === stageFilter;
@@ -271,19 +282,30 @@ export default function SalesPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b border-border overflow-x-auto">
-        {(["dashboard","plan","workplan","activities","pipeline","requests"] as const).map(t => {
-          const labels: Record<string,string> = { dashboard: "Dashboard", plan: "Quota Set", workplan: "Action Plan", activities: "Activities", pipeline: "Pipeline", requests: "Requests" };
-          const thaiTips: Record<string,string> = { dashboard: "ภาพรวม", plan: "ตั้งเป้ายอดขายรายคน", workplan: "แผนงานทีมขาย — หัวหน้าติดตามได้", activities: "บันทึกกิจกรรมจริง", pipeline: "ติดตามดีล", requests: "ขอช่วย Presale/Service" };
-          const badge = t === "requests" ? jobReqs.filter(r => r.status === "pending").length : t === "activities" ? overdueActs.length : 0;
+      {/* Tabs — workflow order: Plan → Activity → Pipeline → Request → QT */}
+      <div className="flex gap-0.5 mb-5 border-b border-border overflow-x-auto">
+        {([
+          { id: "workplan",   label: "Action Plan", tip: "วางแผนงานทีมขาย" },
+          { id: "activities", label: "Activities",  tip: "บันทึกกิจกรรมจริง" },
+          { id: "pipeline",   label: "Pipeline",    tip: "ติดตามดีล" },
+          { id: "requests",   label: "Requests",    tip: "ขอช่วย Presale/Service" },
+          ...(showSalesDashboardMenu ? [{ id: "dashboard", label: "Dashboard", tip: "ภาพรวม" }] : []),
+          ...(canManageQuota(currentUser) ? [{ id: "plan", label: "Quota Set", tip: "ตั้งเป้ายอดขายรายคน" }] : []),
+        ] as { id: typeof tab; label: string; tip: string }[]).map(t => {
+          const badge = t.id === "requests" ? jobReqs.filter(r => r.status === "pending").length : t.id === "activities" ? overdueActs.length : 0;
           return (
-            <button key={t} onClick={() => setTab(t)} title={thaiTips[t]} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
-              {labels[t]}
-              {badge > 0 && <span className={`rounded-full text-white text-[10px] px-1.5 py-0.5 font-bold ${t === "activities" ? "bg-red-500" : "bg-red-500"}`}>{badge}</span>}
+            <button key={t.id} onClick={() => setTab(t.id)} title={t.tip}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${tab === t.id ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
+              {t.label}
+              {badge > 0 && <span className="rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold">{badge}</span>}
             </button>
           );
         })}
+        {/* Quotation — direct link, not a tab */}
+        <Link href="/quotations" title="ใบเสนอราคา"
+          className="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-muted hover:text-foreground transition-colors shrink-0 flex items-center gap-1">
+          Quotation <span className="text-[10px] opacity-50">↗</span>
+        </Link>
       </div>
 
       {loading ? <p className="text-muted text-sm">Loading...</p> : (<>
@@ -400,29 +422,171 @@ export default function SalesPage() {
         </div>
       </>)}
 
-      {/* ═══ ACTION PLAN ═══ */}
+      {/* ═══ ACTION PLAN — CRM Calendar Planner ═══ */}
       {tab === "workplan" && (() => {
-        const dow = new Date().getDay();
-        const monday = new Date(Date.now() - ((dow === 0 ? 6 : dow - 1) * 86400000));
-        const weekDates = Array.from({length: 6}, (_, i) => new Date(monday.getTime() + i * 86400000).toISOString().slice(0, 10));
-        const dayNames = ["จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
-        const typeIcons: Record<string, string> = { phone_call: "📞", visit: "🤝", quotation_created: "📄", quotation_sent: "✉️", follow_up: "🔄", meeting: "💬", customer_update: "📊" };
+        const TC: Record<string, {bg:string;border:string;text:string;dot:string;label:string;icon:string}> = {
+          phone_call:        {bg:"bg-blue-500/15",    border:"border-blue-500/40",    text:"text-blue-300",    dot:"bg-blue-400",    label:"โทร",       icon:"📞"},
+          visit:             {bg:"bg-purple-500/15",  border:"border-purple-500/40",  text:"text-purple-300",  dot:"bg-purple-400",  label:"เยี่ยม",    icon:"🤝"},
+          meeting:           {bg:"bg-orange-500/15",  border:"border-orange-500/40",  text:"text-orange-300",  dot:"bg-orange-400",  label:"ประชุม",    icon:"💬"},
+          follow_up:         {bg:"bg-yellow-500/15",  border:"border-yellow-500/40",  text:"text-yellow-300",  dot:"bg-yellow-400",  label:"Follow-up", icon:"🔄"},
+          quotation_created: {bg:"bg-green-500/15",   border:"border-green-500/40",   text:"text-green-300",   dot:"bg-green-400",   label:"สร้าง QT",  icon:"📄"},
+          quotation_sent:    {bg:"bg-emerald-500/15", border:"border-emerald-500/40", text:"text-emerald-300", dot:"bg-emerald-400", label:"ส่ง QT",    icon:"✉️"},
+          customer_update:   {bg:"bg-cyan-500/15",    border:"border-cyan-500/40",    text:"text-cyan-300",    dot:"bg-cyan-400",    label:"Update",    icon:"📊"},
+        };
+        const thaiM = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+        const dhNames = ["จ.","อ.","พ.","พฤ.","ศ.","ส.","อา."];
+        const thaiDayFull = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
+
+        // Month grid
+        const [calY, calM] = calNavDate.split("-").map(Number);
+        const firstOfMonth = new Date(calY, calM - 1, 1);
+        const firstDow = (firstOfMonth.getDay() + 6) % 7;
+        const daysInMonth = new Date(calY, calM, 0).getDate();
+        const totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+        const calCells = Array.from({length: totalCells}, (_, i) => {
+          const d = new Date(firstOfMonth.getTime() - firstDow * 86400000 + i * 86400000);
+          return d.toISOString().slice(0, 10);
+        });
+
+        // Week grid
+        const weekDays = Array.from({length: 7}, (_, i) => {
+          const d = new Date(new Date(calWeekStart + "T12:00:00").getTime() + i * 86400000);
+          return d.toISOString().slice(0, 10);
+        });
+
+        // Team
         const salesRoles = ["sale","avenger","Sales Executive","Sales Manager","Branch Manager"];
         const salesTeam = users.filter(u => salesRoles.includes(u.role) || (u.extra_roles ?? []).some(r => salesRoles.includes(r)));
         const visibleTeam = ownSalesOnly ? salesTeam.filter(u => u.name === currentUser?.name) : salesTeam;
-        const displayTeam = apPersonFilter ? visibleTeam.filter(u => u.name === apPersonFilter) : visibleTeam;
-        const viewPlans = activities.filter(a => {
+
+        // Plans
+        const allPlans = activities.filter(a => {
           if (!a.is_plan) return false;
-          if (apView === "daily") return a.plan_date === today;
-          if (apView === "weekly") return weekDates.includes(a.plan_date || "");
-          return !a.plan_date || a.plan_date.startsWith(currentMonth);
+          if (apPersonFilter) return a.assigned_to === apPersonFilter;
+          if (ownSalesOnly) return !a.assigned_to || isOwnRecord(a, currentUser);
+          return true;
         });
-        const kpiTotal = viewPlans.length;
-        const kpiDone = viewPlans.filter(p => p.status === "done").length;
-        const kpiInProgress = viewPlans.filter(p => p.status === "in_progress").length;
-        const kpiNew = viewPlans.filter(p => p.status === "new").length;
-        const kpiOverdue = viewPlans.filter(p => (p.plan_date || "") < today && p.status !== "done").length;
-        const kpiDeals = viewPlans.filter(p => p.converted_to_project_id).length;
+        const viewPlans = typeFilter ? allPlans.filter(a => a.type === typeFilter) : allPlans;
+        const plansOn = (d: string) => viewPlans.filter(a => a.plan_date === d);
+
+        // Side panel
+        const todayItems = allPlans.filter(a => a.plan_date === today);
+        const overdueItems = allPlans.filter(a => (a.plan_date || "") < today && a.status !== "done")
+          .sort((a, b) => (a.plan_date || "").localeCompare(b.plan_date || ""));
+        const kpiDone = allPlans.filter(p => p.status === "done").length;
+        const kpiIP   = allPlans.filter(p => p.status === "in_progress").length;
+        const kpiNew  = allPlans.filter(p => p.status === "new").length;
+
+        function navPrev() {
+          if (apView === "year") { setCalNavDate(`${calY - 1}-${String(calM).padStart(2, "0")}`); }
+          else if (apView === "month") { const d = new Date(calY, calM - 2, 1); setCalNavDate(d.toISOString().slice(0, 7)); }
+          else if (apView === "week") { const d = new Date(new Date(calWeekStart + "T12:00:00").getTime() - 7 * 86400000); setCalWeekStart(d.toISOString().slice(0, 10)); }
+          else if (apView === "day") { const d = new Date(new Date(calDayDate + "T12:00:00").getTime() - 86400000); setCalDayDate(d.toISOString().slice(0, 10)); }
+        }
+        function navNext() {
+          if (apView === "year") { setCalNavDate(`${calY + 1}-${String(calM).padStart(2, "0")}`); }
+          else if (apView === "month") { const d = new Date(calY, calM, 1); setCalNavDate(d.toISOString().slice(0, 7)); }
+          else if (apView === "week") { const d = new Date(new Date(calWeekStart + "T12:00:00").getTime() + 7 * 86400000); setCalWeekStart(d.toISOString().slice(0, 10)); }
+          else if (apView === "day") { const d = new Date(new Date(calDayDate + "T12:00:00").getTime() + 86400000); setCalDayDate(d.toISOString().slice(0, 10)); }
+        }
+        function navToday() {
+          setCalNavDate(today.slice(0, 7));
+          const dow = new Date().getDay(); const monOff = dow === 0 ? 6 : dow - 1;
+          setCalWeekStart(new Date(Date.now() - monOff * 86400000).toISOString().slice(0, 10));
+          setCalDayDate(today);
+        }
+
+        function chip(plan: SalesActivity) {
+          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+          const ovd = (plan.plan_date || "") < today && plan.status !== "done";
+          const done = plan.status === "done";
+          return (
+            <button key={plan.id} onClick={e => {e.stopPropagation(); setSelectedActivity(plan);}}
+              className={`w-full text-left rounded px-1.5 py-0.5 border transition-all hover:brightness-110 ${
+                done ? "opacity-40 bg-background border-border/30" :
+                ovd  ? "bg-red-500/10 border-red-500/40" :
+                `${tc.bg} ${tc.border}`}`}>
+              <div className="flex items-center gap-1 min-w-0">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${ovd ? "bg-red-400" : tc.dot}`} />
+                <span className={`text-[10px] truncate leading-tight ${done ? "line-through text-muted" : ovd ? "text-red-300" : tc.text}`}>
+                  {plan.customer_name || plan.expected_outcome?.slice(0, 12) || "—"}
+                </span>
+              </div>
+            </button>
+          );
+        }
+
+        function planCard(plan: SalesActivity) {
+          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+          const ovd = (plan.plan_date || "") < today && plan.status !== "done";
+          const done = plan.status === "done";
+          return (
+            <button key={plan.id} onClick={() => setSelectedActivity(plan)}
+              className={`w-full text-left rounded-lg border px-2 py-1.5 transition-all hover:brightness-110 ${
+                done ? "opacity-40 bg-background border-border/30" :
+                ovd  ? "bg-red-500/10 border-red-500/40" :
+                `${tc.bg} ${tc.border}`}`}>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[11px] shrink-0">{tc.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-[11px] truncate font-medium leading-tight ${done ? "line-through text-muted" : ovd ? "text-red-300" : tc.text}`}>
+                    {plan.expected_outcome?.slice(0, 20) || plan.description?.slice(0, 20) || "—"}
+                  </p>
+                  {plan.customer_name && <p className="text-[9px] text-muted truncate">{plan.customer_name}</p>}
+                </div>
+                {ovd && <span className="text-red-400 text-[9px] shrink-0">⚠</span>}
+                {done && <span className="text-green-400 text-[9px] shrink-0">✓</span>}
+              </div>
+            </button>
+          );
+        }
+
+        // Compact card for mobile agenda
+        function mobileCard(plan: SalesActivity) {
+          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+          const ovd  = (plan.plan_date||"") < today && plan.status !== "done";
+          const done = plan.status === "done";
+          const linkedDeal = plan.converted_to_project_id ? projects.find(p => p.id === plan.converted_to_project_id) : null;
+          return (
+            <div key={plan.id} className={`rounded-xl border overflow-hidden transition-all active:scale-[0.99] ${
+              done ? "border-border/40 bg-card/60 opacity-70" :
+              ovd  ? "border-red-500/30 bg-red-500/5" :
+              `${tc.bg} ${tc.border}`}`}>
+              <div className="flex items-stretch">
+                <div className={`w-1.5 shrink-0 ${ovd?"bg-red-400":done?"bg-green-400":tc.dot}`} />
+                <div className="flex-1 px-3 py-2.5 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className={`text-[10px] rounded-full px-2 py-0.5 border font-medium ${tc.bg} ${tc.border} ${tc.text}`}>{tc.icon} {tc.label}</span>
+                    <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${
+                      done?"bg-green-500/15 text-green-400":plan.status==="in_progress"?"bg-yellow-500/15 text-yellow-400":ovd?"bg-red-500/15 text-red-400":"bg-blue-500/15 text-blue-400"}`}>
+                      {done?"✓":plan.status==="in_progress"?"ทำอยู่":ovd?"⚠ เกิน":"รอ"}
+                    </span>
+                    {plan.plan_date && <span className={`text-[10px] ml-auto shrink-0 ${ovd?"text-red-400 font-medium":"text-muted"}`}>{plan.plan_date.slice(5)}</span>}
+                  </div>
+                  <p className={`text-sm font-semibold leading-tight ${done?"line-through text-muted":ovd?"text-red-300":""}`}>{plan.expected_outcome||plan.description||"—"}</p>
+                  {(plan.customer_name||linkedDeal) && (
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      {plan.customer_name && <span className="text-[11px] text-muted">🏢 {plan.customer_name}</span>}
+                      {linkedDeal && <span className="text-[11px] text-accent">🎯 {linkedDeal.name.slice(0,16)}</span>}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col items-center justify-center gap-1.5 px-2 border-l border-border/20 shrink-0">
+                  {!done && (
+                    <button onClick={e=>{e.stopPropagation();updateActivity(plan.id!,{status:"done"});}}
+                      className="w-7 h-7 flex items-center justify-center rounded-full bg-green-500/15 text-green-400 text-xs active:bg-green-500/30 transition-colors" title="เสร็จ">✓</button>
+                  )}
+                  <button onClick={()=>setSelectedActivity(plan)} className="w-7 h-7 flex items-center justify-center text-muted/40 text-xl">›</button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const navLabel = apView === "year"  ? `ปี ${calY}` :
+                         apView === "month" ? `${thaiM[calM-1]} ${calY}` :
+                         apView === "week"  ? `${weekDays[0].slice(5)} – ${weekDays[6].slice(5)}` :
+                         apView === "day"   ? calDayDate : "รายการทั้งหมด";
 
         return (
           <>
@@ -431,27 +595,24 @@ export default function SalesPage() {
               <div className="rounded-xl bg-card border border-border p-5 mb-4">
                 <h2 className="text-base font-semibold mb-1">วางแผนกิจกรรม</h2>
                 <p className="text-[10px] text-muted mb-3">วางแผนว่าจะทำอะไร วันไหน — ไม่บังคับต้องครบทุกช่อง</p>
-
-                {/* Quick-select preset chips */}
                 <div className="mb-3">
                   <p className="text-[10px] text-muted mb-1.5">เลือกกิจกรรม <span className="opacity-60">(คลิกเพื่อเติมอัตโนมัติ)</span></p>
                   <div className="flex flex-wrap gap-1.5">
                     {["โทรแนะนำตัว","โทรติดตามงาน","เข้าพบแนะนำบริษัท","เข้าพบนำเสนอ Solution","ส่งข้อมูล / Catalog","ติดตามใบเสนอราคา","นัดประชุม / Demo","ติดตามปิดดีล"].map(p => (
-                      <button key={p} type="button"
-                        onClick={() => setActForm({...actForm, expected_outcome: p, description: p})}
-                        className={`rounded-full px-3 py-1 text-[11px] border transition-colors ${actForm.expected_outcome === p ? "bg-accent text-white border-accent" : "border-border text-muted hover:border-accent/60 hover:text-foreground"}`}>
-                        {p}
-                      </button>
+                      <button key={p} type="button" onClick={() => setActForm({...actForm, expected_outcome: p, description: p})}
+                        className={`rounded-full px-3 py-1 text-[11px] border transition-colors ${actForm.expected_outcome === p ? "bg-accent text-white border-accent" : "border-border text-muted hover:border-accent/60 hover:text-foreground"}`}>{p}</button>
                     ))}
                   </div>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-                  <div><label className="text-[10px] text-muted">วันที่วางแผน</label><input type="date" value={actForm.plan_date || today} onChange={e => setActForm({ ...actForm, plan_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-                  <div><label className="text-[10px] text-muted">ประเภท</label><select value={actForm.type} onChange={e => setActForm({ ...actForm, type: e.target.value as SalesActivity["type"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">{actTypes.map(t => <option key={t} value={t}>{typeIcons[t]} {typeLabels[t]}</option>)}</select></div>
+                  <div><label className="text-[10px] text-muted">วันที่วางแผน</label><input type="date" value={actForm.plan_date || today} onChange={e => setActForm({...actForm, plan_date: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+                  <div><label className="text-[10px] text-muted">ประเภท</label>
+                    <select value={actForm.type} onChange={e => setActForm({...actForm, type: e.target.value as SalesActivity["type"]})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                      {actTypes.map(t => <option key={t} value={t}>{TC[t]?.icon ?? ""} {typeLabels[t]}</option>)}
+                    </select>
+                  </div>
                   <div>
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] text-muted">ลูกค้า (ไม่บังคับ)</label>
+                    <div className="flex items-center justify-between"><label className="text-[10px] text-muted">ลูกค้า (ไม่บังคับ)</label>
                       <div className="flex rounded overflow-hidden border border-border text-[9px]">
                         <button type="button" onClick={() => setActForm({...actForm, customer_type:"existing", customer_id:"", customer_name:""})} className={`px-2 py-0.5 ${actForm.customer_type !== "prospect" ? "bg-accent text-white" : "text-muted hover:bg-card-hover"}`}>ในระบบ</button>
                         <button type="button" onClick={() => setActForm({...actForm, customer_type:"prospect", customer_id:""})} className={`px-2 py-0.5 ${actForm.customer_type === "prospect" ? "bg-orange-600 text-white" : "text-muted hover:bg-card-hover"}`}>Prospect</button>
@@ -459,50 +620,48 @@ export default function SalesPage() {
                     </div>
                     {actForm.customer_type === "prospect"
                       ? <input placeholder="ชื่อบริษัท / องค์กร" value={actForm.customer_name} onChange={e => setActForm({...actForm, customer_name: e.target.value})} className="w-full rounded-lg bg-background border border-orange-800/50 px-3 py-2 text-sm focus:outline-none focus:border-orange-500 mt-1" />
-                      : <select value={actForm.customer_id} onChange={e => selectCust(e.target.value, "act")} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— ยังไม่ระบุ —</option>{customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select>
+                      : <div className="relative mt-1">
+                          <input placeholder="ค้นหาลูกค้า..." value={custSearch}
+                            onChange={e => { setCustSearch(e.target.value); setCustOpen(true); if (!e.target.value) setActForm({...actForm, customer_id:"", customer_name:""}); }}
+                            onFocus={() => setCustOpen(true)} onBlur={() => setTimeout(() => setCustOpen(false), 180)}
+                            className={`w-full rounded-lg bg-background border px-3 py-2 text-sm focus:outline-none ${actForm.customer_id ? "border-accent/50 focus:border-accent" : "border-border focus:border-accent"}`} />
+                          {actForm.customer_id && <p className="text-[10px] text-accent mt-0.5">✓ {actForm.customer_name}</p>}
+                          {custOpen && (
+                            <div className="absolute z-30 w-full mt-1 rounded-lg bg-card border border-border shadow-2xl max-h-52 overflow-y-auto">
+                              {customers.filter(c => !custSearch || c.company_name.toLowerCase().includes(custSearch.toLowerCase())).slice(0, 30).map(c => (
+                                <button key={c.id} type="button" onMouseDown={() => { if (c.id) selectCust(c.id, "act"); setCustSearch(c.company_name); setCustOpen(false); }}
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-card-hover ${actForm.customer_id === c.id ? "text-accent font-medium" : ""}`}>{c.company_name}</button>
+                              ))}
+                              {customers.filter(c => !custSearch || c.company_name.toLowerCase().includes(custSearch.toLowerCase())).length === 0 && <p className="px-3 py-2 text-xs text-muted">ไม่พบลูกค้า</p>}
+                            </div>
+                          )}
+                        </div>
                     }
                   </div>
-                  <div><label className="text-[10px] text-muted">ผู้รับผิดชอบ</label><select value={actForm.assigned_to} onChange={e => setActForm({ ...actForm, assigned_to: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">— เลือก —</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
-                  <div className="col-span-full">
-                    <label className="text-[10px] text-muted">รายละเอียดเพิ่มเติม <span className="opacity-60">(หรือพิมพ์กิจกรรมเองได้เลย)</span></label>
-                    <textarea placeholder="เช่น โทรหา คุณสมชาย เพื่อนัดประชุมสัปดาห์หน้า" value={actForm.expected_outcome} onChange={e => setActForm({ ...actForm, expected_outcome: e.target.value, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-14 resize-y" />
+                  <div><label className="text-[10px] text-muted">ผู้รับผิดชอบ</label>
+                    <select value={actForm.assigned_to} onChange={e => setActForm({...actForm, assigned_to: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                      <option value="">— เลือก —</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียด <span className="opacity-60">(หรือพิมพ์กิจกรรมเองได้เลย)</span></label>
+                    <textarea placeholder="เช่น โทรหา คุณสมชาย เพื่อนัดประชุมสัปดาห์หน้า" value={actForm.expected_outcome} onChange={e => setActForm({...actForm, expected_outcome: e.target.value, description: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-14 resize-y" />
                   </div>
                 </div>
-
-                {/* Result reporting (optional) */}
                 <div className="border-t border-border pt-3 mt-1">
-                  <p className="text-[10px] text-muted font-semibold uppercase tracking-wider mb-2.5">
-                    รายงานผล <span className="font-normal opacity-60 normal-case">(กรณีทำแล้ว — ไม่บังคับ)</span>
-                  </p>
+                  <p className="text-[10px] text-muted font-semibold uppercase tracking-wider mb-2.5">รายงานผล <span className="font-normal opacity-60 normal-case">(กรณีทำแล้ว — ไม่บังคับ)</span></p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[10px] text-muted">ผลลัพธ์</label>
-                      <select value={actForm.result || ""} onChange={e => setActForm({ ...actForm, result: e.target.value as SalesActivity["result"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
-                        <option value="">— ยังไม่รายงาน —</option>
-                        <option value="success">✅ สำเร็จ / ปิดได้</option>
-                        <option value="interested">⭐ สนใจ</option>
-                        <option value="pending">⏳ รอผล</option>
-                        <option value="no_answer">📵 ไม่รับสาย / ไม่ตอบ</option>
-                        <option value="rejected">❌ ปฏิเสธ</option>
+                    <div><label className="text-[10px] text-muted">ผลลัพธ์</label>
+                      <select value={actForm.result || ""} onChange={e => setActForm({...actForm, result: e.target.value as SalesActivity["result"]})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                        <option value="">— ยังไม่รายงาน —</option><option value="success">✅ สำเร็จ / ปิดได้</option><option value="interested">⭐ สนใจ</option><option value="pending">⏳ รอผล</option><option value="no_answer">📵 ไม่รับสาย / ไม่ตอบ</option><option value="rejected">❌ ปฏิเสธ</option>
                       </select>
                     </div>
-                    <div>
-                      <label className="text-[10px] text-muted">ขั้นตอนถัดไป</label>
-                      <select value={actForm.next_action_type || ""} onChange={e => setActForm({ ...actForm, next_action_type: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
-                        <option value="">— เลือก —</option>
-                        <option value="ทำใบเสนอราคา">📄 ทำใบเสนอราคา</option>
-                        <option value="นัดประชุม / Demo">💬 นัดประชุม / Demo</option>
-                        <option value="เข้าพบครั้งถัดไป">🤝 เข้าพบครั้งถัดไป</option>
-                        <option value="โทรติดตาม">📞 โทรติดตาม</option>
-                        <option value="รอลูกค้าตัดสินใจ">⏳ รอลูกค้าตัดสินใจ</option>
-                        <option value="ส่ง QT / เอกสารเพิ่ม">📎 ส่ง QT / เอกสารเพิ่ม</option>
-                        <option value="ปิดดีล / ลงนาม">🎉 ปิดดีล / ลงนาม</option>
-                        <option value="ยุติ">🚫 ยุติ</option>
+                    <div><label className="text-[10px] text-muted">ขั้นตอนถัดไป</label>
+                      <select value={actForm.next_action_type || ""} onChange={e => setActForm({...actForm, next_action_type: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                        <option value="">— เลือก —</option><option value="ทำใบเสนอราคา">📄 ทำใบเสนอราคา</option><option value="นัดประชุม / Demo">💬 นัดประชุม / Demo</option><option value="เข้าพบครั้งถัดไป">🤝 เข้าพบครั้งถัดไป</option><option value="โทรติดตาม">📞 โทรติดตาม</option><option value="รอลูกค้าตัดสินใจ">⏳ รอลูกค้าตัดสินใจ</option><option value="ส่ง QT / เอกสารเพิ่ม">📎 ส่ง QT / เอกสารเพิ่ม</option><option value="ปิดดีล / ลงนาม">🎉 ปิดดีล / ลงนาม</option><option value="ยุติ">🚫 ยุติ</option>
                       </select>
                     </div>
                   </div>
                 </div>
-
                 <div className="flex gap-2 mt-3">
                   <button onClick={() => saveActivity(true)} disabled={saving || (!actForm.expected_outcome?.trim() && !actForm.next_action_type)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึกแผน"}</button>
                   <button onClick={() => setShowPlanForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
@@ -510,318 +669,692 @@ export default function SalesPage() {
               </div>
             )}
 
-            {/* Controls */}
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-              <div>
-                <h2 className="text-sm font-bold">Action Plan — การวางแผนงาน</h2>
-                <p className="text-[10px] text-muted">
-                  {apView === "daily" ? `วันนี้ — ${today}` : apView === "weekly" ? `สัปดาห์นี้ — ${weekDates[0]} ถึง ${weekDates[5]}` : `เดือนนี้ — ${currentMonth}`}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {!ownSalesOnly && visibleTeam.length > 1 && (
-                  <select value={apPersonFilter} onChange={e => setApPersonFilter(e.target.value)}
-                    className="rounded-lg bg-background border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent">
-                    <option value="">ทุกคน</option>
-                    {visibleTeam.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
-                  </select>
-                )}
-                <div className="flex rounded-lg overflow-hidden border border-border text-[11px]">
-                  {(["daily","weekly","monthly"] as const).map(v => (
-                    <button key={v} onClick={() => setApView(v)}
-                      className={`px-3 py-1.5 transition-colors ${apView === v ? "bg-accent text-white" : "text-muted hover:bg-card-hover"}`}>
-                      {v === "daily" ? "วันนี้" : v === "weekly" ? "สัปดาห์นี้" : "เดือนนี้"}
+            {/* ══ MOBILE / NARROW AGENDA VIEW (@lg:hidden) ══ */}
+            <div className="@lg:hidden -mx-6">
+              {/* Sticky compact header */}
+              <div className="sticky top-12 z-20 bg-background/95 backdrop-blur-md border-b border-border">
+                {/* Month nav + add button */}
+                <div className="flex items-center justify-between px-4 py-2">
+                  <div className="flex items-center gap-0.5">
+                    <button onClick={navPrev} className="w-9 h-9 flex items-center justify-center rounded-xl text-muted hover:bg-card-hover text-xl leading-none active:scale-95 transition-transform">‹</button>
+                    <button onClick={navToday} className="text-base font-bold text-foreground px-2 py-1 rounded-xl hover:bg-card-hover active:scale-95 transition-transform">
+                      {navLabel === "รายการทั้งหมด" ? `${thaiM[calM-1]} ${calY}` : navLabel}
                     </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* KPI Summary */}
-            <div className="rounded-xl bg-card border border-border p-4 mb-5">
-              <div className="flex items-center gap-5 flex-wrap">
-                <div>
-                  <p className="text-2xl font-bold">{kpiTotal}</p>
-                  <p className="text-[10px] text-muted">แผนทั้งหมด</p>
-                </div>
-                <div className="w-px h-10 bg-border hidden sm:block" />
-                <div className="flex gap-5 flex-wrap text-xs">
-                  <div className="text-center"><p className="text-green-400 font-bold text-lg leading-tight">{kpiDone}</p><p className="text-muted">✓ เสร็จ</p></div>
-                  <div className="text-center"><p className="text-yellow-400 font-bold text-lg leading-tight">{kpiInProgress}</p><p className="text-muted">ทำอยู่</p></div>
-                  <div className="text-center"><p className="text-blue-400 font-bold text-lg leading-tight">{kpiNew}</p><p className="text-muted">รอ</p></div>
-                  {kpiOverdue > 0 && <div className="text-center"><p className="text-red-400 font-bold text-lg leading-tight">{kpiOverdue}</p><p className="text-muted">⚠ เกิน</p></div>}
-                  {kpiDeals > 0 && <div className="text-center"><p className="text-accent font-bold text-lg leading-tight">{kpiDeals}</p><p className="text-muted">→ ดีล</p></div>}
-                </div>
-                {kpiTotal > 0 && (
-                  <div className="ml-auto flex items-center gap-2 min-w-[140px] flex-1 max-w-xs">
-                    <div className="h-2 flex-1 rounded-full bg-background overflow-hidden">
-                      <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${Math.min(kpiDone/kpiTotal*100, 100)}%` }} />
-                    </div>
-                    <span className="text-xs text-muted whitespace-nowrap">{(kpiDone/kpiTotal*100).toFixed(0)}% เสร็จ</span>
+                    {apView === "year" && (
+                      <button onClick={() => setApView("month")} className="text-[11px] text-accent border border-accent/30 rounded-lg px-2 py-1 ml-1">← เดือน</button>
+                    )}
+                    <button onClick={navNext} className="w-9 h-9 flex items-center justify-center rounded-xl text-muted hover:bg-card-hover text-xl leading-none active:scale-95 transition-transform">›</button>
+                    {apView === "day" && (
+                      <button onClick={() => setApView("month")} className="text-[11px] text-accent border border-accent/30 rounded-lg px-2 py-1 ml-1">← อเจนด้า</button>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Daily View ── */}
-            {apView === "daily" && (
-              <div className="space-y-3">
-                {displayTeam.length === 0 && <p className="text-sm text-muted">ไม่พบข้อมูลทีมขาย</p>}
-                {displayTeam.map(u => {
-                  const myPlans = viewPlans.filter(p => p.assigned_to === u.name);
-                  const done = myPlans.filter(p => p.status === "done").length;
-                  return (
-                    <div key={u.id} className="rounded-xl bg-card border border-border overflow-hidden">
-                      <div className="px-4 py-3 bg-card-hover border-b border-border flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-sm font-bold text-accent shrink-0">{u.name.charAt(0)}</div>
-                          <div><p className="text-sm font-semibold">{u.name}</p><p className="text-[10px] text-muted">{u.position || u.role}</p></div>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs">
-                          {myPlans.length === 0
-                            ? <span className="text-muted italic">ไม่มีแผนวันนี้</span>
-                            : <span className={done === myPlans.length ? "text-green-400 font-medium" : "text-blue-400"}>{done}/{myPlans.length} เสร็จ</span>}
-                          {(!ownSalesOnly || currentUser?.name === u.name) && (
-                            <button onClick={() => { resetActForm(); setActForm(f => ({ ...f, is_plan: true, plan_date: today, assigned_to: u.name })); setShowPlanForm(true); }}
-                              className="text-[10px] bg-accent/10 text-accent rounded-lg px-2.5 py-1 hover:bg-accent/20">+ เพิ่ม</button>
-                          )}
-                        </div>
-                      </div>
-                      {myPlans.length === 0
-                        ? <p className="text-xs text-muted px-4 py-3 italic">ยังไม่มีแผนสำหรับวันนี้</p>
-                        : <div>{myPlans.map(plan => (
-                            <div key={plan.id} onClick={() => setSelectedActivity(plan)}
-                              className={`px-4 py-2.5 flex items-start gap-3 border-b border-border/50 last:border-0 cursor-pointer hover:bg-card-hover transition-colors ${plan.status === "done" ? "opacity-50" : ""}`}>
-                              <span className="text-base shrink-0 mt-0.5">{typeIcons[plan.type] || "📌"}</span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs leading-snug">{plan.expected_outcome || plan.description}</p>
-                                {plan.customer_name && <p className="text-[10px] text-muted mt-0.5">{plan.customer_type === "prospect" ? "🔍" : "🏢"} {plan.customer_name}</p>}
-                              </div>
-                              <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium shrink-0 ${plan.status === "done" ? "bg-green-900/50 text-green-400" : plan.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}>
-                                {plan.status === "done" ? "✓ เสร็จ" : plan.status === "in_progress" ? "ทำอยู่" : "รอ"}
-                              </span>
-                            </div>
-                          ))}</div>
-                      }
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── Weekly View ── */}
-            {apView === "weekly" && (
-              <div className="overflow-x-auto">
-                <div className="min-w-[700px]">
-                  {/* Column headers */}
-                  <div className="grid gap-1 mb-1.5" style={{ gridTemplateColumns: "156px repeat(6, 1fr)" }}>
-                    <div />
-                    {weekDates.map((d, i) => (
-                      <div key={d} className={`text-center rounded-lg py-1.5 text-[10px] font-semibold ${d === today ? "bg-accent/20 text-accent" : "text-muted"}`}>
-                        <p>{dayNames[i]}</p>
-                        <p className="text-[9px] font-normal opacity-70">{d.slice(5)}</p>
-                      </div>
-                    ))}
+                  <div className="flex items-center gap-2">
+                    {!ownSalesOnly && visibleTeam.length > 1 && (
+                      <select value={apPersonFilter} onChange={e => setApPersonFilter(e.target.value)}
+                        className="rounded-lg bg-background border border-border px-2 py-1 text-[11px] focus:outline-none max-w-[80px]">
+                        <option value="">ทุกคน</option>
+                        {visibleTeam.map(u => <option key={u.id} value={u.name}>{u.name.split(" ")[0]}</option>)}
+                      </select>
+                    )}
+                    <button onClick={() => { resetActForm(); setActForm(f => ({...f, is_plan:true, plan_date:apView==="day"?calDayDate:today})); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
+                      className="w-9 h-9 flex items-center justify-center rounded-full bg-accent text-white text-2xl font-light shadow-md active:scale-95 transition-transform">+</button>
                   </div>
-                  {/* Person rows */}
-                  <div className="space-y-1">
-                    {displayTeam.length === 0 && <p className="text-sm text-muted py-4">ไม่พบข้อมูลทีมขาย</p>}
-                    {displayTeam.map(u => {
-                      const weekTotal = viewPlans.filter(p => p.assigned_to === u.name).length;
+                </div>
+                {/* Week strip */}
+                <div className="overflow-x-auto border-t border-border/30">
+                  <div className="flex px-2 py-1.5 gap-0.5 w-max min-w-full justify-around">
+                    {weekDays.map((dateStr, i) => {
+                      const isTd   = dateStr === today;
+                      const isSel  = apView === "day" && calDayDate === dateStr;
+                      const dp     = plansOn(dateStr);
+                      const hasOvd = dp.some(p => p.status !== "done" && dateStr < today);
                       return (
-                        <div key={u.id} className="grid gap-1 items-stretch" style={{ gridTemplateColumns: "156px repeat(6, 1fr)" }}>
-                          <div className="rounded-lg bg-card border border-border px-3 py-2 flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center text-xs font-bold text-accent shrink-0">{u.name.charAt(0)}</div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold truncate">{u.name.split(" ")[0]}</p>
-                              <p className="text-[9px] text-muted">{weekTotal} แผน</p>
-                            </div>
-                          </div>
-                          {weekDates.map(d => {
-                            const dayPlans = viewPlans.filter(p => p.assigned_to === u.name && p.plan_date === d);
-                            const isToday = d === today;
-                            return (
-                              <div key={d} className={`rounded-lg border min-h-[56px] p-1 ${isToday ? "border-accent/40 bg-accent/5" : "border-border bg-card"}`}>
-                                {dayPlans.length === 0
-                                  ? <div className="h-full flex items-center justify-center">
-                                      {(!ownSalesOnly || currentUser?.name === u.name) && (
-                                        <button onClick={() => { resetActForm(); setActForm(f => ({ ...f, is_plan: true, plan_date: d, assigned_to: u.name })); setShowPlanForm(true); }}
-                                          className="text-[10px] text-muted/30 hover:text-accent transition-colors leading-none">+</button>
-                                      )}
-                                    </div>
-                                  : <div className="space-y-0.5">
-                                      {dayPlans.map(plan => (
-                                        <button key={plan.id} onClick={() => setSelectedActivity(plan)}
-                                          className={`w-full text-left rounded px-1 py-0.5 text-[9px] leading-snug hover:bg-card-hover transition-colors ${plan.status === "done" ? "line-through opacity-40" : ""}`}
-                                          title={plan.expected_outcome || plan.description}>
-                                          {typeIcons[plan.type] || "📌"} {(plan.customer_name || plan.expected_outcome || plan.description || "").slice(0, 16)}
-                                        </button>
-                                      ))}
-                                    </div>
-                                }
-                              </div>
-                            );
-                          })}
-                        </div>
+                        <button key={dateStr} onClick={() => { setCalDayDate(dateStr); setApView("day"); }}
+                          className={`flex flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 min-w-[40px] transition-all active:scale-95 ${
+                            isSel ? "bg-accent text-white" : isTd ? "bg-accent/15 text-accent" : "text-muted"}`}>
+                          <span className="text-[9px] uppercase font-semibold">{dhNames[i]}</span>
+                          <span className={`text-sm font-bold leading-none ${isSel?"text-white":isTd?"text-accent":dateStr<today?"text-muted/50":"text-foreground"}`}>{parseInt(dateStr.slice(8))}</span>
+                          <span className={`w-1.5 h-1.5 rounded-full mt-0.5 transition-all ${
+                            dp.length===0 ? "opacity-0" :
+                            isSel ? "bg-white/60" :
+                            hasOvd ? "bg-red-400" :
+                            isTd ? "bg-accent" : "bg-muted/60"}`} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Type filter chips (horizontal scroll) */}
+                <div className="overflow-x-auto border-t border-border/30">
+                  <div className="flex px-3 py-2 gap-1.5 w-max">
+                    <button onClick={() => setTypeFilter("")}
+                      className={`rounded-full px-3 py-1 text-[11px] border whitespace-nowrap transition-all ${!typeFilter?"bg-accent/20 border-accent/30 text-accent font-medium":"border-border text-muted"}`}>
+                      ทั้งหมด
+                    </button>
+                    {(Object.entries(TC) as [string, typeof TC[string]][]).map(([type, tc]) => {
+                      const cnt = allPlans.filter(p => p.type === type).length;
+                      return (
+                        <button key={type} onClick={() => setTypeFilter(typeFilter===type?"":type)}
+                          className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] border whitespace-nowrap transition-all ${
+                            typeFilter===type ? `${tc.bg} ${tc.border} ${tc.text} font-medium` : "border-border text-muted"}`}>
+                          {tc.icon} {tc.label}{cnt>0?` ${cnt}`:""}
+                        </button>
                       );
                     })}
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* ── Monthly View ── */}
-            {apView === "monthly" && (
-              <div className="space-y-3">
-                {displayTeam.length === 0 && <p className="text-sm text-muted">ไม่พบข้อมูลทีมขาย</p>}
-                {displayTeam.map(u => {
-                  const myPlans = viewPlans.filter(p => p.assigned_to === u.name).sort((a, b) => (a.plan_date || "").localeCompare(b.plan_date || ""));
-                  const done = myPlans.filter(p => p.status === "done").length;
-                  const pct = myPlans.length > 0 ? (done / myPlans.length * 100) : 0;
-                  return (
-                    <div key={u.id} className="rounded-xl bg-card border border-border overflow-hidden">
-                      <div className="px-4 py-3 bg-card-hover border-b border-border flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-sm font-bold text-accent shrink-0">{u.name.charAt(0)}</div>
-                          <div>
-                            <p className="text-sm font-semibold">{u.name}</p>
-                            <p className="text-[10px] text-muted">{u.position || u.role}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right text-xs">
-                            <span className={done === myPlans.length && myPlans.length > 0 ? "text-green-400 font-medium" : "text-blue-400"}>{done}/{myPlans.length} แผน</span>
-                            {myPlans.length > 0 && <span className="text-muted ml-1">({pct.toFixed(0)}%)</span>}
-                          </div>
-                          {(!ownSalesOnly || currentUser?.name === u.name) && (
-                            <button onClick={() => { resetActForm(); setActForm(f => ({ ...f, is_plan: true, plan_date: today, assigned_to: u.name })); setShowPlanForm(true); }}
-                              className="text-[10px] bg-accent/10 text-accent rounded-lg px-2.5 py-1 hover:bg-accent/20 whitespace-nowrap">+ เพิ่มแผน</button>
-                          )}
-                        </div>
+              {/* ── Day view (tapped from week strip) ── */}
+              {apView === "day" && (() => {
+                const dp     = plansOn(calDayDate);
+                const isTd   = calDayDate === today;
+                const isPast = calDayDate < today;
+                const dow    = new Date(calDayDate + "T12:00:00").getDay();
+                return (
+                  <div className="px-4 pt-3 pb-24">
+                    <div className={`rounded-xl border p-3 mb-3 ${isTd?"border-accent/40 bg-accent/5":isPast&&dp.some(p=>p.status!=="done")?"border-red-500/20 bg-red-500/5":"border-border bg-card"}`}>
+                      <p className={`text-base font-bold ${isTd?"text-accent":""}`}>วัน{thaiDayFull[dow]}ที่ {parseInt(calDayDate.slice(8))} {thaiM[parseInt(calDayDate.slice(5,7))-1]}</p>
+                      <p className="text-xs text-muted">{dp.length} กิจกรรม{isTd?" · วันนี้":isPast&&dp.some(p=>p.status!=="done")?" · มีค้างอยู่":""}</p>
+                    </div>
+                    {dp.length===0 ? (
+                      <div className="rounded-xl border border-dashed border-border p-10 text-center">
+                        <p className="text-xl mb-1">📅</p><p className="text-sm text-muted">ไม่มีแผนวันนี้</p>
                       </div>
-                      {myPlans.length > 0 && (
-                        <div className="h-1.5 bg-background overflow-hidden">
-                          <div className={`h-full transition-all ${pct >= 100 ? "bg-green-500" : pct >= 70 ? "bg-yellow-500" : "bg-accent"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                    ) : <div className="space-y-2">{dp.map(plan => mobileCard(plan))}</div>}
+                  </div>
+                );
+              })()}
+
+              {/* ── Mobile Year View ── */}
+              {apView === "year" && (
+                <div className="px-3 pt-3 pb-24">
+                  {/* Year summary */}
+                  <div className="rounded-xl bg-card border border-border p-3 mb-3">
+                    <p className="text-sm font-bold mb-1.5">ปี {calY} · {viewPlans.filter(p=>(p.plan_date||"").startsWith(`${calY}-`)).length} กิจกรรม</p>
+                    <div className="flex gap-1 flex-wrap">
+                      {(Object.entries(TC) as [string, typeof TC[string]][]).map(([type, tc]) => {
+                        const cnt = viewPlans.filter(p => (p.plan_date||"").startsWith(`${calY}-`) && p.type === type).length;
+                        if (!cnt) return null;
+                        return <span key={type} className={`text-[10px] rounded-full px-2 py-0.5 border ${tc.bg} ${tc.border} ${tc.text}`}>{tc.icon} {cnt}</span>;
+                      })}
+                    </div>
+                  </div>
+                  {/* 12-month compact grid */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {Array.from({length: 12}, (_, i) => i + 1).map(month => {
+                      const monthStr  = `${calY}-${String(month).padStart(2,"0")}`;
+                      const firstOfM  = new Date(calY, month - 1, 1);
+                      const firstDowM = (firstOfM.getDay() + 6) % 7;
+                      const daysInM   = new Date(calY, month, 0).getDate();
+                      const totalCellsM = Math.ceil((firstDowM + daysInM) / 7) * 7;
+                      const monthCells = Array.from({length: totalCellsM}, (_, i) => {
+                        const d = new Date(firstOfM.getTime() - firstDowM * 86400000 + i * 86400000);
+                        return d.toISOString().slice(0, 10);
+                      });
+                      const monthPlans = viewPlans.filter(p => (p.plan_date||"").startsWith(monthStr));
+                      const isThisMonth = monthStr === today.slice(0,7);
+                      const hasPastDue  = monthPlans.some(p => p.status !== "done" && (p.plan_date||"") < today);
+                      return (
+                        <div key={month} className={`rounded-xl border overflow-hidden ${isThisMonth?"border-accent/60":hasPastDue?"border-red-500/30":"border-border"}`}>
+                          <button onClick={() => { setCalNavDate(monthStr); setApView("month"); }}
+                            className={`w-full px-3 py-1.5 flex items-center justify-between ${isThisMonth?"bg-accent/10":hasPastDue?"bg-red-500/5":"bg-card"}`}>
+                            <span className={`text-[11px] font-bold ${isThisMonth?"text-accent":hasPastDue?"text-red-400":"text-foreground"}`}>{thaiM[month-1]}</span>
+                            {monthPlans.length > 0 && <span className={`text-[9px] font-bold rounded-full px-1.5 ${hasPastDue?"bg-red-900/40 text-red-400":"bg-accent/15 text-accent"}`}>{monthPlans.length}</span>}
+                          </button>
+                          <div className="grid grid-cols-7 gap-px p-1 bg-background/60 border-t border-border">
+                            {monthCells.map(dateStr => {
+                              const inM    = dateStr.startsWith(monthStr);
+                              const isTd   = dateStr === today;
+                              const isPast = dateStr < today;
+                              const dp     = plansOn(dateStr);
+                              const hasOvd = dp.some(p => p.status !== "done") && isPast;
+                              const allDone = dp.length > 0 && dp.every(p => p.status === "done");
+                              const mainType = dp.find(p => p.status !== "done")?.type || dp[0]?.type;
+                              const tc = mainType ? TC[mainType] : null;
+                              if (!inM) return <div key={dateStr} />;
+                              return (
+                                <button key={dateStr} onClick={() => { setCalDayDate(dateStr); setApView("day"); }}
+                                  className={`aspect-square flex items-center justify-center rounded text-[8px] font-medium leading-none ${
+                                    isTd    ? "bg-accent text-white font-bold" :
+                                    hasOvd  ? "bg-red-500/30 text-red-300" :
+                                    allDone ? "bg-green-500/15 text-green-400" :
+                                    dp.length > 0 && tc ? `${tc.bg} ${tc.text}` :
+                                    dp.length > 0 ? "bg-accent/15 text-accent" :
+                                    isPast  ? "text-muted/25" : "text-muted/50"
+                                  }`}>
+                                  {parseInt(dateStr.slice(8))}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                      )}
-                      {myPlans.length === 0
-                        ? <p className="text-xs text-muted px-4 py-3 italic">ยังไม่มีแผนเดือนนี้</p>
-                        : <div>{myPlans.map(plan => {
-                            const isOvd = (plan.plan_date || "") < today && plan.status !== "done";
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Agenda view (month / week / list) ── */}
+              {apView !== "day" && apView !== "year" && (() => {
+                const ovdList  = allPlans.filter(a => (a.plan_date||"") < today && a.status !== "done").sort((a,b)=>(a.plan_date||"").localeCompare(b.plan_date||""));
+                const todayList = viewPlans.filter(a => a.plan_date === today);
+                const tomorrow  = new Date(Date.now()+86400000).toISOString().slice(0,10);
+                const upMap = new Map<string, SalesActivity[]>();
+                viewPlans.filter(a => a.plan_date && a.plan_date > today && a.status !== "done")
+                  .sort((a,b) => (a.plan_date||"").localeCompare(b.plan_date||""))
+                  .forEach(a => { const d=a.plan_date||""; const l=upMap.get(d)??[]; l.push(a); upMap.set(d,l); });
+                const upDates = [...upMap.keys()].slice(0, 10);
+                const donePl = viewPlans.filter(a => a.status==="done").sort((a,b)=>(b.plan_date||"").localeCompare(a.plan_date||"")).slice(0,10);
+                return (
+                  <div className="px-4 pt-3 pb-24 space-y-4">
+                    {/* Overdue */}
+                    {ovdList.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="w-2 h-2 rounded-full bg-red-400 shrink-0"/>
+                          <h3 className="text-xs font-bold text-red-400 uppercase tracking-wide">⚠ เกินกำหนด ({ovdList.length})</h3>
+                        </div>
+                        <div className="space-y-1.5">{ovdList.map(p=>mobileCard(p))}</div>
+                      </div>
+                    )}
+                    {/* Today */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="w-2 h-2 rounded-full bg-accent shrink-0"/>
+                        <h3 className="text-xs font-bold text-accent uppercase tracking-wide">📅 วันนี้ · {parseInt(today.slice(8))} {thaiM[new Date().getMonth()]} ({todayList.length})</h3>
+                      </div>
+                      {todayList.length===0
+                        ? <div className="rounded-xl border border-dashed border-border px-4 py-5 text-center"><p className="text-sm text-muted">ไม่มีแผนวันนี้ ✓</p></div>
+                        : <div className="space-y-1.5">{todayList.map(p=>mobileCard(p))}</div>}
+                    </div>
+                    {/* Upcoming by date */}
+                    {upDates.map(dateStr => {
+                      const list = upMap.get(dateStr)!;
+                      const dayI = (new Date(dateStr+"T12:00:00").getDay()+6)%7;
+                      const lbl = dateStr===tomorrow ? `พรุ่งนี้ · ${parseInt(dateStr.slice(8))} ${thaiM[parseInt(dateStr.slice(5,7))-1]}` : `${dhNames[dayI]}. ${parseInt(dateStr.slice(8))} ${thaiM[parseInt(dateStr.slice(5,7))-1]}`;
+                      return (
+                        <div key={dateStr}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="w-2 h-2 rounded-full bg-muted/40 shrink-0"/>
+                            <h3 className="text-xs font-semibold text-muted">{lbl} ({list.length})</h3>
+                          </div>
+                          <div className="space-y-1.5">{list.map(p=>mobileCard(p))}</div>
+                        </div>
+                      );
+                    })}
+                    {/* Done */}
+                    {donePl.length > 0 && (
+                      <div>
+                        <button onClick={() => setExpandedRepeatRow(expandedRepeatRow==="__done__"?null:"__done__")} className="flex items-center gap-2 mb-2 w-full text-left">
+                          <span className="w-2 h-2 rounded-full bg-green-400 shrink-0"/>
+                          <h3 className="text-xs font-semibold text-muted">✓ เสร็จแล้ว ({donePl.length})</h3>
+                          <span className="text-[10px] text-muted ml-auto">{expandedRepeatRow==="__done__"?"▲":"▼"}</span>
+                        </button>
+                        {expandedRepeatRow==="__done__" && <div className="space-y-1.5">{donePl.map(p=>mobileCard(p))}</div>}
+                      </div>
+                    )}
+                    {allPlans.length===0 && (
+                      <div className="rounded-xl border border-dashed border-border p-12 text-center">
+                        <p className="text-xl mb-2">📋</p><p className="text-sm text-muted">ยังไม่มีแผนงาน</p>
+                        <p className="text-xs text-muted/60 mt-1">กด + เพื่อเพิ่มแผน</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* ══ DESKTOP CALENDAR + SIDE PANEL (@lg:flex) ══ */}
+            <div className="hidden @lg:flex gap-4">
+              {/* ── Calendar main area ── */}
+              <div className="flex-1 min-w-0">
+                {/* Controls */}
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={navPrev} className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors text-lg leading-none">‹</button>
+                    <span className="text-sm font-semibold px-3 py-1.5 rounded-lg bg-card border border-border min-w-[128px] text-center">{navLabel}</span>
+                    <button onClick={navNext} className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors text-lg leading-none">›</button>
+                    {apView !== "list" && <button onClick={navToday} className="text-[11px] text-accent border border-accent/30 rounded-lg px-2.5 py-1 hover:bg-accent/10 transition-colors">วันนี้</button>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!ownSalesOnly && visibleTeam.length > 1 && (
+                      <select value={apPersonFilter} onChange={e => setApPersonFilter(e.target.value)} className="rounded-lg bg-background border border-border px-2.5 py-1.5 text-[11px] focus:outline-none focus:border-accent">
+                        <option value="">ทุกคน</option>{visibleTeam.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                      </select>
+                    )}
+                    <div className="flex rounded-lg overflow-hidden border border-border">
+                      {(["year","month","week","day","list"] as const).map(v => (
+                        <button key={v} onClick={() => setApView(v)} className={`px-2.5 py-1.5 text-[11px] transition-colors ${apView === v ? "bg-accent text-white" : "text-muted hover:bg-card-hover"}`}>
+                          {v === "year" ? "🗓 ปี" : v === "month" ? "📅 เดือน" : v === "week" ? "📆 สัปดาห์" : v === "day" ? "☀️ วัน" : "≡ รายการ"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Type filter chips */}
+                <div className="flex gap-1.5 mb-4 flex-wrap">
+                  <button onClick={() => setTypeFilter("")} className={`rounded-full px-3 py-1 text-[11px] border transition-all ${!typeFilter ? "bg-foreground/10 border-foreground/20 text-foreground font-medium" : "border-border text-muted hover:border-border/60"}`}>ทั้งหมด</button>
+                  {(Object.entries(TC) as [string, typeof TC[string]][]).map(([type, tc]) => (
+                    <button key={type} onClick={() => setTypeFilter(typeFilter === type ? "" : type)}
+                      className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] border transition-all ${typeFilter === type ? `${tc.bg} ${tc.border} ${tc.text} font-medium` : "border-border text-muted hover:border-border/60"}`}>
+                      {tc.icon} {tc.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* ── Month Calendar ── */}
+                {apView === "month" && (
+                  <div>
+                    <div className="grid grid-cols-7 gap-px mb-1">
+                      {dhNames.map(d => <div key={d} className="text-center text-[10px] font-semibold text-muted py-1">{d}</div>)}
+                    </div>
+                    <div className="grid grid-cols-7 gap-px bg-border/30 rounded-xl overflow-hidden border border-border/30">
+                      {calCells.map(dateStr => {
+                        const inM   = dateStr.startsWith(calNavDate);
+                        const isTd  = dateStr === today;
+                        const isPast = dateStr < today;
+                        const dp    = plansOn(dateStr);
+                        const ovdInDay = dp.some(p => p.status !== "done" && isPast);
+                        const vis   = dp.slice(0, 3);
+                        const more  = dp.length - vis.length;
+                        return (
+                          <div key={dateStr} onClick={() => { setCalDayDate(dateStr); setApView("day"); }}
+                            className={`min-h-[80px] p-1 cursor-pointer transition-all hover:ring-1 ring-inset hover:ring-accent/30 ${
+                              isTd       ? "bg-accent/8" :
+                              ovdInDay && inM ? "bg-red-500/5" :
+                              inM        ? "bg-card" :
+                              "bg-background/60 opacity-50"}`}>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className={`text-[11px] font-bold w-5 h-5 flex items-center justify-center rounded-full leading-none ${isTd ? "bg-accent text-white" : !inM ? "text-muted/30" : "text-foreground"}`}>{parseInt(dateStr.slice(8))}</span>
+                              {dp.length > 0 && inM && <span className="text-[9px] text-muted leading-none">{dp.length}</span>}
+                            </div>
+                            <div className="space-y-px">
+                              {vis.map(p => chip(p))}
+                              {more > 0 && <div className="text-[9px] text-accent text-center py-0.5 rounded hover:bg-accent/10">+{more}</div>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Week View ── */}
+                {apView === "week" && (
+                  <div className="overflow-x-auto -mx-1 px-1">
+                    <div className="min-w-[480px] grid grid-cols-7 gap-1">
+                      {weekDays.map((dateStr, i) => {
+                        const isTd  = dateStr === today;
+                        const isPast = dateStr < today;
+                        const dp    = plansOn(dateStr);
+                        const hasOvd = dp.some(p => p.status !== "done" && isPast);
+                        return (
+                          <div key={dateStr} className={`rounded-xl border flex flex-col ${isTd ? "border-accent/50 bg-accent/5" : hasOvd ? "border-red-500/20 bg-red-500/3" : "border-border bg-card"}`}>
+                            <div className={`px-2 py-2 text-center border-b cursor-pointer hover:bg-card-hover/50 transition-colors ${isTd ? "border-accent/30 bg-accent/10" : hasOvd ? "border-red-500/20" : "border-border"}`}
+                              onClick={() => { setCalDayDate(dateStr); setApView("day"); }}>
+                              <p className={`text-[10px] font-semibold uppercase ${isTd ? "text-accent" : "text-muted"}`}>{dhNames[i]}</p>
+                              <p className={`text-xl font-bold leading-tight ${isTd ? "text-accent" : isPast ? "text-muted/60" : "text-foreground"}`}>{parseInt(dateStr.slice(8))}</p>
+                              {dp.length > 0 && <span className={`text-[9px] rounded-full px-1.5 py-0.5 font-bold inline-block mt-0.5 ${hasOvd ? "bg-red-900/50 text-red-400" : "bg-accent/20 text-accent"}`}>{dp.length}</span>}
+                            </div>
+                            <div className="p-1 flex-1 space-y-0.5 min-h-[100px]">
+                              {dp.map(p => planCard(p))}
+                              <button onClick={() => { resetActForm(); setActForm(f => ({...f, is_plan: true, plan_date: dateStr})); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
+                                className="w-full text-center text-[10px] text-muted/30 hover:text-accent transition-colors py-1 rounded hover:bg-card-hover">+</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Day View ── */}
+                {apView === "day" && (() => {
+                  const dp    = plansOn(calDayDate);
+                  const isTd  = calDayDate === today;
+                  const isPast = calDayDate < today;
+                  const dow   = new Date(calDayDate + "T12:00:00").getDay();
+                  return (
+                    <div>
+                      <div className={`rounded-xl border p-4 mb-4 flex items-center justify-between gap-3 ${isTd ? "border-accent/40 bg-accent/5" : isPast && dp.some(p => p.status !== "done") ? "border-red-500/20 bg-red-500/5" : "border-border bg-card"}`}>
+                        <div>
+                          <p className={`text-lg font-bold ${isTd ? "text-accent" : ""}`}>
+                            วัน{thaiDayFull[dow]}ที่ {parseInt(calDayDate.slice(8))} {thaiM[parseInt(calDayDate.slice(5,7))-1]} {parseInt(calDayDate.slice(0,4))+543}
+                          </p>
+                          <p className="text-xs text-muted">{dp.length} กิจกรรม{isTd ? " · วันนี้" : isPast && dp.some(p => p.status !== "done") ? " · ⚠ มีค้างอยู่" : ""}</p>
+                        </div>
+                        <button onClick={() => { resetActForm(); setActForm(f => ({...f, is_plan: true, plan_date: calDayDate})); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
+                          className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover shrink-0">+ วางแผน</button>
+                      </div>
+                      {dp.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border p-12 text-center">
+                          <p className="text-2xl mb-2">📅</p>
+                          <p className="text-sm text-muted">ไม่มีแผนวันนี้</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {dp.map(plan => {
+                            const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+                            const ovd = (plan.plan_date || "") < today && plan.status !== "done";
+                            const done = plan.status === "done";
+                            const linkedDeal = plan.converted_to_project_id ? projects.find(p => p.id === plan.converted_to_project_id) : null;
                             return (
                               <div key={plan.id} onClick={() => setSelectedActivity(plan)}
-                                className={`px-4 py-2.5 flex items-start gap-3 border-b border-border/50 last:border-0 cursor-pointer hover:bg-card-hover transition-colors ${plan.status === "done" ? "opacity-50" : ""}`}>
-                                <div className={`text-[10px] w-14 shrink-0 pt-0.5 tabular-nums ${isOvd ? "text-red-400 font-medium" : "text-muted"}`}>{plan.plan_date?.slice(5) || "—"}{isOvd && " ⚠"}</div>
-                                <span className="text-base shrink-0">{typeIcons[plan.type] || "📌"}</span>
+                                className={`rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md flex gap-3 ${
+                                  done ? "border-border/40 bg-card/60 opacity-70" :
+                                  ovd  ? "border-red-500/30 bg-red-500/5 hover:border-red-500/50" :
+                                  `${tc.bg} ${tc.border} hover:brightness-110`}`}>
+                                <div className={`w-1 rounded-full shrink-0 self-stretch ${ovd ? "bg-red-400" : done ? "bg-green-400" : tc.dot}`} />
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs leading-snug">{plan.expected_outcome || plan.description}</p>
-                                  {plan.customer_name && <p className="text-[10px] text-muted mt-0.5">{plan.customer_type === "prospect" ? "🔍" : "🏢"} {plan.customer_name}</p>}
+                                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-base shrink-0">{tc.icon}</span>
+                                      <div>
+                                        <p className={`text-sm font-semibold leading-snug ${done ? "line-through text-muted" : ovd ? "text-red-300" : tc.text}`}>{plan.expected_outcome || plan.description || "—"}</p>
+                                        {plan.customer_name && <p className="text-xs text-muted mt-0.5">🏢 {plan.customer_name}</p>}
+                                      </div>
+                                    </div>
+                                    <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium shrink-0 ${done?"bg-green-500/15 text-green-400":plan.status==="in_progress"?"bg-yellow-500/15 text-yellow-400":ovd?"bg-red-500/15 text-red-400":"bg-blue-500/15 text-blue-400"}`}>
+                                      {done ? "✓ เสร็จ" : plan.status === "in_progress" ? "ทำอยู่" : ovd ? "⚠ เกิน" : "รอ"}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={`text-[11px] rounded-full px-2 py-0.5 border ${tc.bg} ${tc.border} ${tc.text}`}>{tc.icon} {tc.label}</span>
+                                    {plan.assigned_to && !ownSalesOnly && <span className="text-[11px] text-muted">👤 {plan.assigned_to.split(" ")[0]}</span>}
+                                    {linkedDeal && <Link href="/projects" onClick={e => e.stopPropagation()} className="text-[11px] text-accent hover:underline">🎯 {linkedDeal.name}</Link>}
+                                  </div>
+                                  <div className="flex gap-2 mt-2" onClick={e => e.stopPropagation()}>
+                                    {!done && <button onClick={() => updateActivity(plan.id!, {status:"done"})} className="text-[10px] text-green-400 border border-green-500/30 rounded px-2 py-0.5 hover:bg-green-500/10">✓ เสร็จ</button>}
+                                    {plan.status !== "in_progress" && !done && <button onClick={() => updateActivity(plan.id!, {status:"in_progress"})} className="text-[10px] text-yellow-400 border border-yellow-500/30 rounded px-2 py-0.5 hover:bg-yellow-500/10">▷ เริ่ม</button>}
+                                    <button onClick={() => deleteActivity(plan.id!)} className="text-[10px] text-muted border border-border rounded px-2 py-0.5 hover:bg-red-500/10 hover:text-red-400">ลบ</button>
+                                  </div>
                                 </div>
-                                <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium shrink-0 ${plan.status === "done" ? "bg-green-900/50 text-green-400" : plan.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}>
-                                  {plan.status === "done" ? "✓ เสร็จ" : plan.status === "in_progress" ? "ทำอยู่" : "รอ"}
-                                </span>
                               </div>
                             );
-                          })}</div>
-                      }
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
-                })}
-              </div>
-            )}
+                })()}
 
-            {/* ── Repeat Plan Report ── */}
-            <div className="mt-5 rounded-xl bg-card border border-border overflow-hidden">
-              <button onClick={() => setShowRepeatReport(!showRepeatReport)}
-                className="w-full px-4 py-3 flex items-center justify-between hover:bg-card-hover transition-colors">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold">📊 สถิติการวางแผนซ้ำ</span>
-                  <span className="text-[10px] text-muted">ดูว่าลูกค้าแต่ละรายถูกวางแผนกี่ครั้ง</span>
+                {/* ── Year View ── */}
+                {apView === "year" && (() => {
+                  const yearPlans = viewPlans.filter(p => (p.plan_date||"").startsWith(`${calY}-`));
+                  const totalByType = Object.fromEntries(Object.keys(TC).map(t => [t, yearPlans.filter(p => p.type === t).length]));
+                  return (
+                    <div>
+                      {/* Year summary bar */}
+                      <div className="rounded-xl bg-card border border-border p-3 mb-4 flex items-center flex-wrap gap-3">
+                        <span className="text-sm font-bold text-foreground">{yearPlans.length} กิจกรรม ปี {calY}</span>
+                        <div className="flex gap-1.5 flex-wrap flex-1">
+                          {(Object.entries(TC) as [string, typeof TC[string]][]).map(([type, tc]) => {
+                            const cnt = totalByType[type] || 0;
+                            if (!cnt) return null;
+                            return <span key={type} className={`text-[10px] rounded-full px-2 py-0.5 border ${tc.bg} ${tc.border} ${tc.text}`}>{tc.icon} {tc.label} {cnt}</span>;
+                          })}
+                        </div>
+                        {yearPlans.filter(p => p.status !== "done" && (p.plan_date||"") < today).length > 0 && (
+                          <span className="text-[11px] text-red-400 font-medium">⚠ เกิน {yearPlans.filter(p => p.status !== "done" && (p.plan_date||"") < today).length}</span>
+                        )}
+                      </div>
+                      {/* 12-month grid */}
+                      <div className="grid grid-cols-2 @md:grid-cols-3 @xl:grid-cols-4 gap-3">
+                        {Array.from({length: 12}, (_, i) => i + 1).map(month => {
+                          const monthStr   = `${calY}-${String(month).padStart(2,"0")}`;
+                          const firstOfM   = new Date(calY, month - 1, 1);
+                          const firstDowM  = (firstOfM.getDay() + 6) % 7;
+                          const daysInM    = new Date(calY, month, 0).getDate();
+                          const totalCellsM = Math.ceil((firstDowM + daysInM) / 7) * 7;
+                          const monthCells = Array.from({length: totalCellsM}, (_, i) => {
+                            const d = new Date(firstOfM.getTime() - firstDowM * 86400000 + i * 86400000);
+                            return d.toISOString().slice(0, 10);
+                          });
+                          const monthPlans = viewPlans.filter(p => (p.plan_date||"").startsWith(monthStr));
+                          const isThisMonth = monthStr === today.slice(0,7);
+                          const hasPastDue  = monthPlans.some(p => p.status !== "done" && (p.plan_date||"") < today);
+                          return (
+                            <div key={month} className={`rounded-xl border overflow-hidden ${isThisMonth ? "border-accent/60 shadow-sm shadow-accent/10" : hasPastDue ? "border-red-500/30" : "border-border"}`}>
+                              {/* Month header */}
+                              <button onClick={() => { setCalNavDate(monthStr); setApView("month"); }}
+                                className={`w-full px-3 py-2 flex items-center justify-between transition-colors hover:bg-card-hover ${isThisMonth ? "bg-accent/10" : hasPastDue ? "bg-red-500/5" : "bg-card"}`}>
+                                <span className={`text-[12px] font-bold ${isThisMonth ? "text-accent" : hasPastDue ? "text-red-400" : "text-foreground"}`}>{thaiM[month-1]}</span>
+                                {monthPlans.length > 0 && (
+                                  <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 ${hasPastDue ? "bg-red-900/40 text-red-400" : "bg-accent/15 text-accent"}`}>{monthPlans.length}</span>
+                                )}
+                              </button>
+                              {/* Day column headers */}
+                              <div className="grid grid-cols-7 border-t border-border bg-background/60">
+                                {dhNames.map(d => <div key={d} className="text-center text-[7px] text-muted/50 py-0.5">{d.replace(".","")} </div>)}
+                              </div>
+                              {/* Day cells */}
+                              <div className="grid grid-cols-7 gap-px p-1 bg-background/60">
+                                {monthCells.map(dateStr => {
+                                  const inM     = dateStr.startsWith(monthStr);
+                                  const isTd    = dateStr === today;
+                                  const isPast  = dateStr < today;
+                                  const dp      = plansOn(dateStr);
+                                  const hasOvd  = dp.some(p => p.status !== "done") && isPast;
+                                  const allDone = dp.length > 0 && dp.every(p => p.status === "done");
+                                  const mainType = dp.find(p => p.status !== "done")?.type || dp[0]?.type;
+                                  const tc = mainType ? TC[mainType] : null;
+                                  if (!inM) return <div key={dateStr} />;
+                                  return (
+                                    <button key={dateStr} onClick={() => { setCalDayDate(dateStr); setApView("day"); }}
+                                      className={`aspect-square flex items-center justify-center rounded text-[9px] font-medium leading-none transition-all hover:ring-1 ring-inset ring-accent/40 ${
+                                        isTd    ? "bg-accent text-white font-bold" :
+                                        hasOvd  ? "bg-red-500/30 text-red-300" :
+                                        allDone ? "bg-green-500/15 text-green-400" :
+                                        dp.length > 0 && tc ? `${tc.bg} ${tc.text}` :
+                                        dp.length > 0 ? "bg-accent/15 text-accent" :
+                                        isPast ? "text-muted/30 hover:bg-card-hover" :
+                                        "text-muted/60 hover:bg-card-hover"
+                                      }`}>
+                                      {parseInt(dateStr.slice(8))}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {/* Mini type bar */}
+                              {monthPlans.length > 0 && (
+                                <div className="flex gap-0.5 flex-wrap px-1.5 pb-1.5 pt-0.5 border-t border-border/30 bg-background/40">
+                                  {(Object.entries(TC) as [string, typeof TC[string]][]).map(([type, tc]) => {
+                                    const cnt = monthPlans.filter(p => p.type === type).length;
+                                    if (!cnt) return null;
+                                    return <span key={type} title={`${tc.label}: ${cnt}`} className={`text-[8px] rounded px-1 py-0.5 ${tc.bg} ${tc.text}`}>{tc.icon}{cnt}</span>;
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── List View ── */}
+                {apView === "list" && (() => {
+                  const ovdPl  = allPlans.filter(p => (p.plan_date||"") < today && p.status !== "done").sort((a,b) => (a.plan_date||"").localeCompare(b.plan_date||""));
+                  const upPl   = allPlans.filter(p => (p.plan_date||"") >= today && p.status !== "done").sort((a,b) => (a.plan_date||"").localeCompare(b.plan_date||""));
+                  const donePl = allPlans.filter(p => p.status === "done").sort((a,b) => (b.plan_date||"").localeCompare(a.plan_date||"")).slice(0, 20);
+                  function ListCard({ plan }: { plan: SalesActivity }) {
+                    const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+                    const ovd = (plan.plan_date||"") < today && plan.status !== "done";
+                    const linkedDeal = plan.converted_to_project_id ? projects.find(p => p.id === plan.converted_to_project_id) : null;
+                    return (
+                      <div onClick={() => setSelectedActivity(plan)}
+                        className={`rounded-xl border p-3.5 cursor-pointer hover:shadow-md transition-all ${
+                          plan.status==="done" ? "border-border/40 bg-card opacity-60" :
+                          ovd ? "border-red-500/30 bg-red-500/5 hover:border-red-500/50" :
+                          plan.plan_date===today ? "border-accent/40 bg-accent/5" :
+                          "border-border bg-card hover:border-border/80"}`}>
+                        <div className="flex items-start gap-3">
+                          <span className="text-xl shrink-0 mt-0.5">{tc.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-medium leading-snug">{plan.expected_outcome || plan.description || "—"}</p>
+                              <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium shrink-0 ${plan.status==="done"?"bg-green-500/15 text-green-400":plan.status==="in_progress"?"bg-yellow-500/15 text-yellow-400":"bg-blue-500/15 text-blue-400"}`}>
+                                {plan.status==="done"?"✓ เสร็จ":plan.status==="in_progress"?"ทำอยู่":"รอ"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                              {plan.customer_name && <span className="text-[11px] text-muted">{plan.customer_type==="prospect"?"🔍":"🏢"} {plan.customer_name}</span>}
+                              {plan.plan_date && <span className={`text-[11px] ${ovd?"text-red-400 font-medium":"text-muted"}`}>📅 {plan.plan_date}{ovd?" ⚠":plan.plan_date===today?" (วันนี้)":""}</span>}
+                              {plan.assigned_to && !ownSalesOnly && <span className="text-[11px] text-muted">👤 {plan.assigned_to.split(" ")[0]}</span>}
+                            </div>
+                            {linkedDeal && (
+                              <div className="mt-1.5 flex items-center gap-1.5">
+                                <span className="text-[10px] text-muted">→ ดีล:</span>
+                                <Link href="/projects" onClick={e=>e.stopPropagation()} className="text-[11px] text-accent hover:underline">{linkedDeal.name}</Link>
+                                <span className={`text-[9px] rounded-full px-1.5 py-0.5 ${stageColor[linkedDeal.status]||""}`}>{linkedDeal.status}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-5">
+                      {ovdPl.length > 0 && (<div><div className="flex items-center gap-2 mb-2.5"><span className="w-2 h-2 rounded-full bg-red-500"/><h3 className="text-sm font-semibold text-red-400">เกินกำหนด ({ovdPl.length})</h3></div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{ovdPl.map(p => <ListCard key={p.id} plan={p}/>)}</div></div>)}
+                      {upPl.length > 0 ? (<div><div className="flex items-center gap-2 mb-2.5"><span className="w-2 h-2 rounded-full bg-accent"/><h3 className="text-sm font-semibold">วันนี้และกำลังจะมาถึง ({upPl.length})</h3></div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{upPl.map(p => <ListCard key={p.id} plan={p}/>)}</div></div>) : (<div className="rounded-xl border border-dashed border-border p-8 text-center"><p className="text-sm text-muted">ไม่มีแผนงาน — กด &quot;+ วางแผน&quot; เพื่อเริ่มต้น</p></div>)}
+                      {donePl.length > 0 && (<div><button onClick={()=>setExpandedRepeatRow(expandedRepeatRow==="__done__"?null:"__done__")} className="flex items-center gap-2 mb-2 text-sm text-muted hover:text-foreground"><span className="w-2 h-2 rounded-full bg-green-500"/><span className="font-semibold">เสร็จแล้ว ({donePl.length})</span><span className="text-xs">{expandedRepeatRow==="__done__"?"▲":"▼"}</span></button>{expandedRepeatRow==="__done__"&&<div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{donePl.map(p=><ListCard key={p.id} plan={p}/>)}</div>}</div>)}
+                      {allPlans.length === 0 && (<div className="rounded-xl border border-dashed border-border p-10 text-center"><p className="text-base text-muted">ยังไม่มีแผนงาน</p><p className="text-xs text-muted/60 mt-1">กด &quot;+ วางแผน&quot; เพื่อเพิ่มแผน</p></div>)}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* ── Right Side Panel ── */}
+              <div className="hidden xl:flex flex-col gap-3 w-56 shrink-0">
+                {/* Mini KPI */}
+                <div className="rounded-xl bg-card border border-border p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">ภาพรวม</p>
+                    <span className="text-xs font-bold">{allPlans.length} แผน</span>
+                  </div>
+                  {allPlans.length > 0 && <div className="h-1.5 rounded-full bg-background overflow-hidden mb-2.5"><div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${Math.round(kpiDone/allPlans.length*100)}%`}}/></div>}
+                  {[{label:"✓ เสร็จ",v:kpiDone,c:"text-green-400"},{label:"▷ ทำอยู่",v:kpiIP,c:"text-yellow-400"},{label:"○ รอ",v:kpiNew,c:"text-blue-400"},{label:"⚠ เกิน",v:overdueItems.length,c:overdueItems.length>0?"text-red-400":"text-muted"}].map(s=>(
+                    <div key={s.label} className="flex items-center justify-between text-[11px] py-0.5"><span className="text-muted">{s.label}</span><span className={`font-bold tabular-nums ${s.c}`}>{s.v}</span></div>
+                  ))}
                 </div>
+
+                {/* Today */}
+                <div className="rounded-xl bg-card border border-border overflow-hidden">
+                  <div className="px-3 py-2 border-b border-border flex items-center justify-between bg-accent/5">
+                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent"/><p className="text-[11px] font-semibold">วันนี้</p></div>
+                    <span className="text-[10px] font-bold text-accent bg-accent/15 rounded-full px-2 py-0.5">{todayItems.length}</span>
+                  </div>
+                  <div className="p-1.5 space-y-0.5 max-h-52 overflow-y-auto">
+                    {todayItems.length === 0
+                      ? <p className="text-[11px] text-muted text-center py-2.5">ไม่มีแผนวันนี้ ✓</p>
+                      : todayItems.map(p => {
+                          const tc = TC[p.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",label:"",icon:"📌"};
+                          return (
+                            <button key={p.id} onClick={() => setSelectedActivity(p)} className={`w-full text-left rounded-lg px-2 py-1.5 border transition-all hover:brightness-110 ${tc.bg} ${tc.border}`}>
+                              <div className="flex items-center gap-1.5"><span className="text-[11px]">{tc.icon}</span><p className={`text-[11px] truncate font-medium ${tc.text}`}>{p.expected_outcome || p.customer_name || "—"}</p></div>
+                            </button>
+                          );
+                        })}
+                  </div>
+                </div>
+
+                {/* Overdue */}
+                {overdueItems.length > 0 && (
+                  <div className="rounded-xl bg-red-950/20 border border-red-800/40 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-red-800/30 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400"/><p className="text-[11px] font-semibold text-red-400">เกินกำหนด</p></div>
+                      <span className="text-[10px] text-red-400 font-bold bg-red-900/50 rounded-full px-2 py-0.5">{overdueItems.length}</span>
+                    </div>
+                    <div className="p-1.5 space-y-0.5 max-h-48 overflow-y-auto">
+                      {overdueItems.slice(0, 8).map(p => (
+                        <button key={p.id} onClick={() => setSelectedActivity(p)} className="w-full text-left rounded-lg px-2 py-1.5 border bg-red-500/10 border-red-500/30 hover:bg-red-500/20 transition-all">
+                          <div className="flex items-center gap-1"><span className="text-[10px]">⚠</span><p className="text-[11px] truncate font-medium text-red-300">{p.expected_outcome || p.customer_name || "—"}</p></div>
+                          <p className="text-[9px] text-red-400/70 mt-0.5 truncate">{p.plan_date}{p.customer_name ? ` · ${p.customer_name}` : ""}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Activity type legend + filter */}
+                <div className="rounded-xl bg-card border border-border p-3">
+                  <p className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">ประเภท</p>
+                  <div className="space-y-0.5">
+                    {(Object.entries(TC) as [string, typeof TC[string]][]).map(([type, tc]) => {
+                      const cnt = allPlans.filter(p => p.type === type).length;
+                      return (
+                        <button key={type} onClick={() => setTypeFilter(typeFilter === type ? "" : type)}
+                          className={`w-full flex items-center gap-2 rounded-lg px-2 py-1 transition-all text-left ${typeFilter === type ? `${tc.bg} border ${tc.border}` : "hover:bg-card-hover"}`}>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${tc.dot}`}/><span className="text-[11px] flex-1 text-muted">{tc.icon} {tc.label}</span>
+                          {cnt > 0 && <span className={`text-[10px] font-bold ${tc.text}`}>{cnt}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Repeat report */}
+            <div className="mt-4 rounded-xl bg-card border border-border overflow-hidden">
+              <button onClick={() => setShowRepeatReport(!showRepeatReport)} className="w-full px-4 py-3 flex items-center justify-between hover:bg-card-hover transition-colors">
+                <div className="flex items-center gap-2"><span className="text-sm font-semibold">📊 สถิติการวางแผนซ้ำ</span><span className="text-[10px] text-muted">ดูว่าลูกค้าแต่ละรายถูกวางแผนกี่ครั้ง</span></div>
                 <span className="text-muted text-xs">{showRepeatReport ? "▲" : "▼"}</span>
               </button>
               {showRepeatReport && (() => {
-                const allPlans = activities.filter(a => a.is_plan);
+                const allPlansStat = activities.filter(a => a.is_plan);
                 type RepeatRow = { name: string; customerId: string; total: number; done: number; lastDate: string; persons: Set<string>; types: string[]; items: SalesActivity[] };
                 const custMap = new Map<string, RepeatRow>();
-                allPlans.forEach(p => {
+                allPlansStat.forEach(p => {
                   const key = p.customer_name || "(ยังไม่ระบุลูกค้า)";
                   const ex = custMap.get(key) ?? { name: key, customerId: p.customer_id || "", total: 0, done: 0, lastDate: "", persons: new Set<string>(), types: [], items: [] };
                   if (!ex.customerId && p.customer_id) ex.customerId = p.customer_id;
-                  ex.total++;
-                  if (p.status === "done") ex.done++;
+                  ex.total++; if (p.status === "done") ex.done++;
                   if ((p.plan_date || "") > ex.lastDate) ex.lastDate = p.plan_date || "";
                   if (p.assigned_to) ex.persons.add(p.assigned_to);
                   if (p.expected_outcome || p.description) ex.types.push(p.expected_outcome || p.description || "");
-                  ex.items.push(p);
-                  custMap.set(key, ex);
+                  ex.items.push(p); custMap.set(key, ex);
                 });
                 const rows = [...custMap.values()].sort((a, b) => b.total - a.total);
                 return (
                   <div className="border-t border-border overflow-x-auto">
                     <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-border text-left text-[10px] text-muted uppercase bg-background/50">
-                          <th className="px-4 py-2">ลูกค้า / Prospect</th>
-                          <th className="px-4 py-2 text-center">ทั้งหมด</th>
-                          <th className="px-4 py-2 text-center">วางแผนซ้ำ</th>
-                          <th className="px-4 py-2 text-center">✓ เสร็จ</th>
-                          <th className="px-4 py-2 hidden md:table-cell">กิจกรรมล่าสุด</th>
-                          <th className="px-4 py-2 hidden md:table-cell">เซลล์</th>
-                          <th className="px-4 py-2">วันล่าสุด</th>
-                        </tr>
-                      </thead>
+                      <thead><tr className="border-b border-border text-left text-[10px] text-muted uppercase bg-background/50">
+                        <th className="px-4 py-2">ลูกค้า / Prospect</th><th className="px-4 py-2 text-center">ทั้งหมด</th><th className="px-4 py-2 text-center">วางแผนซ้ำ</th><th className="px-4 py-2 text-center">✓ เสร็จ</th><th className="px-4 py-2 hidden md:table-cell">กิจกรรมล่าสุด</th><th className="px-4 py-2 hidden md:table-cell">เซลล์</th><th className="px-4 py-2">วันล่าสุด</th>
+                      </tr></thead>
                       <tbody>
-                        {rows.length === 0 && (
-                          <tr><td colSpan={7} className="px-4 py-6 text-center text-muted italic">ยังไม่มีข้อมูลแผนงาน</td></tr>
-                        )}
+                        {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-muted italic">ยังไม่มีข้อมูลแผนงาน</td></tr>}
                         {rows.map(r => {
                           const repeat = Math.max(0, r.total - 1);
                           const isExpanded = expandedRepeatRow === r.name;
-                          const sortedItems = [...r.items].sort((a, b) => (a.plan_date || "").localeCompare(b.plan_date || ""));
+                          const sortedItems = [...r.items].sort((a, b) => (a.plan_date||"").localeCompare(b.plan_date||""));
                           return (<>
-                            <tr key={r.name} onClick={() => setExpandedRepeatRow(isExpanded ? null : r.name)}
-                              className="border-b border-border/50 last:border-0 hover:bg-card-hover transition-colors cursor-pointer select-none">
-                              <td className="px-4 py-2.5 font-medium">
-                                <span className="mr-1.5 text-muted text-[10px]">{isExpanded ? "▼" : "▶"}</span>
-                                {r.customerId
-                                  ? <Link href={`/customers/${r.customerId}`} onClick={e => e.stopPropagation()} className="text-accent hover:underline">{r.name}</Link>
-                                  : r.name}
-                              </td>
-                              <td className="px-4 py-2.5 text-center">
-                                <span className={`rounded-full px-2 py-0.5 font-bold text-[11px] ${r.total >= 5 ? "bg-red-900/50 text-red-400" : r.total >= 3 ? "bg-orange-900/50 text-orange-400" : r.total >= 2 ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}>{r.total}</span>
-                              </td>
-                              <td className="px-4 py-2.5 text-center">
-                                {repeat > 0
-                                  ? <span className="text-orange-400 font-semibold">+{repeat} ครั้ง</span>
-                                  : <span className="text-muted">—</span>}
-                              </td>
+                            <tr key={r.name} onClick={() => setExpandedRepeatRow(isExpanded ? null : r.name)} className="border-b border-border/50 last:border-0 hover:bg-card-hover transition-colors cursor-pointer select-none">
+                              <td className="px-4 py-2.5 font-medium"><span className="mr-1.5 text-muted text-[10px]">{isExpanded?"▼":"▶"}</span>{r.customerId?<Link href={`/customers/${r.customerId}`} onClick={e=>e.stopPropagation()} className="text-accent hover:underline">{r.name}</Link>:r.name}</td>
+                              <td className="px-4 py-2.5 text-center"><span className={`rounded-full px-2 py-0.5 font-bold text-[11px] ${r.total>=5?"bg-red-900/50 text-red-400":r.total>=3?"bg-orange-900/50 text-orange-400":r.total>=2?"bg-yellow-900/50 text-yellow-400":"bg-blue-900/50 text-blue-400"}`}>{r.total}</span></td>
+                              <td className="px-4 py-2.5 text-center">{repeat>0?<span className="text-orange-400 font-semibold">+{repeat} ครั้ง</span>:<span className="text-muted">—</span>}</td>
                               <td className="px-4 py-2.5 text-center text-green-400 font-semibold">{r.done}</td>
-                              <td className="px-4 py-2.5 text-muted hidden md:table-cell truncate max-w-[180px]">{r.types[r.types.length - 1] || "—"}</td>
-                              <td className="px-4 py-2.5 text-muted hidden md:table-cell">{[...r.persons].join(", ") || "—"}</td>
-                              <td className="px-4 py-2.5 text-muted">{r.lastDate || "—"}</td>
+                              <td className="px-4 py-2.5 text-muted hidden md:table-cell truncate max-w-[180px]">{r.types[r.types.length-1]||"—"}</td>
+                              <td className="px-4 py-2.5 text-muted hidden md:table-cell">{[...r.persons].join(", ")||"—"}</td>
+                              <td className="px-4 py-2.5 text-muted">{r.lastDate||"—"}</td>
                             </tr>
                             {isExpanded && (
                               <tr key={`${r.name}-detail`} className="bg-background/40">
                                 <td colSpan={7} className="px-4 py-2">
                                   <div className="space-y-1">
                                     {sortedItems.map((item, i) => (
-                                      <div key={item.id ?? i} className={`flex items-start gap-3 py-1.5 px-2 rounded-lg text-[11px] ${item.status === "done" ? "opacity-60" : ""}`}>
-                                        <span className="text-muted w-4 shrink-0">{i + 1}.</span>
-                                        <span className="text-muted w-20 shrink-0">{item.plan_date || "—"}</span>
-                                        <span className="bg-card border border-border rounded px-1.5 py-0.5 shrink-0">{typeLabels[item.type] || item.type}</span>
-                                        <span className="text-accent shrink-0">{item.assigned_to || "—"}</span>
-                                        <span className="text-foreground flex-1 truncate">{item.expected_outcome || item.description || "—"}</span>
-                                        <span className={`shrink-0 ${item.status === "done" ? "text-green-400" : item.status === "cancelled" ? "text-red-400" : "text-yellow-400"}`}>
-                                          {item.status === "done" ? "✓ เสร็จ" : item.status === "cancelled" ? "ยกเลิก" : "รอดำเนิน"}
-                                        </span>
-                                        {item.customer_id && (
-                                          <Link href={`/customers/${item.customer_id}`} onClick={e => e.stopPropagation()}
-                                            className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted hover:text-accent hover:border-accent transition-colors"
-                                            title={`ข้อมูลลูกค้า: ${item.customer_name}`}>
-                                            🏢 ลูกค้า
-                                          </Link>
-                                        )}
+                                      <div key={item.id ?? i} className={`flex items-start gap-3 py-1.5 px-2 rounded-lg text-[11px] ${item.status==="done"?"opacity-60":""}`}>
+                                        <span className="text-muted w-4 shrink-0">{i+1}.</span>
+                                        <span className="text-muted w-20 shrink-0">{item.plan_date||"—"}</span>
+                                        <span className="bg-card border border-border rounded px-1.5 py-0.5 shrink-0">{typeLabels[item.type]||item.type}</span>
+                                        <span className="text-accent shrink-0">{item.assigned_to||"—"}</span>
+                                        <span className="text-foreground flex-1 truncate">{item.expected_outcome||item.description||"—"}</span>
+                                        <span className={`shrink-0 ${item.status==="done"?"text-green-400":(item.status as string)==="cancelled"?"text-red-400":"text-yellow-400"}`}>{item.status==="done"?"✓ เสร็จ":(item.status as string)==="cancelled"?"ยกเลิก":"รอดำเนิน"}</span>
+                                        {item.customer_id && <Link href={`/customers/${item.customer_id}`} onClick={e=>e.stopPropagation()} className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted hover:text-accent hover:border-accent transition-colors" title={`ข้อมูลลูกค้า: ${item.customer_name}`}>🏢 ลูกค้า</Link>}
                                       </div>
                                     ))}
                                   </div>
@@ -854,7 +1387,7 @@ export default function SalesPage() {
             <div className="rounded-xl bg-card border border-border p-5 mb-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-semibold">เป้ายอดขายเดือนนี้</h3>
-                <button onClick={() => setShowQuotaForm(!showQuotaForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showQuotaForm ? "Cancel" : "+ ตั้งเป้า"}</button>
+                {canManageQuota(currentUser) && <button onClick={() => setShowQuotaForm(!showQuotaForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showQuotaForm ? "Cancel" : "+ ตั้งเป้า"}</button>}
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div><p className="text-xs text-muted mb-0.5">เป้ารวม</p><p className="text-2xl font-bold">{(tTarget/1e6).toFixed(1)}<span className="text-sm text-muted ml-0.5">M</span></p></div>
@@ -870,7 +1403,7 @@ export default function SalesPage() {
         })()}
 
         {/* Quota form */}
-        {showQuotaForm && (
+        {showQuotaForm && canManageQuota(currentUser) && (
           <div className="rounded-xl bg-card border border-accent/30 p-5 mb-4">
             <h3 className="text-sm font-semibold mb-3">{quotaForm.user_name ? `แก้ไข: ${quotaForm.user_name.split(" ")[0]}` : "ตั้งเป้าใหม่"}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
@@ -932,11 +1465,13 @@ export default function SalesPage() {
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex flex-col gap-1.5 px-4 shrink-0">
-                      <button onClick={() => { setQuotaForm({ user_name: q.user_name, role: q.role || "sale", month: q.month || currentMonth, quota_target: q.quota_target, actual_sales: q.actual_sales, profit_target: q.profit_target || 0, actual_profit: q.actual_profit || 0, target_gp_percent: q.target_gp_percent || 0, won_deals: q.won_deals || 0, total_activities: q.total_activities || 0 }); setShowQuotaForm(true); }} title="แก้ไข" className="text-[10px] bg-accent/10 text-accent rounded-lg px-3 py-1.5 hover:bg-accent/20">✏️ แก้ไข</button>
-                      <button onClick={async () => { if (!confirm(`ลบเป้า ${q.user_name}?`)) return; const { salesQuotas } = await import("@/lib/firestore"); await salesQuotas.remove(q.id!); await load(); }} title="ลบ" className="text-[10px] text-danger/70 rounded-lg px-3 py-1.5 hover:bg-red-900/20">🗑 ลบ</button>
-                    </div>
+                    {/* Actions — only for managers/admin */}
+                    {canManageQuota(currentUser) && (
+                      <div className="flex flex-col gap-1.5 px-4 shrink-0">
+                        <button onClick={() => { setQuotaForm({ user_name: q.user_name, role: q.role || "sale", month: q.month || currentMonth, quota_target: q.quota_target, actual_sales: q.actual_sales, profit_target: q.profit_target || 0, actual_profit: q.actual_profit || 0, target_gp_percent: q.target_gp_percent || 0, won_deals: q.won_deals || 0, total_activities: q.total_activities || 0 }); setShowQuotaForm(true); }} title="แก้ไข" className="text-[10px] bg-accent/10 text-accent rounded-lg px-3 py-1.5 hover:bg-accent/20">✏️ แก้ไข</button>
+                        <button onClick={async () => { if (!confirm(`ลบเป้า ${q.user_name}?`)) return; const { salesQuotas } = await import("@/lib/firestore"); await salesQuotas.remove(q.id!); await load(); }} title="ลบ" className="text-[10px] text-danger/70 rounded-lg px-3 py-1.5 hover:bg-red-900/20">🗑 ลบ</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

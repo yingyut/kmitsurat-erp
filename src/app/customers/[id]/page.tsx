@@ -180,6 +180,26 @@ export default function CustomerDetailPage() {
               {customer.province && <p>📍 {customer.province}</p>}
               {customer.address && <p className="lg:col-span-3">🏠 {customer.address}</p>}
             </div>
+
+            {/* CRM Ownership */}
+            <div className="flex items-center gap-2 flex-wrap mt-2">
+              {customer.assigned_to ? (
+                <span className="flex items-center gap-1 rounded-full bg-accent/15 border border-accent/25 text-accent px-2.5 py-0.5 text-[11px] font-medium">
+                  🧑‍💼 {customer.assigned_to}
+                  <span className="text-[9px] text-accent/60 ml-0.5">Owner</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 rounded-full bg-card border border-border/50 text-muted px-2.5 py-0.5 text-[11px]">
+                  🧑‍💼 ยังไม่ระบุเจ้าของ
+                </span>
+              )}
+              {(customer.co_owners ?? []).map(co => (
+                <span key={co} className="flex items-center gap-1 rounded-full bg-muted/10 border border-border/50 text-muted px-2.5 py-0.5 text-[11px]">
+                  👥 {co}
+                </span>
+              ))}
+            </div>
+
             {customer.notes && <p className="text-xs text-muted mt-2 italic">📝 {customer.notes}</p>}
 
             {/* Coverage badges */}
@@ -386,45 +406,81 @@ export default function CustomerDetailPage() {
       )}
 
       {/* PROJECTS */}
-      {tab === "projects" && (
-        <div className="rounded-xl bg-card border border-border overflow-hidden">
-          {projects.length === 0 ? <p className="text-muted text-sm p-4">ยังไม่มีโปรเจค</p> : (
-            <table className="w-full text-sm">
-              <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
-                <th className="px-4 py-2.5">ชื่อโปรเจค</th>
-                <th className="px-4 py-2.5">ประเภท</th>
-                <th className="px-4 py-2.5">ผู้รับผิดชอบ</th>
-                <th className="px-4 py-2.5 text-right">มูลค่า</th>
-                <th className="px-4 py-2.5">สถานะ</th>
-                <th className="px-4 py-2.5">หมายเหตุ</th>
-              </tr></thead>
-              <tbody>{projects.map(p => (
-                <tr key={p.id} className="border-b border-border last:border-0 hover:bg-card-hover">
-                  <td className="px-4 py-2.5 font-medium">{p.name}</td>
-                  <td className="px-4 py-2.5 text-muted">{p.type || "-"}</td>
-                  <td className="px-4 py-2.5 text-muted">{p.assigned_to || "-"}</td>
-                  <td className="px-4 py-2.5 text-right">{(p.value || 0).toLocaleString()}</td>
-                  <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${projectStatusColor[p.status]}`}>{projectStatusLabel[p.status]}</span></td>
-                  <td className="px-4 py-2.5 text-muted text-xs">
-                    {p.win_loss_reason && <p>{p.status === "won" ? "✓" : "✗"} {p.win_loss_reason.slice(0, 50)}</p>}
-                    {p.lost_competitor && <p className="text-red-400">→ {p.lost_competitor}</p>}
-                  </td>
-                </tr>
-              ))}</tbody>
-              {projects.length > 0 && (
-                <tfoot>
-                  <tr className="border-t-2 border-border bg-background/50 font-semibold text-xs">
-                    <td className="px-4 py-2.5" colSpan={3}>รวมทั้งหมด ({projects.length} ดีล)</td>
-                    <td className="px-4 py-2.5 text-right text-green-400">{stats.projectValue.toLocaleString()}</td>
-                    <td className="px-4 py-2.5 text-[10px] text-muted">won {stats.wonCount}</td>
-                    <td className="px-4 py-2.5 text-[10px] text-muted">active {stats.activeCount}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          )}
-        </div>
-      )}
+      {tab === "projects" && (() => {
+        const activeSalespeople = [...new Set(
+          projects.filter(p => !["won","lost"].includes(p.status)).map(p => p.assigned_to).filter(Boolean)
+        )];
+        const isMultiSale = activeSalespeople.length > 1;
+        const custOwner = customer?.assigned_to;
+        return (
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            {/* Multi-sale banner */}
+            {isMultiSale && (
+              <div className="px-4 py-2.5 border-b border-amber-500/20 bg-amber-950/20 flex items-start gap-2">
+                <span className="text-amber-400 text-sm mt-0.5">⚡</span>
+                <div>
+                  <p className="text-[11px] text-amber-400 font-semibold">Multi-Sale Active — {activeSalespeople.length} เซลล์กำลังดำเนินการกับลูกค้ารายนี้</p>
+                  <p className="text-[10px] text-amber-400/60">{activeSalespeople.join(" · ")}</p>
+                </div>
+              </div>
+            )}
+            {projects.length === 0 ? <p className="text-muted text-sm p-4">ยังไม่มีโปรเจค</p> : (
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-border text-left text-xs text-muted uppercase">
+                  <th className="px-4 py-2.5">ชื่อโปรเจค</th>
+                  <th className="px-4 py-2.5">ประเภท</th>
+                  <th className="px-4 py-2.5">ผู้รับผิดชอบ</th>
+                  <th className="px-4 py-2.5 text-right">มูลค่า</th>
+                  <th className="px-4 py-2.5">สถานะ</th>
+                  <th className="px-4 py-2.5">หมายเหตุ</th>
+                </tr></thead>
+                <tbody>{projects.map(p => {
+                  const isOwnerSale = custOwner && p.assigned_to === custOwner;
+                  const isClosed = ["won","lost"].includes(p.status);
+                  return (
+                    <tr key={p.id} className="border-b border-border last:border-0 hover:bg-card-hover">
+                      <td className="px-4 py-2.5 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          {p.name}
+                          {isMultiSale && !isClosed && (
+                            <span className={`text-[8px] rounded px-1.5 py-0.5 font-semibold ${isOwnerSale ? "bg-accent/20 text-accent" : "bg-amber-500/15 text-amber-400"}`}>
+                              {isOwnerSale ? "Owner" : "Shared"}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-muted">{p.type || "—"}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          isMultiSale && isOwnerSale ? "bg-accent/15 text-accent border border-accent/20" :
+                          isMultiSale && !isClosed  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
+                          "bg-card border border-border text-muted"
+                        }`}>{p.assigned_to || "—"}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right">{(p.value || 0).toLocaleString()}</td>
+                      <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${projectStatusColor[p.status]}`}>{projectStatusLabel[p.status]}</span></td>
+                      <td className="px-4 py-2.5 text-muted text-xs">
+                        {p.win_loss_reason && <p>{p.status === "won" ? "✓" : "✗"} {p.win_loss_reason.slice(0, 50)}</p>}
+                        {p.lost_competitor && <p className="text-red-400">→ {p.lost_competitor}</p>}
+                      </td>
+                    </tr>
+                  );
+                })}</tbody>
+                {projects.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-border bg-background/50 font-semibold text-xs">
+                      <td className="px-4 py-2.5" colSpan={3}>รวมทั้งหมด ({projects.length} ดีล)</td>
+                      <td className="px-4 py-2.5 text-right text-green-400">{stats.projectValue.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-[10px] text-muted">won {stats.wonCount}</td>
+                      <td className="px-4 py-2.5 text-[10px] text-muted">active {stats.activeCount}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            )}
+          </div>
+        );
+      })()}
 
       {/* SERVICE */}
       {tab === "service" && (

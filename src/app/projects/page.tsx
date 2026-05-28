@@ -108,6 +108,9 @@ export default function ProjectsPage() {
   const [showTransferModal, setShowTransferModal] = useState<Project | null>(null);
   const [transferNote, setTransferNote] = useState("");
 
+  // Multi-sale overlap detection
+  const [custOverlap, setCustOverlap] = useState<Project[]>([]);
+
   // Filtered customers for search
   const filteredCusts = custSearch ? custs.filter(c => c.company_name.toLowerCase().includes(custSearch.toLowerCase()) || c.contact_name.toLowerCase().includes(custSearch.toLowerCase())) : custs;
 
@@ -168,6 +171,17 @@ export default function ProjectsPage() {
   function selectCustomer(id: string) {
     const c = custs.find(x => x.id === id);
     setForm({ ...form, customer_id: id, customer_name: c?.company_name || "" });
+    // Check for active projects from other salespeople on the same customer
+    if (id && currentUser) {
+      const overlap = list.filter(p =>
+        (p.customer_id === id || p.customer_name === c?.company_name) &&
+        p.assigned_to !== currentUser.name &&
+        !["won", "lost"].includes(p.status)
+      );
+      setCustOverlap(overlap);
+    } else {
+      setCustOverlap([]);
+    }
   }
 
   function openAdd() { setEditId(null); setForm(emptyForm); setShowForm(true); setDetail(null); }
@@ -398,21 +412,21 @@ export default function ProjectsPage() {
           </div>
 
           {/* Team KPIs */}
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="rounded-xl bg-card border border-border p-4">
-              <p className="text-xs text-muted/60 mb-1">Active Pipeline</p>
+              <p className="text-xs text-muted/60 mb-1 truncate">Pipeline</p>
               <p className="text-2xl font-bold text-blue-400">{teamKPIs.active}</p>
               <p className="text-xs text-muted mt-0.5">฿{(teamKPIs.activeValue / 1e6).toFixed(1)}M</p>
             </div>
             <div className="rounded-xl bg-card border border-border p-4">
-              <p className="text-xs text-muted/60 mb-1">Won</p>
+              <p className="text-xs text-muted/60 mb-1 truncate">Won</p>
               <p className="text-2xl font-bold text-green-400">{teamKPIs.won}</p>
               <p className="text-xs text-muted mt-0.5">฿{(teamKPIs.wonValue / 1e6).toFixed(1)}M</p>
             </div>
             <div className="rounded-xl bg-card border border-border p-4">
-              <p className="text-xs text-muted/60 mb-1">Win Rate ทีม</p>
+              <p className="text-xs text-muted/60 mb-1 truncate">Win Rate</p>
               <p className="text-2xl font-bold">{teamKPIs.winRate}<span className="text-base">%</span></p>
-              <p className="text-xs text-muted mt-0.5">{teamKPIs.won} won / {teamKPIs.won + teamKPIs.lost} closed</p>
+              <p className="text-xs text-muted mt-0.5 truncate">{teamKPIs.won}W / {teamKPIs.won + teamKPIs.lost} closed</p>
             </div>
             <div className="rounded-xl bg-card border border-border p-4">
               <p className="text-xs text-muted/60 mb-1">ดีลทั้งหมด</p>
@@ -587,44 +601,43 @@ export default function ProjectsPage() {
       {!loading && list.length > 0 && showSummary && (
         <div className="rounded-xl bg-card border border-border p-4 mb-4">
           {/* KPI row */}
-          <div className="grid grid-cols-4 gap-4 mb-4">
-            <div><p className="text-xs text-muted mb-0.5">Total Deals</p><p className="text-2xl font-bold">{stats.total}</p><p className="text-xs text-muted">{(stats.totalValue/1e6).toFixed(1)}M THB</p></div>
-            <div><p className="text-xs text-muted mb-0.5">Active Pipeline</p><p className="text-2xl font-bold text-blue-400">{stats.active}</p><p className="text-xs text-muted">{(stats.activeValue/1e6).toFixed(1)}M THB</p></div>
-            <div><p className="text-xs text-muted mb-0.5">Won</p><p className="text-2xl font-bold text-green-400">{stats.won}</p><p className="text-xs text-muted">{(stats.wonValue/1e6).toFixed(1)}M THB</p></div>
-            <div><p className="text-xs text-muted mb-0.5">Win Rate</p><p className="text-2xl font-bold">{winRate}<span className="text-lg">%</span></p><p className="text-xs text-muted">{stats.won} won / {closedCount} closed</p></div>
-          </div>
-
-          {/* Pipeline funnel bar */}
-          <div className="mb-3">
-            <div className="flex rounded-lg overflow-hidden h-8">
-              {statuses.filter(s => s !== "lost").map(s => {
-                const count = list.filter(p => p.status === s).length;
-                if (count === 0 && s !== "won") return null;
-                const total = list.filter(p => p.status !== "lost").length || 1;
-                const pct = (count / total) * 100;
-                const colors: Record<string, string> = { lead: "bg-gray-600", opportunity: "bg-blue-600", proposal: "bg-purple-600", negotiation: "bg-yellow-600", won: "bg-green-600" };
-                return <div key={s} className={`${colors[s]} flex items-center justify-center text-[10px] font-medium text-white transition-all`} style={{ width: `${Math.max(pct, 8)}%` }} title={`${statusLabels[s]}: ${count} (${pct.toFixed(0)}%)`}>{count > 0 && `${statusLabels[s]} ${count}`}</div>;
-              })}
-            </div>
-            {list.filter(p => p.status === "lost").length > 0 && <p className="text-[10px] text-red-400 mt-1">Lost: {stats.lost} ({(stats.lostValue/1e6).toFixed(1)}M)</p>}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div><p className="text-xs text-muted mb-0.5 truncate">Total Deals</p><p className="text-2xl font-bold">{stats.total}</p><p className="text-xs text-muted">{(stats.totalValue/1e6).toFixed(1)}M THB</p></div>
+            <div><p className="text-xs text-muted mb-0.5 truncate">Pipeline</p><p className="text-2xl font-bold text-blue-400">{stats.active}</p><p className="text-xs text-muted">{(stats.activeValue/1e6).toFixed(1)}M THB</p></div>
+            <div><p className="text-xs text-muted mb-0.5 truncate">Won</p><p className="text-2xl font-bold text-green-400">{stats.won}</p><p className="text-xs text-muted">{(stats.wonValue/1e6).toFixed(1)}M THB</p></div>
+            <div><p className="text-xs text-muted mb-0.5 truncate">Win Rate</p><p className="text-2xl font-bold">{winRate}<span className="text-lg">%</span></p><p className="text-xs text-muted truncate">{stats.won}W / {closedCount} closed</p></div>
           </div>
 
           {/* Stage buttons */}
-          <div className="flex gap-1.5">
-            {statuses.map(s => {
-              const count = list.filter(p => p.status === s).length;
-              const value = list.filter(p => p.status === s).reduce((sum, p) => sum + (p.value || 0), 0);
-              const colors: Record<string, string> = { lead: "border-gray-600", opportunity: "border-blue-600", proposal: "border-purple-600", negotiation: "border-yellow-600", won: "border-green-600", lost: "border-red-600" };
-              return (
-                <button key={s} onClick={() => setStatusFilter(statusFilter === s ? "all" : s)}
-                  className={`flex-1 rounded-lg border-2 px-2 py-2 text-center transition-all ${statusFilter === s ? `${colors[s]} bg-accent/10` : "border-transparent bg-background hover:bg-card-hover"}`}>
-                  <p className={`text-lg font-bold ${statusColor[s]?.split(" ")[1] || ""}`}>{count}</p>
-                  <p className="text-[9px] text-muted leading-tight">{statusLabels[s]}</p>
-                  <p className="text-[9px] text-muted">{(value/1000).toFixed(0)}K</p>
-                </button>
-              );
-            })}
-          </div>
+          {(() => {
+            const stageStyle: Record<string, { active: string; inactive: string; num: string }> = {
+              lead:        { active: "border-slate-500 bg-slate-500/10",   inactive: "border-slate-500/30 bg-background hover:bg-slate-500/5",   num: "text-slate-400" },
+              opportunity: { active: "border-blue-500 bg-blue-500/10",     inactive: "border-blue-500/30 bg-background hover:bg-blue-500/5",     num: "text-blue-400" },
+              proposal:    { active: "border-purple-500 bg-purple-500/10", inactive: "border-purple-500/30 bg-background hover:bg-purple-500/5", num: "text-purple-400" },
+              negotiation: { active: "border-yellow-500 bg-yellow-500/10", inactive: "border-yellow-500/30 bg-background hover:bg-yellow-500/5", num: "text-yellow-400" },
+              won:         { active: "border-green-500 bg-green-500/10",   inactive: "border-green-500/30 bg-background hover:bg-green-500/5",   num: "text-green-400" },
+              lost:        { active: "border-red-500 bg-red-500/10",       inactive: "border-red-500/30 bg-background hover:bg-red-500/5",       num: "text-red-400" },
+            };
+            return (
+              <div className="overflow-x-auto -mx-1 px-1 pb-0.5">
+                <div className="flex gap-1.5 w-max min-w-full">
+                  {statuses.map(s => {
+                    const count = list.filter(p => p.status === s).length;
+                    const value = list.filter(p => p.status === s).reduce((sum, p) => sum + (p.value || 0), 0);
+                    const st = stageStyle[s];
+                    return (
+                      <button key={s} onClick={() => setStatusFilter(statusFilter === s ? "all" : s)}
+                        className={`flex-1 min-w-[56px] rounded-lg border-2 px-2 py-2 text-center transition-all ${statusFilter === s ? st.active : st.inactive}`}>
+                        <p className={`text-lg font-bold ${st.num}`}>{count}</p>
+                        <p className="text-[9px] text-muted leading-tight">{statusLabels[s]}</p>
+                        <p className="text-[9px] text-muted">{(value/1000).toFixed(0)}K</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -670,6 +683,18 @@ export default function ProjectsPage() {
                 </div>
                 <button type="button" onClick={() => setShowNewCust(!showNewCust)} title="สร้างลูกค้าใหม่" className="shrink-0 rounded-lg border border-border px-2.5 py-2 text-sm text-accent hover:bg-card-hover self-end">+</button>
               </div>
+              {/* Multi-sale overlap warning */}
+              {custOverlap.length > 0 && (
+                <div className="mt-1.5 rounded-lg bg-amber-950/40 border border-amber-500/30 px-3 py-2">
+                  <p className="text-[11px] text-amber-400 font-medium mb-1">⚡ ลูกค้านี้มีโปรเจคเปิดอยู่จากเซลล์อื่น ({custOverlap.length})</p>
+                  <div className="space-y-0.5">
+                    {custOverlap.map(p => (
+                      <p key={p.id} className="text-[10px] text-amber-300/70">• {p.assigned_to}: {p.name} · <span className="opacity-60">{statusLabels[p.status]}</span></p>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-amber-400/40 mt-1.5">คุณยังสร้างโปรเจคได้ — ระบบจะบันทึกแยกตามผู้รับผิดชอบ</p>
+                </div>
+              )}
               {showNewCust && (
                 <div className="mt-2 p-3 rounded-lg bg-background border border-accent/50">
                   <p className="text-[10px] text-accent font-medium mb-2">สร้างลูกค้าใหม่</p>
@@ -910,51 +935,45 @@ export default function ProjectsPage() {
             return (
               <div key={p.id} className="rounded-xl bg-card border border-border overflow-hidden hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all">
                 {/* Compact row */}
-                <div className="flex items-center cursor-pointer min-h-[76px]" onClick={() => toggleExpand(p.id!)}>
-                  {/* Status bar — thick */}
-                  <div className={`w-1.5 self-stretch shrink-0 ${p.status === "won" ? "bg-green-500" : p.status === "lost" ? "bg-red-500" : p.status === "negotiation" ? "bg-yellow-500" : p.status === "proposal" ? "bg-purple-500" : p.status === "opportunity" ? "bg-blue-500" : "bg-gray-600"}`} />
+                <div className="flex items-stretch cursor-pointer" onClick={() => toggleExpand(p.id!)}>
+                  {/* Status bar */}
+                  <div className={`w-1.5 shrink-0 ${p.status === "won" ? "bg-green-500" : p.status === "lost" ? "bg-red-500" : p.status === "negotiation" ? "bg-yellow-500" : p.status === "proposal" ? "bg-purple-500" : p.status === "opportunity" ? "bg-blue-500" : "bg-gray-600"}`} />
 
-                  <div className="flex items-center gap-4 flex-1 min-w-0 px-5 py-4">
-                    {/* Name + customer */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-[15px] truncate leading-tight">{p.name}</p>
-                        {p.re_engage && <span className="text-xs text-amber-400 shrink-0">📌</span>}
-                        {p.reminder_date && p.reminder_type !== "none" && !p.reminder_sent && <span className="text-xs text-blue-400 shrink-0">🔔</span>}
-                        {cCount > 0 && <span className="text-xs text-emerald-400 shrink-0">🛡️</span>}
+                  <div className="flex-1 min-w-0 px-4 py-3">
+                    {/* Row 1: name + value */}
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="font-bold text-[15px] truncate leading-tight">{p.name}</p>
+                          {p.re_engage && <span className="text-xs text-amber-400 shrink-0">📌</span>}
+                          {p.reminder_date && p.reminder_type !== "none" && !p.reminder_sent && <span className="text-xs text-blue-400 shrink-0">🔔</span>}
+                          {cCount > 0 && <span className="text-xs text-emerald-400 shrink-0">🛡️</span>}
+                        </div>
+                        <p className="text-sm text-muted truncate mt-0.5">
+                          {p.customer_name}{p.assigned_to ? ` · ${p.assigned_to.split(" ")[0]}` : ""}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-sm text-muted">{p.customer_name}</span>
-                        {p.assigned_to && <span className="text-xs text-muted/50">· {p.assigned_to.split(" ")[0]}</span>}
+                      <div className="text-right shrink-0">
+                        <p className={`text-lg font-bold tabular-nums ${p.status === "won" ? "text-green-400" : p.status === "lost" ? "text-red-400/50" : "text-foreground"}`}>{(p.value || 0).toLocaleString()}</p>
+                        <p className="text-[10px] text-muted">THB</p>
                       </div>
                     </div>
-
-                    {/* Tags */}
-                    {types.length > 0 && (
-                      <div className="hidden lg:flex gap-1 shrink-0">
-                        {types.slice(0, 3).map(t => <span key={t} className="rounded-md bg-accent/10 text-accent px-2 py-0.5 text-[10px] whitespace-nowrap">{t}</span>)}
-                        {types.length > 3 && <span className="text-[10px] text-muted">+{types.length - 3}</span>}
-                      </div>
-                    )}
-
-                    {/* Value — big + colored */}
-                    <div className="text-right shrink-0 min-w-[100px]">
-                      <p className={`text-xl font-bold tabular-nums ${p.status === "won" ? "text-green-400" : p.status === "lost" ? "text-red-400/50" : "text-foreground"}`}>{(p.value || 0).toLocaleString()}</p>
-                      <p className="text-[10px] text-muted">THB</p>
-                    </div>
-
-                    {/* Status badge — bigger */}
-                    <div className="flex flex-col items-end gap-1.5 shrink-0 min-w-[90px]">
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusColor[p.status]}`}>{statusLabels[p.status]}</span>
+                    {/* Row 2: tags (desktop) + status badge + actions */}
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      {types.length > 0 && (
+                        <div className="hidden lg:flex gap-1">
+                          {types.slice(0, 3).map(t => <span key={t} className="rounded-md bg-accent/10 text-accent px-2 py-0.5 text-[10px] whitespace-nowrap">{t}</span>)}
+                          {types.length > 3 && <span className="text-[10px] text-muted">+{types.length - 3}</span>}
+                        </div>
+                      )}
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusColor[p.status]}`}>{statusLabels[p.status]}</span>
                       {(() => { const b = OWNERSHIP_BADGE[ownershipOf(p)]; return b ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium border ${b.cls}`}>{b.label}</span> : null; })()}
-                      <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                      <div className="ml-auto flex items-center gap-3 shrink-0" onClick={e => e.stopPropagation()}>
                         <button onClick={() => openEdit(p)} className="text-[10px] text-accent hover:underline">แก้ไข</button>
                         <button onClick={() => handleDelete(p.id!, p.name)} className="text-[10px] text-danger hover:underline">ลบ</button>
+                        <span className="text-muted/30 text-sm">{isExpanded ? "▲" : "▼"}</span>
                       </div>
                     </div>
-
-                    {/* Expand indicator */}
-                    <span className="text-muted/30 text-sm shrink-0">{isExpanded ? "▲" : "▼"}</span>
                   </div>
                 </div>
 

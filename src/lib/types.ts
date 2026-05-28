@@ -164,6 +164,8 @@ export interface Customer {
   province: string;
   org_type: "government" | "private" | "education" | "hospital" | "hotel" | "other";
   notes: string;
+  assigned_to?: string;   // primary owner (user.name)
+  co_owners?: string[];   // shared CRM ownership
 }
 
 export interface Project {
