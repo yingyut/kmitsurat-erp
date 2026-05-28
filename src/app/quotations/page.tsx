@@ -419,7 +419,7 @@ export default function QuotationsPage() {
               <label className="text-[10px] text-muted">ผู้สร้าง / เซลล์ <span className="text-muted/60">(ใช้ใน QT number)</span></label>
               <select value={createdById} onChange={(e) => setCreatedById(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
                 <option value="">-- เลือกเซลล์ --</option>
-                {users.map(u => (
+                {(ownOnly ? users.filter(u => u.name === currentUser?.name || u.email === currentUser?.email) : users).map(u => (
                   <option key={u.id} value={u.id}>{u.name} {u.sales_code ? `[${u.sales_code}]` : "(ไม่มี code)"}</option>
                 ))}
               </select>
