@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
@@ -65,6 +65,27 @@ export default function SalesPage() {
   const [showMgDash, setShowMgDash] = useState(false);
   const [mgDate, setMgDate] = useState(today);
 
+  // Derived calendar values — lifted out of IIFE so nav functions are cheap
+  const [calY, calM] = useMemo(() => calNavDate.split("-").map(Number), [calNavDate]);
+  function navPrev() {
+    if (apView === "year") { setCalNavDate(`${calY - 1}-${String(calM).padStart(2, "0")}`); }
+    else if (apView === "month") { const d = new Date(calY, calM - 2, 1); setCalNavDate(d.toISOString().slice(0, 7)); }
+    else if (apView === "week") { const d = new Date(new Date(calWeekStart + "T12:00:00").getTime() - 7 * 86400000); setCalWeekStart(d.toISOString().slice(0, 10)); }
+    else if (apView === "day") { const d = new Date(new Date(calDayDate + "T12:00:00").getTime() - 86400000); setCalDayDate(d.toISOString().slice(0, 10)); }
+  }
+  function navNext() {
+    if (apView === "year") { setCalNavDate(`${calY + 1}-${String(calM).padStart(2, "0")}`); }
+    else if (apView === "month") { const d = new Date(calY, calM, 1); setCalNavDate(d.toISOString().slice(0, 7)); }
+    else if (apView === "week") { const d = new Date(new Date(calWeekStart + "T12:00:00").getTime() + 7 * 86400000); setCalWeekStart(d.toISOString().slice(0, 10)); }
+    else if (apView === "day") { const d = new Date(new Date(calDayDate + "T12:00:00").getTime() + 86400000); setCalDayDate(d.toISOString().slice(0, 10)); }
+  }
+  function navToday() {
+    setCalNavDate(today.slice(0, 7));
+    const dow = new Date().getDay(); const monOff = dow === 0 ? 6 : dow - 1;
+    setCalWeekStart(new Date(Date.now() - monOff * 86400000).toISOString().slice(0, 10));
+    setCalDayDate(today);
+  }
+
   // Activity/Plan form
   const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing" | "prospect", project_id: "", project_name: "", assigned_to: "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "", objective: "", outcome: "", plan_status: "planned" as "planned" | "in_progress" | "completed" | "rescheduled", rescheduled_to: "", auto_followup: false });
 
@@ -100,6 +121,15 @@ export default function SalesPage() {
   const ownSalesOnly = !canSeeAll(currentUser);
   const canReassign = hasPermission("assign_job");
   const myName = currentUser?.name ?? "";
+
+  // Memoized plan lists — avoids re-filtering on every calendar nav click
+  const allPlans = useMemo(() => activities.filter(a => {
+    if (!a.is_plan) return false;
+    if (apPersonFilter) return a.assigned_to === apPersonFilter;
+    if (ownSalesOnly) return !a.assigned_to || isOwnRecord(a, currentUser);
+    return true;
+  }), [activities, apPersonFilter, ownSalesOnly, currentUser]);
+  const viewPlans = useMemo(() => typeFilter ? allPlans.filter(a => a.type === typeFilter) : allPlans, [allPlans, typeFilter]);
 
   // KPIs — scoped to own data when ownSalesOnly (isOwner รองรับ name + email)
   const monthQuota = quotas.filter(q => q.month === currentMonth && (!ownSalesOnly || isOwnRecord({ user_name: q.user_name }, currentUser)));
@@ -476,8 +506,7 @@ export default function SalesPage() {
         const dhNames = ["จ.","อ.","พ.","พฤ.","ศ.","ส.","อา."];
         const thaiDayFull = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
 
-        // Month grid
-        const [calY, calM] = calNavDate.split("-").map(Number);
+        // Month grid — calY/calM come from component-level useMemo
         const firstOfMonth = new Date(calY, calM - 1, 1);
         const firstDow = (firstOfMonth.getDay() + 6) % 7;
         const daysInMonth = new Date(calY, calM, 0).getDate();
@@ -498,14 +527,7 @@ export default function SalesPage() {
         const salesTeam = users.filter(u => salesRoles.includes(u.role) || (u.extra_roles ?? []).some(r => salesRoles.includes(r)));
         const visibleTeam = ownSalesOnly ? salesTeam.filter(u => u.name === currentUser?.name) : salesTeam;
 
-        // Plans
-        const allPlans = activities.filter(a => {
-          if (!a.is_plan) return false;
-          if (apPersonFilter) return a.assigned_to === apPersonFilter;
-          if (ownSalesOnly) return !a.assigned_to || isOwnRecord(a, currentUser);
-          return true;
-        });
-        const viewPlans = typeFilter ? allPlans.filter(a => a.type === typeFilter) : allPlans;
+        // Plans — allPlans/viewPlans come from component-level useMemo
         const plansOn = (d: string) => viewPlans.filter(a => a.plan_date === d);
 
         // Side panel
@@ -516,24 +538,7 @@ export default function SalesPage() {
         const kpiIP   = allPlans.filter(p => p.status === "in_progress").length;
         const kpiNew  = allPlans.filter(p => p.status === "new").length;
 
-        function navPrev() {
-          if (apView === "year") { setCalNavDate(`${calY - 1}-${String(calM).padStart(2, "0")}`); }
-          else if (apView === "month") { const d = new Date(calY, calM - 2, 1); setCalNavDate(d.toISOString().slice(0, 7)); }
-          else if (apView === "week") { const d = new Date(new Date(calWeekStart + "T12:00:00").getTime() - 7 * 86400000); setCalWeekStart(d.toISOString().slice(0, 10)); }
-          else if (apView === "day") { const d = new Date(new Date(calDayDate + "T12:00:00").getTime() - 86400000); setCalDayDate(d.toISOString().slice(0, 10)); }
-        }
-        function navNext() {
-          if (apView === "year") { setCalNavDate(`${calY + 1}-${String(calM).padStart(2, "0")}`); }
-          else if (apView === "month") { const d = new Date(calY, calM, 1); setCalNavDate(d.toISOString().slice(0, 7)); }
-          else if (apView === "week") { const d = new Date(new Date(calWeekStart + "T12:00:00").getTime() + 7 * 86400000); setCalWeekStart(d.toISOString().slice(0, 10)); }
-          else if (apView === "day") { const d = new Date(new Date(calDayDate + "T12:00:00").getTime() + 86400000); setCalDayDate(d.toISOString().slice(0, 10)); }
-        }
-        function navToday() {
-          setCalNavDate(today.slice(0, 7));
-          const dow = new Date().getDay(); const monOff = dow === 0 ? 6 : dow - 1;
-          setCalWeekStart(new Date(Date.now() - monOff * 86400000).toISOString().slice(0, 10));
-          setCalDayDate(today);
-        }
+        // navPrev/navNext/navToday defined at component level
 
         function chip(plan: SalesActivity) {
           const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
