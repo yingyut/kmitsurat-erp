@@ -56,8 +56,8 @@ function KpiCard({ label, value, sub, color, href, pct, alert, size }: {
   const valColor = { green: "text-emerald-500", blue: "text-blue-500", purple: "text-violet-500", amber: "text-amber-500", red: "text-orange-500", cyan: "text-sky-500", muted: "text-muted" }[color];
   const barColor = { green: "bg-emerald-500", blue: "bg-blue-500", purple: "bg-violet-500", amber: "bg-amber-500", red: "bg-orange-500", cyan: "bg-sky-500", muted: "bg-muted" }[color];
   const inner = (
-    <div className={`rounded-xl bg-card border p-4 min-h-[110px] flex flex-col justify-between transition-colors ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500" : "border-border/60 hover:border-border/90"}`}>
-      <p className="text-[11px] font-medium text-muted/60 uppercase tracking-wider leading-none">{label}</p>
+    <div className={`rounded-xl bg-card border ${size === "sm" ? "p-3 min-h-[90px]" : "p-4 min-h-[110px]"} flex flex-col justify-between transition-colors ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500" : "border-border/60 hover:border-border/90"}`}>
+      <p className={`text-[11px] font-medium text-muted/60 uppercase leading-none ${size === "sm" ? "tracking-normal truncate" : "tracking-wider"}`}>{label}</p>
       <p className={`${size === "sm" ? "text-xl" : "text-[1.75rem]"} font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
       <div className="space-y-1.5">
         {pct !== undefined && (
@@ -65,7 +65,7 @@ function KpiCard({ label, value, sub, color, href, pct, alert, size }: {
             <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
           </div>
         )}
-        <p className="text-[11px] text-muted/60 leading-snug min-h-[14px]">{sub ?? ""}</p>
+        <p className={`text-[11px] text-muted/60 leading-snug min-h-[14px] ${size === "sm" ? "truncate" : ""}`}>{sub ?? ""}</p>
       </div>
     </div>
   );
