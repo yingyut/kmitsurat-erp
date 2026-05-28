@@ -56,7 +56,7 @@ function KpiCard({ label, value, sub, color, href, pct, alert, size }: {
   const valColor = { green: "text-emerald-500", blue: "text-blue-500", purple: "text-violet-500", amber: "text-amber-500", red: "text-orange-500", cyan: "text-sky-500", muted: "text-muted" }[color];
   const barColor = { green: "bg-emerald-500", blue: "bg-blue-500", purple: "bg-violet-500", amber: "bg-amber-500", red: "bg-orange-500", cyan: "bg-sky-500", muted: "bg-muted" }[color];
   const inner = (
-    <div className={`rounded-xl bg-card border ${size === "sm" ? "p-3 min-h-[90px]" : "p-4 min-h-[110px]"} flex flex-col justify-between transition-colors ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500" : "border-border/60 hover:border-border/90"}`}>
+    <div className={`rounded-xl bg-card border ${size === "sm" ? "p-3 min-h-[90px]" : "p-4 min-h-[110px]"} flex flex-col justify-between transition-all duration-150 ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18),0_1px_4px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(234,88,12,0.2),0_2px_6px_rgba(0,0,0,0.1)]" : "border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09),0_2px_6px_rgba(0,0,0,0.08)]"} active:translate-y-[2px] active:shadow-none`}>
       <p className={`text-[11px] font-medium text-muted/60 uppercase leading-none ${size === "sm" ? "tracking-normal truncate" : "tracking-wider"}`}>{label}</p>
       <p className={`${size === "sm" ? "text-xl" : "text-[1.75rem]"} font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
       <div className="space-y-1.5">
