@@ -546,6 +546,7 @@ export interface Quotation {
   status: "draft" | "sent" | "follow_up" | "revised" | "approved" | "rejected" | "expired";
   notes: string;
   created_by: string;
+  salesperson?: string;        // เจ้าของยอดขาย (อาจต่างจากคนสร้าง)
   // Revision history
   version: number;                // current version (1, 2, 3...)
   revisions?: QuotationRevision[];

@@ -34,6 +34,10 @@ function priceForTier(p: Product, tier: "general" | "member" | "special"): numbe
   if (tier === "special") return p.price_special || p.selling_price || 0;
   return p.selling_price || 0;
 }
+function fmtMoney(n: number, dec = 2): string {
+  return n.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function parseNum(s: string): number { return Number(s.replace(/,/g, "")) || 0; }
 
 export default function QuotationsPage() {
   const { currentUser, hasPermission } = useCurrentUser();
@@ -73,7 +77,7 @@ export default function QuotationsPage() {
     try {
       const [q, c, p, pr, u] = await Promise.all([fs.quotations.list(), fs.customers.list(), fs.projects.list(), fs.products.list(), fs.users.list()]);
       setList(q); setCusts(c); setProjs(p); setProds(pr.filter((x) => x.active));
-      setUsers(u.filter(x => x.active && (x.role === "sale" || x.role === "avenger" || x.role === "admin")));
+      setUsers(u.filter(x => x.active));
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }
   useEffect(() => { setMounted(true); load(); }, []);
@@ -201,7 +205,7 @@ export default function QuotationsPage() {
         total_cost: totalCost, total_selling: subtotalSelling, total_discount: totalDiscount,
         gross_profit: grossProfit, gp_percent: gpPercent,
         vat_mode: vatMode, vat_rate: vatRate, vat_amount: vatAmount, grand_total: grandTotal,
-        status: "draft", notes, created_by: creator?.name || "",
+        status: "draft", notes, created_by: creator?.name || "", salesperson: creator?.name || "",
       } as unknown as Record<string, unknown>);
       setCustId(""); setCustName(""); setCustSearch(""); setProjId(""); setProjName(""); setItems([{ ...emptyItem }]); setNotes("");
       const me = users.find(u => u.name === currentUser?.name || u.email === currentUser?.email); if (me?.id) setCreatedById(me.id);
@@ -259,6 +263,13 @@ export default function QuotationsPage() {
     const { quotations } = await import("@/lib/firestore");
     await quotations.update(q.id!, { status });
     setSelectedQ(prev => prev?.id === q.id ? { ...prev, status } as Quotation : prev);
+    await load();
+  }
+
+  async function changeSalesperson(q: Quotation, salesperson: string) {
+    const { quotations } = await import("@/lib/firestore");
+    await quotations.update(q.id!, { salesperson });
+    setSelectedQ(prev => prev?.id === q.id ? { ...prev, salesperson } as Quotation : prev);
     await load();
   }
 
@@ -404,6 +415,9 @@ export default function QuotationsPage() {
                         </button>
                       ))
                     }
+                    <Link href="/customers" className="w-full text-left px-3 py-2 text-sm text-accent hover:bg-accent/10 border-t border-border flex items-center gap-1.5 font-medium sticky bottom-0 bg-card">
+                      + สร้างลูกค้าใหม่
+                    </Link>
                   </div>
                 )}
               </div>
@@ -435,7 +449,7 @@ export default function QuotationsPage() {
               <select value={createdById} onChange={(e) => setCreatedById(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
                 <option value="">-- เลือกเซลล์ --</option>
                 {(ownOnly ? users.filter(u => u.name === currentUser?.name || u.email === currentUser?.email) : users).map(u => (
-                  <option key={u.id} value={u.id}>{u.name} {u.sales_code ? `[${u.sales_code}]` : "(ไม่มี code)"}</option>
+                  <option key={u.id} value={u.id}>{u.name}{u.sales_code ? ` [${u.sales_code}]` : ""}</option>
                 ))}
               </select>
               {createdById && !users.find(u => u.id === createdById)?.sales_code && (
@@ -448,15 +462,15 @@ export default function QuotationsPage() {
           <div className="overflow-visible mb-3">
             <table className="w-full text-xs">
               <thead><tr className="text-left text-muted uppercase">
-                <th className="px-2 py-1">ชื่อสินค้า / บริการ</th>
-                <th className="px-2 py-1 w-20">รหัส</th>
-                <th className="px-2 py-1 w-14">หน่วย</th>
-                <th className="px-2 py-1 w-14">Qty</th>
-                <th className="px-2 py-1 w-24">ทุน</th>
-                <th className="px-2 py-1 w-24">ขาย</th>
-                <th className="px-2 py-1 w-20">ส่วนลด</th>
-                <th className="px-2 py-1 w-24 text-right">รวม</th>
-                <th className="px-2 py-1 w-14 text-right">Margin</th>
+                <th className="px-2 py-0.5">ชื่อสินค้า / บริการ</th>
+                <th className="px-2 py-0.5 w-20">รหัส</th>
+                <th className="px-2 py-0.5 w-14">หน่วย</th>
+                <th className="px-2 py-0.5 w-14">Qty</th>
+                <th className="px-2 py-0.5 w-28">ทุน</th>
+                <th className="px-2 py-0.5 w-28">ขาย</th>
+                <th className="px-2 py-0.5 w-24">ส่วนลด</th>
+                <th className="px-2 py-0.5 w-28 text-right">รวม</th>
+                <th className="px-2 py-0.5 w-14 text-right">Margin</th>
                 <th className="px-2 py-1 w-8"></th>
               </tr></thead>
               <tbody>{items.map((item, idx) => (
@@ -567,15 +581,15 @@ export default function QuotationsPage() {
                       <p className="text-[9px] text-amber-400 mt-0.5">✏️ Custom item (ไม่ผูกกับสินค้าในระบบ)</p>
                     )}
                   </td>
-                  <td className="px-2 py-1"><input value={item.product_code} onChange={(e) => updateItemText(idx, "product_code", e.target.value)} placeholder="—" className="w-full rounded bg-background border border-border px-2 py-1 text-xs font-mono focus:outline-none focus:border-accent" /></td>
-                  <td className="px-2 py-1"><input value={item.unit} onChange={(e) => updateItemText(idx, "unit", e.target.value)} placeholder="pcs" className="w-full rounded bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent" /></td>
-                  <td className="px-2 py-1"><input type="number" value={item.qty || ""} onChange={(e) => updateItem(idx, "qty", Number(e.target.value))} className="w-full rounded bg-background border border-border px-2 py-1 text-xs" /></td>
-                  <td className="px-2 py-1"><input type="number" value={item.cost_price || ""} onChange={(e) => updateItem(idx, "cost_price", Number(e.target.value))} className="w-full rounded bg-background border border-border px-2 py-1 text-xs" /></td>
-                  <td className="px-2 py-1"><input type="number" value={item.selling_price || ""} onChange={(e) => updateItem(idx, "selling_price", Number(e.target.value))} className="w-full rounded bg-background border border-border px-2 py-1 text-xs" /></td>
-                  <td className="px-2 py-1"><input type="number" value={item.discount || ""} onChange={(e) => updateItem(idx, "discount", Number(e.target.value))} className="w-full rounded bg-background border border-border px-2 py-1 text-xs" /></td>
-                  <td className="px-2 py-1 text-right">{item.total_selling.toLocaleString()}</td>
-                  <td className={`px-2 py-1 text-right ${item.margin_percent >= 20 ? "text-green-400" : item.margin_percent >= 0 ? "text-yellow-400" : "text-red-400"}`}>{item.margin_percent.toFixed(1)}%</td>
-                  <td className="px-2 py-1">{items.length > 1 && <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-danger" title="ลบรายการ">✕</button>}</td>
+                  <td className="px-2 py-0.5"><input value={item.product_code} onChange={(e) => updateItemText(idx, "product_code", e.target.value)} placeholder="—" className="w-full rounded bg-background border border-border px-2 py-0.5 text-xs font-mono focus:outline-none focus:border-accent" /></td>
+                  <td className="px-2 py-0.5"><input value={item.unit} onChange={(e) => updateItemText(idx, "unit", e.target.value)} placeholder="pcs" className="w-full rounded bg-background border border-border px-2 py-0.5 text-xs focus:outline-none focus:border-accent" /></td>
+                  <td className="px-2 py-0.5"><input type="number" value={item.qty || ""} onChange={(e) => updateItem(idx, "qty", Number(e.target.value))} className="w-full rounded bg-background border border-border px-2 py-0.5 text-xs" /></td>
+                  <td className="px-2 py-0.5"><input type="text" inputMode="decimal" value={item.cost_price ? fmtMoney(item.cost_price, 0) : ""} onChange={e => updateItem(idx, "cost_price", parseNum(e.target.value))} className="w-full rounded bg-background border border-border px-2 py-0.5 text-xs text-right font-mono focus:outline-none focus:border-accent" /></td>
+                  <td className="px-2 py-0.5"><input type="text" inputMode="decimal" value={item.selling_price ? fmtMoney(item.selling_price, 0) : ""} onChange={e => updateItem(idx, "selling_price", parseNum(e.target.value))} className="w-full rounded bg-background border border-border px-2 py-0.5 text-xs text-right font-mono focus:outline-none focus:border-accent" /></td>
+                  <td className="px-2 py-0.5"><input type="text" inputMode="decimal" value={item.discount ? fmtMoney(item.discount, 0) : ""} onChange={e => updateItem(idx, "discount", parseNum(e.target.value))} className="w-full rounded bg-background border border-border px-2 py-0.5 text-xs text-right font-mono focus:outline-none focus:border-accent" /></td>
+                  <td className="px-2 py-0.5 text-right font-mono">{fmtMoney(item.total_selling)}</td>
+                  <td className={`px-2 py-0.5 text-right ${item.margin_percent >= 20 ? "text-green-400" : item.margin_percent >= 0 ? "text-yellow-400" : "text-red-400"}`}>{item.margin_percent.toFixed(1)}%</td>
+                  <td className="px-2 py-0.5">{items.length > 1 && <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-danger" title="ลบรายการ">✕</button>}</td>
                 </tr>))}</tbody>
             </table>
           </div>
@@ -607,10 +621,10 @@ export default function QuotationsPage() {
 
           {/* Totals */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4 text-sm">
-            <div className="rounded-lg bg-background border border-border p-3"><p className="text-xs text-muted">Total Cost</p><p className="font-semibold">{totalCost.toLocaleString()}</p></div>
+            <div className="rounded-lg bg-background border border-border p-3"><p className="text-xs text-muted">Total Cost</p><p className="font-semibold font-mono">{fmtMoney(totalCost)}</p></div>
             <div className="rounded-lg bg-background border border-border p-3">
               <p className="text-xs text-muted">{vatMode === "inclusive" ? "ก่อน VAT" : "Subtotal"}</p>
-              <p className="font-semibold">{beforeVat.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+              <p className="font-semibold font-mono">{fmtMoney(beforeVat)}</p>
             </div>
             {vatMode !== "none" && (
               <div className="rounded-lg bg-background border border-border p-3">
@@ -620,10 +634,10 @@ export default function QuotationsPage() {
             )}
             <div className="rounded-lg bg-accent/10 border border-accent/50 p-3">
               <p className="text-xs text-muted">Grand Total</p>
-              <p className="font-bold text-accent">{grandTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+              <p className="font-bold text-accent font-mono">{fmtMoney(grandTotal)}</p>
               <p className="text-[10px] text-muted">{vatModeLabel[vatMode]}</p>
             </div>
-            <div className="rounded-lg bg-background border border-border p-3"><p className="text-xs text-muted">Gross Profit</p><p className="font-semibold text-green-400">{grossProfit.toLocaleString()}</p></div>
+            <div className="rounded-lg bg-background border border-border p-3"><p className="text-xs text-muted">Gross Profit</p><p className="font-semibold text-green-400 font-mono">{fmtMoney(grossProfit)}</p></div>
             <div className="rounded-lg bg-background border border-border p-3"><p className="text-xs text-muted">GP %</p><p className="font-semibold text-green-400">{gpPercent.toFixed(1)}%</p></div>
           </div>
 
@@ -770,6 +784,18 @@ export default function QuotationsPage() {
                 <p className="text-xs text-muted mt-0.5">{selectedQ.customer_name}</p>
                 {selectedQ.project_name && <p className="text-[11px] text-muted">{selectedQ.project_name}</p>}
                 {selectedQ.created_by && <p className="text-[10px] text-muted/60 mt-1">สร้างโดย: {selectedQ.created_by}</p>}
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="text-[10px] text-muted/60">ผู้รับผิดชอบ:</span>
+                  <select
+                    value={selectedQ.salesperson || selectedQ.created_by || ""}
+                    onChange={e => changeSalesperson(selectedQ, e.target.value)}
+                    className="text-[10px] bg-transparent border border-border/40 rounded px-1.5 py-0.5 text-foreground/80 hover:border-border focus:outline-none"
+                  >
+                    {users.filter(u => ["sale","avenger","Sales Executive","Sales Manager","Branch Manager","Presales Manager","Presales Engineer","Administrator"].includes(u.role)).map(u => (
+                      <option key={u.id} value={u.name}>{u.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <button onClick={() => setSelectedQ(null)} className="text-muted hover:text-foreground text-lg ml-4 shrink-0">✕</button>
             </div>

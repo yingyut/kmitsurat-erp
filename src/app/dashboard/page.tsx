@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, createContext, useContext } from "react";
+import { useEffect, useState, useCallback, createContext, useContext, useMemo } from "react";
 import Link from "next/link";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isOwnRecord, isOwner, filterOwned, canSeeAll } from "@/lib/ownership";
@@ -56,16 +56,16 @@ function KpiCard({ label, value, sub, color, href, pct, alert, size }: {
   const valColor = { green: "text-emerald-500", blue: "text-blue-500", purple: "text-violet-500", amber: "text-amber-500", red: "text-orange-500", cyan: "text-sky-500", muted: "text-muted" }[color];
   const barColor = { green: "bg-emerald-500", blue: "bg-blue-500", purple: "bg-violet-500", amber: "bg-amber-500", red: "bg-orange-500", cyan: "bg-sky-500", muted: "bg-muted" }[color];
   const inner = (
-    <div className={`rounded-xl bg-card border ${size === "sm" ? "p-3 min-h-[90px]" : "p-4 min-h-[110px]"} flex flex-col justify-between transition-all duration-150 ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18),0_1px_4px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(234,88,12,0.2),0_2px_6px_rgba(0,0,0,0.1)]" : "border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09),0_2px_6px_rgba(0,0,0,0.08)]"} active:translate-y-[2px] active:shadow-none`}>
-      <p className={`text-[11px] font-medium text-muted/60 uppercase leading-none ${size === "sm" ? "tracking-normal truncate" : "tracking-wider"}`}>{label}</p>
-      <p className={`${size === "sm" ? "text-xl" : "text-[1.75rem]"} font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
-      <div className="space-y-1.5">
+    <div className={`rounded-xl bg-card border ${size === "sm" ? "p-2 sm:p-3 min-h-[72px] sm:min-h-[90px]" : "p-3 sm:p-4 min-h-[95px] sm:min-h-[110px]"} flex flex-col justify-between transition-all duration-150 ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18),0_1px_4px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(234,88,12,0.2),0_2px_6px_rgba(0,0,0,0.1)]" : "border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09),0_2px_6px_rgba(0,0,0,0.08)]"} active:translate-y-[2px] active:shadow-none`}>
+      <p className={`font-medium text-muted/60 uppercase leading-none truncate ${size === "sm" ? "text-[9px] sm:text-[10px] tracking-normal" : "text-[10px] sm:text-[11px] tracking-wider"}`}>{label}</p>
+      <p className={`${size === "sm" ? "text-base sm:text-xl" : "text-xl sm:text-[1.75rem]"} font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
+      <div className="space-y-1">
         {pct !== undefined && (
           <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
             <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
           </div>
         )}
-        <p className={`text-[11px] text-muted/60 leading-snug min-h-[14px] ${size === "sm" ? "truncate" : ""}`}>{sub ?? ""}</p>
+        <p className={`text-[9px] sm:text-[11px] text-muted/60 leading-snug min-h-[12px] truncate`}>{sub ?? ""}</p>
       </div>
     </div>
   );
@@ -311,9 +311,58 @@ export default function DashboardPage() {
   const filtPresale = sc.presale.filter(r => inRange(r.due_date));
   const filtService = sc.service.filter(t => inRange(t.service_date));
 
+  // ── Live actual sales from approved quotations ────────────────────────────────
+  const approvedSalesMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    const projMap = Object.fromEntries(projects.map(p => [p.id, p]));
+    quots
+      .filter(qt => qt.status === "approved" || qt.po_received)
+      .forEach(qt => {
+        const month = (qt.po_date || qt.sent_date || thisMonth).slice(0, 7);
+        const value = qt.grand_total || qt.total_selling || 0;
+        const creditSet = new Set<string>();
+        if (qt.salesperson) creditSet.add(qt.salesperson);
+        else if (qt.created_by) creditSet.add(qt.created_by);
+        const proj = qt.project_id ? projMap[qt.project_id] : null;
+        if (proj?.assigned_to) creditSet.add(proj.assigned_to);
+        creditSet.forEach(name => {
+          const key = `${name}:${month}`;
+          map[key] = (map[key] || 0) + value;
+        });
+      });
+    return map;
+  }, [quots, projects, thisMonth]);
+
+  function liveAct(userName?: string, month?: string, stored?: number): number {
+    if (!userName || !month) return stored || 0;
+    return approvedSalesMap[`${userName}:${month}`] || stored || 0;
+  }
+
+  // Sum approved QTs for a user across the current filter period (ignores quota records)
+  function totalLiveActForFilter(userName: string): number {
+    let total = 0;
+    for (const [key, val] of Object.entries(approvedSalesMap)) {
+      const colonIdx = key.lastIndexOf(":");
+      const name = key.slice(0, colonIdx);
+      const month = key.slice(colonIdx + 1);
+      if (name !== userName) continue;
+      if (filter === "year") {
+        if (!month.startsWith(thisYear)) continue;
+      } else if (activeRange) {
+        const mFrom = activeRange.from.slice(0, 7);
+        const mTo = activeRange.to.slice(0, 7);
+        if (month < mFrom || month > mTo) continue;
+      } else {
+        if (month !== thisMonth) continue;
+      }
+      total += val;
+    }
+    return total;
+  }
+
   // ── Core KPIs ─────────────────────────────────────────────────────────────────
   const target = filtQuotas.reduce((s, q) => s + (q.quota_target || 0), 0);
-  const actual = filtQuotas.reduce((s, q) => s + (q.actual_sales || 0), 0);
+  const actual = filtQuotas.reduce((s, q) => s + liveAct(q.user_name, q.month, q.actual_sales), 0);
   const targetPct = target > 0 ? (actual / target * 100) : 0;
   const profitTarget = filtQuotas.reduce((s, q) => s + (q.profit_target || 0), 0);
   const actualProfit = filtQuotas.reduce((s, q) => s + (q.actual_profit || 0), 0);
@@ -321,7 +370,7 @@ export default function DashboardPage() {
   // ── Personal monthly quota (always current month, for personal header strip) ─
   const myMonthQ = sc.quotas.filter(q => q.month === thisMonth);
   const myMonthTarget = myMonthQ.reduce((s, q) => s + (q.quota_target || 0), 0);
-  const myMonthActual = myMonthQ.reduce((s, q) => s + (q.actual_sales || 0), 0);
+  const myMonthActual = myMonthQ.reduce((s, q) => s + liveAct(q.user_name, q.month, q.actual_sales), 0);
   const myMonthProfit = myMonthQ.reduce((s, q) => s + (q.actual_profit || 0), 0);
   const myMonthPct   = myMonthTarget > 0 ? Math.round(myMonthActual / myMonthTarget * 100) : 0;
   const profitPct = profitTarget > 0 ? (actualProfit / profitTarget * 100) : 0;
@@ -390,7 +439,7 @@ export default function DashboardPage() {
   const quarterlyData = ([1,2,3,4] as const).map(q => {
     const qQ = fyQuotas.filter(qt => getQuarterOf(qt.month!) === q);
     const tgt = qQ.reduce((s, x) => s + (x.quota_target||0), 0);
-    const act = qQ.reduce((s, x) => s + (x.actual_sales||0), 0);
+    const act = qQ.reduce((s, x) => s + liveAct(x.user_name, x.month, x.actual_sales), 0);
     const pft = qQ.reduce((s, x) => s + (x.actual_profit||0), 0);
     const r = qRanges[`q${q}` as "q1"|"q2"|"q3"|"q4"];
     return { name:`Q${q}`, isCurrent: r.from <= today && r.to >= today,
@@ -407,14 +456,15 @@ export default function DashboardPage() {
     const short = u.nickname ? u.nickname.replace(/พี่|น้อง/g,"").trim() : u.name.split(" ")[0];
     const pQ = filtQuotas.filter(q => q.user_name === u.name);
     const tgt = pQ.reduce((s,q) => s+(q.quota_target||0), 0);
-    const act = pQ.reduce((s,q) => s+(q.actual_sales||0), 0);
+    const storedAct = pQ.reduce((s,q) => s+(q.actual_sales||0), 0);
+    const act = totalLiveActForFilter(u.name) || storedAct;
     const pft = pQ.reduce((s,q) => s+(q.actual_profit||0), 0);
     const acts = filtSales.filter(a => a.assigned_to === u.name).length;
     const activeProj = sc.projects.filter(pr => pr.assigned_to === u.name && !["won","lost"].includes(pr.status)).length;
     return { name:u.name, short, tgt, act, pft, acts, activeProj, pct: tgt>0?Math.round(act/tgt*100):0, targetK:Math.round(tgt/1000), actualK:Math.round(act/1000) };
   }).sort((a,b) => b.act-a.act);
   const poolSalesQ = filtQuotas.filter(q => q.user_name && !activeUserNames.has(q.user_name));
-  const poolTgt = poolSalesQ.reduce((s,q)=>s+(q.quota_target||0),0), poolAct = poolSalesQ.reduce((s,q)=>s+(q.actual_sales||0),0), poolPft = poolSalesQ.reduce((s,q)=>s+(q.actual_profit||0),0);
+  const poolTgt = poolSalesQ.reduce((s,q)=>s+(q.quota_target||0),0), poolAct = poolSalesQ.reduce((s,q)=>s+liveAct(q.user_name,q.month,q.actual_sales),0), poolPft = poolSalesQ.reduce((s,q)=>s+(q.actual_profit||0),0);
   const poolSalesActs = filtSales.filter(a=>a.assigned_to&&!activeUserNames.has(a.assigned_to)).length;
   const poolSalesProj = sc.projects.filter(p=>p.assigned_to&&!activeUserNames.has(p.assigned_to)&&!["won","lost"].includes(p.status)).length;
   const poolRow: PersonRow|null = (poolTgt>0||poolAct>0||poolSalesActs>0||poolSalesProj>0)
@@ -535,6 +585,7 @@ export default function DashboardPage() {
   // ── renderWidget ──────────────────────────────────────────────────────────────
   const renderWidget = useCallback((id: string): React.ReactNode => {
     const maxTechTotal = Math.max(...techWorkload.map(x => x.total), 1);
+    const fmtK = (k: number) => k >= 1000 ? `${(k / 1000).toFixed(1)}M` : k > 0 ? `${k}K` : "—";
 
     // ── EXECUTIVE KPI CARDS (แยกราย — drag/hide ได้อิสระ) ───────────────────
     if (id === "exec-kpi-revenue") return (
@@ -589,20 +640,25 @@ export default function DashboardPage() {
           {quarterlyData.map(q => (
             <div key={q.name} className={`rounded-xl p-3 text-center border ${q.isCurrent?"border-accent bg-accent/10":"border-border bg-background"}`}>
               <p className={`text-xs font-bold ${q.isCurrent?"text-accent":"text-muted"}`}>{q.name}</p>
-              <p className="text-lg font-bold mt-1">{q.actualK>0?`${q.actualK}K`:"—"}</p>
-              <p className="text-[10px] text-muted">{q.targetK>0?`เป้า ${q.targetK}K`:"ไม่มีเป้า"}</p>
+              <p className="text-lg font-bold mt-1">{fmtK(q.actualK)}</p>
+              <p className="text-[10px] text-muted">{q.targetK>0?`เป้า ${fmtK(q.targetK)}`:"ไม่มีเป้า"}</p>
               <p className={`text-[10px] font-medium mt-1 ${q.pct>=80?"text-green-500":q.pct>=50?"text-amber-500":q.pct>0?"text-red-500":"text-muted"}`}>{q.pct>0?`${q.pct}%`:"—"}</p>
             </div>
           ))}
         </div>
+        <div className="flex gap-4 text-[10px] text-muted mb-2 px-1">
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-600" />เป้าหมาย</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{background:C.blue}} />ยอดจริง</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{background:C.purple}} />กำไร (GP)</span>
+        </div>
         <ResponsiveContainer width="100%" height={160}>
           <BarChart data={quarterlyData} margin={{ left:0,right:0,top:0,bottom:0 }}>
             <XAxis dataKey="name" tick={{ fontSize:11,fill:"#888" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize:10,fill:"#888" }} axisLine={false} tickLine={false} width={40} />
-            <Tooltip formatter={(v)=>[`${Number(v).toLocaleString()}K THB`]} contentStyle={{ background:"#1a1a2e",border:"1px solid #333",borderRadius:8,fontSize:11 }} />
-            <Bar dataKey="targetK" fill="#334155" radius={[4,4,0,0]} name="เป้า" />
-            <Bar dataKey="actualK" fill={C.blue} radius={[4,4,0,0]} name="จริง" />
-            <Bar dataKey="profitK" fill={C.purple} radius={[4,4,0,0]} name="กำไร" />
+            <YAxis tick={{ fontSize:10,fill:"#888" }} axisLine={false} tickLine={false} width={36} tickFormatter={v => v === 0 ? "0" : fmtK(Number(v))} />
+            <Tooltip formatter={(v, name)=>[fmtK(Number(v))+" THB", name==="targetK"?"เป้าหมาย":name==="actualK"?"ยอดจริง":"กำไร (GP)"]} contentStyle={{ background:"#1a1a2e",border:"1px solid #333",borderRadius:8,fontSize:11 }} />
+            <Bar dataKey="targetK" fill="#334155" radius={[4,4,0,0]} name="เป้าหมาย" />
+            <Bar dataKey="actualK" fill={C.blue} radius={[4,4,0,0]} name="ยอดจริง" />
+            <Bar dataKey="profitK" fill={C.purple} radius={[4,4,0,0]} name="กำไร (GP)" />
           </BarChart>
         </ResponsiveContainer>
       </Section>
@@ -648,42 +704,36 @@ export default function DashboardPage() {
     if (id === "exec-sales-table" || id === "sales-table") return (
       <Section title={`👥 ยอดขายรายบุคคล · ${filterLabel}`} action={<Link href="/reports" className="text-[11px] text-accent hover:underline">รายงาน →</Link>}>
         {personData.length === 0 ? <p className="text-xs text-muted py-4">ไม่มีข้อมูล</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[600px]">
-              <thead>
-                <tr className="text-left text-[11px] text-muted border-b border-border">
-                  <th className="pb-2 font-medium">ชื่อ</th>
-                  <th className="pb-2 font-medium text-right">เป้า (K)</th>
-                  <th className="pb-2 font-medium text-right">จริง (K)</th>
-                  <th className="pb-2 font-medium text-right">GP (K)</th>
-                  <th className="pb-2 font-medium text-center">Achievement</th>
-                  <th className="pb-2 font-medium text-right">Activity</th>
-                  <th className="pb-2 font-medium text-right">โปรเจค</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {personData.map(p => (
-                  <tr key={p.name} className={p.isPool?"bg-muted/5":"hover:bg-card-hover"}>
-                    <td className="py-2.5 font-medium">
-                      {p.isPool?<span className="text-muted/70 text-xs">📦 กองกลาง</span>:<Link href="/sales" className="hover:text-accent">{p.short}</Link>}
-                    </td>
-                    <td className="py-2.5 text-right text-muted">{p.targetK>0?p.targetK.toLocaleString():"—"}</td>
-                    <td className="py-2.5 text-right font-semibold">{p.actualK>0?p.actualK.toLocaleString():"—"}</td>
-                    <td className="py-2.5 text-right text-violet-500">{p.pft>0?Math.round(p.pft/1000).toLocaleString():"—"}</td>
-                    <td className="py-2.5">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 rounded-full bg-background overflow-hidden">
-                          <div className={`h-full rounded-full ${p.pct>=80?"bg-green-500":p.pct>=50?"bg-amber-500":p.pct>0?"bg-rose-500":"bg-muted/30"}`} style={{ width:`${Math.min(p.pct,100)}%` }} />
-                        </div>
-                        <span className={`text-xs w-9 text-right ${p.pct>=80?"text-green-500":p.pct>=50?"text-amber-500":p.pct>0?"text-red-500":"text-muted"}`}>{p.tgt>0?`${p.pct}%`:"—"}</span>
-                      </div>
-                    </td>
-                    <td className="py-2.5 text-right text-muted">{p.acts||"—"}</td>
-                    <td className="py-2.5 text-right text-blue-500">{p.activeProj||"—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-0 divide-y divide-border/40">
+            {personData.map(p => {
+              const pctColor = p.pct>=80?"text-green-500":p.pct>=50?"text-amber-500":p.pct>0?"text-red-500":"text-muted";
+              const barColor = p.pct>=80?"bg-green-500":p.pct>=50?"bg-amber-500":p.pct>0?"bg-rose-500":"bg-muted/20";
+              return (
+                <div key={p.name} className={`py-2.5 ${p.isPool?"opacity-70":""}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {p.isPool
+                        ? <span className="text-xs text-muted">📦 กองกลาง</span>
+                        : <Link href="/sales" className="text-sm font-medium hover:text-accent truncate">{p.short}</Link>}
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0 ml-2">
+                      {p.acts > 0 && <span className="text-[10px] text-muted">Act {p.acts}</span>}
+                      {p.activeProj > 0 && <span className="text-[10px] text-blue-500">Proj {p.activeProj}</span>}
+                      <span className={`text-xs font-bold w-9 text-right ${pctColor}`}>{p.tgt>0?`${p.pct}%`:"—"}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 rounded-full bg-border/40 overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width:`${Math.min(p.pct,100)}%` }} />
+                    </div>
+                    <span className="text-[11px] text-muted tabular-nums whitespace-nowrap w-28 text-right">
+                      <span className="font-semibold text-foreground/80">{fmtK(p.actualK)}</span>
+                      {p.targetK>0 && <span className="text-muted/60"> / {fmtK(p.targetK)}</span>}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </Section>
@@ -721,29 +771,23 @@ export default function DashboardPage() {
 
     if (id === "exec-service" || id === "svc-status") return (
       <Section title="🔧 Service Status" action={<Link href="/service" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>}>
-        <div className="flex items-center gap-4 mb-3">
-          {svcPieData.length>0?(
-            <ResponsiveContainer width={100} height={100}>
-              <PieChart>
-                <Pie data={svcPieData} dataKey="value" innerRadius={28} outerRadius={44} paddingAngle={2}>
-                  {svcPieData.map((entry,i)=><Cell key={i} fill={entry.fill}/>)}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          ):(
-            <div className="w-[100px] h-[100px] rounded-full border-4 border-border flex items-center justify-center">
-              <span className="text-xs text-muted">ไม่มีข้อมูล</span>
-            </div>
-          )}
-          <div className="space-y-1.5 flex-1">
-            {svcPieData.map(d=>(
-              <Link key={d.name} href="/service" className="flex items-center gap-2 hover:opacity-80">
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor:d.fill }}/>
-                <span className="text-xs text-muted flex-1">{d.name}</span>
-                <span className="text-xs font-semibold">{d.value}</span>
-              </Link>
-            ))}
-          </div>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <Link href="/service" className="rounded-xl bg-green-500/10 border border-green-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-green-500">{svcDone}</p>
+            <p className="text-[10px] text-muted/70 mt-0.5">เสร็จแล้ว</p>
+          </Link>
+          <Link href="/service" className="rounded-xl bg-rose-500/10 border border-rose-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-rose-500">{svcDelay}</p>
+            <p className="text-[10px] text-muted/70 mt-0.5">เกินกำหนด</p>
+          </Link>
+          <Link href="/service" className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-amber-500">{svcInProg}</p>
+            <p className="text-[10px] text-muted/70 mt-0.5">กำลังดำเนินการ</p>
+          </Link>
+          <Link href="/service" className="rounded-xl bg-blue-500/10 border border-blue-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-blue-500">{svcOpen}</p>
+            <p className="text-[10px] text-muted/70 mt-0.5">รอดำเนินการ</p>
+          </Link>
         </div>
         {techWorkload.length>0&&(
           <div className="border-t border-border pt-3">
@@ -1307,18 +1351,22 @@ export default function DashboardPage() {
           {quarterlyData.map(q=>(
             <div key={q.name} className={`rounded-xl p-2.5 text-center border ${q.isCurrent?"border-accent bg-accent/10":"border-border bg-background"}`}>
               <p className={`text-xs font-bold ${q.isCurrent?"text-accent":"text-muted"}`}>{q.name}</p>
-              <p className="text-base font-bold mt-1">{q.actualK>0?`${q.actualK}K`:"—"}</p>
+              <p className="text-base font-bold mt-1">{fmtK(q.actualK)}</p>
               <p className={`text-[10px] font-medium mt-0.5 ${q.pct>=80?"text-green-500":q.pct>=50?"text-amber-500":q.pct>0?"text-red-500":"text-muted"}`}>{q.pct>0?`${q.pct}%`:"—"}</p>
             </div>
           ))}
         </div>
+        <div className="flex gap-4 text-[10px] text-muted mb-2 px-1">
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-600" />เป้าหมาย</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{background:C.blue}} />ยอดจริง</span>
+        </div>
         <ResponsiveContainer width="100%" height={130}>
           <BarChart data={quarterlyData} margin={{ left:0,right:0,top:0,bottom:0 }}>
             <XAxis dataKey="name" tick={{ fontSize:10,fill:"#888" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize:10,fill:"#888" }} axisLine={false} tickLine={false} width={36} />
-            <Tooltip formatter={(v)=>[`${Number(v).toLocaleString()}K THB`]} contentStyle={{ background:"#1a1a2e",border:"1px solid #333",borderRadius:8,fontSize:11 }} />
-            <Bar dataKey="targetK" fill="#334155" radius={[3,3,0,0]} name="เป้า" />
-            <Bar dataKey="actualK" fill={C.blue} radius={[3,3,0,0]} name="จริง" />
+            <YAxis tick={{ fontSize:10,fill:"#888" }} axisLine={false} tickLine={false} width={36} tickFormatter={v => v === 0 ? "0" : fmtK(Number(v))} />
+            <Tooltip formatter={(v, name)=>[fmtK(Number(v))+" THB", name==="targetK"?"เป้าหมาย":"ยอดจริง"]} contentStyle={{ background:"#1a1a2e",border:"1px solid #333",borderRadius:8,fontSize:11 }} />
+            <Bar dataKey="targetK" fill="#334155" radius={[3,3,0,0]} name="เป้าหมาย" />
+            <Bar dataKey="actualK" fill={C.blue} radius={[3,3,0,0]} name="ยอดจริง" />
           </BarChart>
         </ResponsiveContainer>
       </Section>
@@ -1676,11 +1724,11 @@ export default function DashboardPage() {
 
         {/* ── HERO KPI STRIP — ซ่อนสำหรับ sales view ส่วนตัว (person card ครอบคลุมแล้ว) ── */}
         {showHeroKpiStrip && !(view === "sales" && !seeAll) && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard label="ยอดขายรวม" value={`${(actual/1e6).toFixed(1)}M`} sub={`THB · ${filterLabel}`} color="green" href="/sales" pct={targetPct} />
-            <KpiCard label="Achievement" value={`${targetPct.toFixed(0)}%`} sub={`${(actual/1000).toFixed(0)}K / ${(target/1000).toFixed(0)}K`} color={targetPct>=80?"green":targetPct>=50?"amber":"red"} pct={targetPct} href="/reports" />
-            <KpiCard label="GP รวม" value={actualProfit>0?`${(actualProfit/1e6).toFixed(2)}M`:"—"} sub={`GP ${gpPct.toFixed(1)}%`} color={gpPct>=20?"green":gpPct>=10?"amber":actualProfit>0?"red":"muted"} pct={profitPct} href="/reports" />
-            <KpiCard label="Follow-up ค้าง" value={String(salesOverdue.length)} sub={salesOverdue.length>0?`${salesOverdue.length} งานต้องติดตาม`:"ทุกงานปกติ"} color={salesOverdue.length>0?"red":"green"} alert={salesOverdue.length>0} href="/sales" />
+          <div className="grid grid-cols-4 gap-2">
+            <KpiCard size="sm" label="ยอดขาย" value={`${(actual/1e6).toFixed(1)}M`} sub={`THB`} color="green" href="/sales" pct={targetPct} />
+            <KpiCard size="sm" label="Achievement" value={`${targetPct.toFixed(0)}%`} sub={`${(actual/1000).toFixed(0)}K/${(target/1000).toFixed(0)}K`} color={targetPct>=80?"green":targetPct>=50?"amber":"red"} pct={targetPct} href="/reports" />
+            <KpiCard size="sm" label="GP รวม" value={actualProfit>0?`${(actualProfit/1e6).toFixed(1)}M`:"—"} sub={`GP ${gpPct.toFixed(1)}%`} color={gpPct>=20?"green":gpPct>=10?"amber":actualProfit>0?"red":"muted"} pct={profitPct} href="/reports" />
+            <KpiCard size="sm" label="Follow-up" value={String(salesOverdue.length)} sub={salesOverdue.length>0?`ค้าง`:"ปกติ"} color={salesOverdue.length>0?"red":"green"} alert={salesOverdue.length>0} href="/sales" />
           </div>
         )}
 

@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest } from "@/lib/types";
+import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest, Quotation } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
 import { isOwnRecord, isOwner, canSeeAll, canManageQuota } from "@/lib/ownership";
@@ -62,6 +62,7 @@ export default function SalesPage() {
   const [quotas, setQuotas] = useState<SalesQuota[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [jobReqs, setJobReqs] = useState<JobRequest[]>([]);
+  const [quotationsList, setQuotationsList] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState("");
@@ -133,8 +134,8 @@ export default function SalesPage() {
   async function load() {
     try {
       const fs = await import("@/lib/firestore");
-      const [a, p, c, q, u, jr] = await Promise.all([fs.salesActivities.list(), fs.projects.list(), fs.customers.list(), fs.salesQuotas.list(), fs.users.list(), fs.jobRequests.list()]);
-      setActivities(a); setProjects(p); setCustomers(c); setQuotas(q); setUsers(u.filter(x => x.active)); setJobReqs(jr);
+      const [a, p, c, q, u, jr, qt] = await Promise.all([fs.salesActivities.list(), fs.projects.list(), fs.customers.list(), fs.salesQuotas.list(), fs.users.list(), fs.jobRequests.list(), fs.quotations.list()]);
+      setActivities(a); setProjects(p); setCustomers(c); setQuotas(q); setUsers(u.filter(x => x.active)); setJobReqs(jr); setQuotationsList(qt);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -166,10 +167,37 @@ export default function SalesPage() {
   }), [activities, apPersonFilter, ownSalesOnly, currentUser]);
   const viewPlans = useMemo(() => typeFilter ? allPlans.filter(a => a.type === typeFilter) : allPlans, [allPlans, typeFilter]);
 
+  // Actual sales computed live from approved/PO quotations
+  // Credit แต่ละ QT ให้ created_by AND project.assigned_to (ครอบทุกกรณีที่ admin สร้าง QT แทน sale)
+  const approvedSalesMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    const projMap = Object.fromEntries(projects.map(p => [p.id, p]));
+    quotationsList
+      .filter(qt => qt.status === "approved" || qt.po_received)
+      .forEach(qt => {
+        const month = (qt.po_date || qt.sent_date || currentMonth).slice(0, 7);
+        const value = qt.grand_total || qt.total_selling || 0;
+        const creditSet = new Set<string>();
+        if (qt.salesperson) creditSet.add(qt.salesperson);
+        else if (qt.created_by) creditSet.add(qt.created_by);
+        const proj = qt.project_id ? projMap[qt.project_id] : null;
+        if (proj?.assigned_to) creditSet.add(proj.assigned_to);
+        creditSet.forEach(name => {
+          const key = `${name}:${month}`;
+          map[key] = (map[key] || 0) + value;
+        });
+      });
+    return map;
+  }, [quotationsList, projects, currentMonth]);
+
+  function liveActualSales(userName: string, month: string): number {
+    return approvedSalesMap[`${userName}:${month}`] ?? 0;
+  }
+
   // KPIs — scoped to own data when ownSalesOnly (isOwner รองรับ name + email)
-  const monthQuota = quotas.filter(q => q.month === currentMonth && (!ownSalesOnly || isOwnRecord({ user_name: q.user_name }, currentUser)));
+  const monthQuota = quotas.filter(q => q.month === planMonthFilter && (!ownSalesOnly || isOwnRecord({ user_name: q.user_name }, currentUser)));
   const totalTarget = monthQuota.reduce((s, q) => s + (q.quota_target || 0), 0);
-  const totalActual = monthQuota.reduce((s, q) => s + (q.actual_sales || 0), 0);
+  const totalActual = monthQuota.reduce((s, q) => s + liveActualSales(q.user_name, q.month || currentMonth), 0);
   const pipelineValue = projects.filter(p => !["won","lost"].includes(p.status) && (!ownSalesOnly || !p.assigned_to || isOwnRecord(p, currentUser))).reduce((s, p) => s + (p.value || 0), 0);
   const wonDeals = projects.filter(p => p.status === "won" && (!ownSalesOnly || !p.assigned_to || isOwnRecord(p, currentUser))).length;
 
@@ -1728,10 +1756,10 @@ export default function SalesPage() {
         {/* ── Quota section ── */}
         {(() => {
           const tTarget = monthQuota.reduce((s,q) => s + (q.quota_target||0), 0);
-          const tActual = monthQuota.reduce((s,q) => s + (q.actual_sales||0), 0);
+          const tActual = monthQuota.reduce((s,q) => s + liveActualSales(q.user_name, q.month||currentMonth), 0);
           const tRemaining = tTarget - tActual;
           const tPct = tTarget > 0 ? (tActual/tTarget*100) : 0;
-          const topPerformer = [...monthQuota].sort((a,b) => (b.actual_sales||0) - (a.actual_sales||0))[0];
+          const topPerformer = [...monthQuota].sort((a,b) => liveActualSales(b.user_name, b.month||currentMonth) - liveActualSales(a.user_name, a.month||currentMonth))[0];
           return (<>
             {/* KPI Summary */}
             <div className="rounded-xl bg-card border border-border p-5 mb-4">
@@ -1747,7 +1775,7 @@ export default function SalesPage() {
                   <div className="h-2 rounded-full bg-background overflow-hidden mt-2"><div className={`h-full rounded-full ${tPct >= 100 ? "bg-green-500" : tPct >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(tPct,100)}%` }} /></div>
                 </div>
               </div>
-              {topPerformer && <p className="text-xs text-muted">🏆 Top: <span className="text-accent font-medium">{topPerformer.user_name?.split(" ")[0]}</span> — {topPerformer.actual_sales?.toLocaleString()} THB</p>}
+              {topPerformer && <p className="text-xs text-muted">🏆 Top: <span className="text-accent font-medium">{topPerformer.user_name?.split(" ")[0]}</span> — {liveActualSales(topPerformer.user_name, topPerformer.month||currentMonth).toLocaleString()} THB</p>}
             </div>
           </>);
         })()}
@@ -1757,10 +1785,10 @@ export default function SalesPage() {
           <div className="rounded-xl bg-card border border-accent/30 p-5 mb-4">
             <h3 className="text-sm font-semibold mb-3">{quotaForm.user_name ? `แก้ไข: ${quotaForm.user_name.split(" ")[0]}` : "ตั้งเป้าใหม่"}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-              <div><label className="text-[10px] text-muted">เซลล์ *</label><select value={quotaForm.user_name} onChange={e => setQuotaForm({ ...quotaForm, user_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกเซลล์ --</option>{users.filter(u => u.role === "sale" || u.role === "avenger").map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
-              <div><label className="text-[10px] text-muted">เป้ายอดขาย (THB)</label><input type="number" placeholder="เช่น 2000000" value={quotaForm.quota_target || ""} onChange={e => setQuotaForm({ ...quotaForm, quota_target: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-              <div><label className="text-[10px] text-muted">ยอดจริง (THB)</label><input type="number" placeholder="ยอดที่ปิดได้" value={quotaForm.actual_sales || ""} onChange={e => setQuotaForm({ ...quotaForm, actual_sales: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-              <div><label className="text-[10px] text-muted">Won Deals</label><input type="number" value={quotaForm.won_deals || ""} onChange={e => setQuotaForm({ ...quotaForm, won_deals: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
+              <div><label className="text-[10px] text-muted">เซลล์ *</label><select value={quotaForm.user_name} onChange={e => { const u = users.find(x => x.name === e.target.value); const role = u?.role === "avenger" ? "avenger" : "sale"; const won = projects.filter(p => p.status === "won" && p.assigned_to === e.target.value); const autoSales = won.reduce((s, p) => s + (p.value || 0), 0); setQuotaForm({ ...quotaForm, user_name: e.target.value, role, actual_sales: autoSales, won_deals: won.length }); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกเซลล์ --</option>{users.filter(u => ["sale","avenger","Sales Executive","Sales Manager"].includes(u.role)).map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
+              <div><label className="text-[10px] text-muted">เป้ายอดขาย (THB)</label><input type="text" inputMode="numeric" placeholder="เช่น 2,000,000" value={quotaForm.quota_target ? quotaForm.quota_target.toLocaleString() : ""} onChange={e => { const n = Number(e.target.value.replace(/,/g, "")); if (!isNaN(n)) setQuotaForm({ ...quotaForm, quota_target: n }); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 font-mono" /></div>
+              <div><label className="text-[10px] text-muted">ยอดจริง (THB) <span className="text-accent/70 font-normal">(จาก Won)</span></label><div className="w-full rounded-lg bg-background/40 border border-border/50 px-3 py-2 text-sm mt-1 font-mono text-green-400">{quotaForm.actual_sales ? quotaForm.actual_sales.toLocaleString() : <span className="text-muted text-xs">เลือกเซลล์ก่อน</span>}</div></div>
+              <div><label className="text-[10px] text-muted">Won Deals <span className="text-accent/70 font-normal">(อัตโนมัติ)</span></label><div className="w-full rounded-lg bg-background/40 border border-border/50 px-3 py-2 text-sm mt-1 text-center">{quotaForm.won_deals || 0} <span className="text-muted text-xs">deals</span></div></div>
             </div>
             <div className="flex gap-2">
               <button onClick={saveQuota} disabled={saving || !quotaForm.user_name} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "บันทึก"}</button>
@@ -1773,12 +1801,13 @@ export default function SalesPage() {
         {monthQuota.length === 0 ? <p className="text-muted text-sm">ยังไม่มีเป้า</p> : (
           <div className="space-y-3">
             {[...monthQuota].sort((a,b) => {
-              const pa = a.quota_target > 0 ? (a.actual_sales/a.quota_target*100) : 0;
-              const pb = b.quota_target > 0 ? (b.actual_sales/b.quota_target*100) : 0;
+              const pa = a.quota_target > 0 ? (liveActualSales(a.user_name, a.month||currentMonth)/a.quota_target*100) : 0;
+              const pb = b.quota_target > 0 ? (liveActualSales(b.user_name, b.month||currentMonth)/b.quota_target*100) : 0;
               return pb - pa;
             }).map((q, rank) => {
-              const pct = q.quota_target > 0 ? (q.actual_sales/q.quota_target*100) : 0;
-              const remaining = q.quota_target - q.actual_sales;
+              const actual = liveActualSales(q.user_name, q.month || currentMonth);
+              const pct = q.quota_target > 0 ? (actual/q.quota_target*100) : 0;
+              const remaining = q.quota_target - actual;
               const medal = rank === 0 ? "🥇" : rank === 1 ? "🥈" : rank === 2 ? "🥉" : "";
               const barColor = pct >= 100 ? "bg-green-500" : pct >= 70 ? "bg-yellow-500" : "bg-red-500";
               const textColor = pct >= 100 ? "text-green-400" : pct >= 70 ? "text-yellow-400" : "text-red-400";
@@ -1809,7 +1838,7 @@ export default function SalesPage() {
                       {/* Stats row */}
                       <div className="grid grid-cols-4 gap-3 text-xs">
                         <div><p className="text-muted">เป้า</p><p className="font-semibold tabular-nums">{q.quota_target.toLocaleString()}</p></div>
-                        <div><p className="text-muted">ยอดจริง</p><p className="font-semibold text-green-400 tabular-nums">{q.actual_sales.toLocaleString()}</p></div>
+                        <div><p className="text-muted">ยอดจริง</p><p className="font-semibold text-green-400 tabular-nums">{actual.toLocaleString()}</p></div>
                         <div><p className="text-muted">เหลือ</p><p className={`font-semibold tabular-nums ${remaining <= 0 ? "text-green-400" : "text-yellow-400"}`}>{remaining <= 0 ? "ถึงเป้า ✓" : remaining.toLocaleString()}</p></div>
                         <div><p className="text-muted">Won</p><p className="font-semibold tabular-nums">{q.won_deals || 0} deals</p></div>
                       </div>

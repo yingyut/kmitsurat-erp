@@ -5,13 +5,13 @@ import { ALL_PERMISSIONS, PERMISSION_META, PERM_CATEGORIES, ROLE_PERMISSIONS, is
 import { useCurrentUser } from "@/lib/UserContext";
 
 const roles = [
-  "admin", "sale", "presale", "service", "avenger",
+  "avenger",
   "Administrator", "Branch Manager", "Sales Manager", "Sales Executive",
   "Presales Manager", "Presales Engineer", "Service Manager",
   "Service Technician", "Operations Coordinator", "Coordinator",
 ] as const;
 const roleLabels: Record<string, string> = {
-  admin: "Admin (Legacy)", sale: "Sales (Legacy)", presale: "Presale (Legacy)", service: "Service (Legacy)", avenger: "Avenger (Legacy)",
+  admin: "Admin", sale: "Sales", presale: "Presale", service: "Service", avenger: "Avenger",
   "Administrator": "ผู้ดูแลระบบ",          "Branch Manager": "ผู้จัดการสาขา",
   "Sales Manager": "ผู้จัดการฝ่ายขาย",     "Sales Executive": "เจ้าหน้าที่ขาย",
   "Presales Manager": "ผู้จัดการพรีเซลล์", "Presales Engineer": "วิศวกรพรีเซลล์",
@@ -60,7 +60,7 @@ const EMPLOYMENT_STATUS_OPTIONS: { value: EmploymentStatus; label: string; color
 
 const emptyUser = {
   name: "", first_name: "", last_name: "", nickname: "", display_preference: "nickname" as DisplayPref,
-  email: "", role: "sale" as User["role"], position: "", department: "", phone: "", bio: "",
+  email: "", role: "Sales Executive" as User["role"], position: "", department: "", phone: "", bio: "",
   active: true, employment_status: "active" as EmploymentStatus, resigned_at: "",
   sales_code: "", login_username: "",
   extra_roles: [] as string[],

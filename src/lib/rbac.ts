@@ -116,8 +116,6 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
     "view_dashboard",
     "view_own_projects",  "view_own_customers", "create_customer",
     "view_quote",         "create_quote",
-    "use_presale_tools",  "view_presale",
-    "view_products",      "view_catalog",
   ],
 
   "Presales Manager": [
