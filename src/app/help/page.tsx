@@ -55,28 +55,38 @@ const sections: Section[] = [
     thai: "แดชบอร์ดผู้บริหาร",
     content: `## Dashboard — แดชบอร์ดผู้บริหาร
 
-### KPI Cards (ด้านบน) — กดได้ทุกใบ
-- **Total Revenue** → กดไปหน้า Pipeline
-- **Target vs Actual** → กดไปหน้า Sales Plan
-- **Pipeline Value** → กดไปหน้า Pipeline
-- **Overdue Jobs** → กดไปหน้า Activities (filter: overdue)
-- **SLA On-time** → กดไปหน้า Service
-- **Forecast EOM** — คาดการณ์รายได้สิ้นเดือน
+### Hero KPI Strip (4 การ์ดบนสุด)
+แสดง 4 ช่องเท่ากันทุกขนาดหน้าจอ:
+- **ยอดขาย** — รายได้รวม (THB) + progress bar เทียบเป้า
+- **Achievement** — % บรรลุเป้า + จริง/เป้า
+- **GP รวม** — กำไรขั้นต้น (M) + %GP
+- **Follow-up** — งานค้างติดตาม
 
-### Department Overview (กลาง) — กดแต่ละการ์ดไปหน้าแผนก
-- **Sales Performance** — เป้า/Pipeline/Activities/Conv.Rate + Funnel chart
-- **Presale Workload** — New/Working/Done + กราฟประเภทงาน
-- **Service Operation** — CM/PM/Install/SLA + กดไปหน้า Service
-- **Project Overview** — Active/Pending/Won/มูลค่า
+> ยอดขายคำนวณแบบ **live** จากใบเสนอราคาที่อนุมัติแล้ว (approved / PO received) — ไม่ต้องกรอกมือ
 
-### Charts
-- Funnel: Sales Pipeline (Lead → Won)
-- Bar: งานแยกแผนก + ต่อคน
-- Pie: สัดส่วนสถานะ + ประเภท Service
+### Filter แถบบน
+วันนี้ / 7 วัน / เดือนนี้ / ปีนี้ / Q1–Q4 / กำหนดเอง
 
-### Team Performance + Alerts (ล่าง)
-- ตารางพนักงาน: งานทั้งหมด / เสร็จ / ค้าง / ล่าช้า
-- Alerts: 🔴 ด่วน / 🟠 เตือน / 🟢 ข้อมูล — กดไปหน้าที่เกี่ยวข้อง`,
+### ยอดขายรายบุคคล (Sales Table)
+- แสดงแต่ละคนเป็นแถว: ชื่อ + progress bar + % + ยอดจริง/เป้า
+- ตัวเลขแสดงเป็น K หรือ M อัตโนมัติ (เช่น 640K, 2.5M)
+- Badge **Act** (Activity) และ **Proj** (โปรเจคที่ active)
+
+### ผลงานรายไตรมาส (Quarterly Chart)
+- 4 การ์ด Q1–Q4 แสดงยอดจริง/เป้า + %
+- ตัวเลขแปลงหน่วยอัตโนมัติ (25,980K → 26.0M)
+- Bar chart มี legend: ■ เป้าหมาย / ■ ยอดจริง / ■ กำไร (GP)
+
+### Service Status
+- 4 ช่อง: เสร็จแล้ว / เกินกำหนด / กำลังดำเนินการ / รอดำเนินการ
+- กดแต่ละช่องไปหน้า Service ได้เลย
+- ด้านล่าง: ช่างรายคน — bar แสดงจำนวนงานแยกสถานะ
+
+### Presale Workload
+- รายชื่อ Presale ทีม + badge จำนวนงาน: 🟡 รอ / 🔵 กำลังทำ / 🟢 เสร็จ
+
+### Alerts
+- 🔴 ด่วน / 🟠 เตือน / 🟢 ข้อมูล — กดไปหน้าที่เกี่ยวข้องได้ทุกรายการ`,
   },
   {
     title: "Sales (4 Tabs)",
@@ -148,13 +158,23 @@ const sections: Section[] = [
     content: `## Quotations — ใบเสนอราคา
 
 ### สร้างใบเสนอราคา
-1. **ค้นหาลูกค้า** — พิมพ์ชื่อบางส่วนเพื่อกรอง
+1. **ค้นหาลูกค้า** — พิมพ์ชื่อบางส่วนเพื่อกรอง (ปุ่ม "สร้างลูกค้าใหม่" → ไปหน้า Customers)
 2. เลือก **โปรเจค** (เฉพาะของลูกค้านั้น) หรือเลือก "✏️ อื่นๆ" พิมพ์เอง
 3. เพิ่ม Line Items → เลือกสินค้าจาก dropdown → auto-fill ราคา
 4. แก้ไข จำนวน / ราคา / ส่วนลด → คำนวณ Total, Margin%, GP% อัตโนมัติ
 5. เลือกระดับราคา: ทั่วไป / สมาชิก / พิเศษ
 6. ตั้งค่า VAT: ไม่มี / บวก VAT / รวม VAT แล้ว
-7. **ผู้สร้าง** — auto-set เป็น user ที่ login (sale role เห็นเฉพาะตัวเอง)
+7. **ผู้สร้าง** — auto-set เป็น user ที่ login
+
+### ผู้รับผิดชอบยอดขาย (Salesperson)
+- ใน Detail Panel มี dropdown **"ผู้รับผิดชอบ"** — เลือกว่าใครเป็นเจ้าของยอดขายนี้
+- ค่าเริ่มต้น = คนที่สร้าง QT แต่เปลี่ยนได้ เช่น เมื่อ Admin สร้าง QT ให้เซลล์คนอื่น
+- เมื่อ QT **อนุมัติแล้ว** ยอดขายของผู้รับผิดชอบจะอัปเดตใน Dashboard อัตโนมัติ
+
+### Workflow สถานะ
+Draft → ส่งแล้ว → อนุมัติ / ปฏิเสธ
+- กดปุ่มสถานะในแถบ Detail Panel เพื่อเปลี่ยน
+- อนุมัติแล้ว → ยอดขาย Dashboard อัปเดตทันที (live)
 
 ### Revision (แก้ไขเวอร์ชัน)
 - กดปุ่ม **"Revise"** → เก็บเวอร์ชันเดิมไว้ + สร้างเวอร์ชันใหม่
@@ -292,20 +312,29 @@ Open → In Progress → Resolved → Closed
 - รูป / ชื่อเล่น / ชื่อจริง-นามสกุล / ตำแหน่ง / แผนก / Role / อีเมล / เบอร์
 - เพิ่ม / แก้ไข / ลบ ได้ครบ — คลิกที่แถว → เปิดรายละเอียด
 
-### Roles (สิทธิ์การใช้งาน)
-- **admin** — ดูแลระบบ (เห็นทุกอย่าง)
-- **sale** — เซลล์ (Action Plan, Activities, Quotations, Requests) — เห็นเฉพาะข้อมูลตัวเอง
-- **presale** — พรีเซลล์ (BOQ, Solution Design, Presale Tools)
-- **service** — ช่างบริการ (ติดตั้ง, ซ่อม, PM, Assets)
-- **avenger** — Senior Sales (เหมือน sale + เห็นข้อมูลทีม + Sales Plan)
+### Roles (9 ตำแหน่ง)
+| Role | สิทธิ์หลัก |
+|------|------------|
+| **Administrator** | เห็นและจัดการทุกอย่าง |
+| **Branch Manager** | เห็นทุกแผนก + อนุมัติ QT + จัดการทีม |
+| **Sales Manager** | เห็นข้อมูล Sales ทั้งหมด + อนุมัติ QT |
+| **Sales Executive** | เห็นเฉพาะข้อมูลตัวเอง + สร้าง QT |
+| **Presales Manager** | จัดการ Presale + อนุมัติงาน |
+| **Presales Engineer** | ทำงาน Presale + สร้าง BOQ/QT |
+| **Service Manager** | จัดการ Ticket + สัญญา + Assets |
+| **Service Technician** | รับงาน Ticket ของตัวเอง |
+| **Operations Coordinator** | ดูภาพรวม + ประสานงานทุกแผนก |
+| **Coordinator** | ธุรการ + จัดการ Ticket + สัญญา |
+
+> **avenger** (legacy) — ยังใช้งานได้ สิทธิ์เทียบเท่า Senior Sales
 
 ### โปรไฟล์ผู้ใช้
 - กดชื่อ/รูปที่ด้านล่าง Sidebar → หน้าโปรไฟล์
 - แก้ไขชื่อ / เปลี่ยนรหัสผ่าน / เลือกการแสดงชื่อ (ชื่อเล่น/ชื่อจริง)
 
-### Dashboard ส่วนตัว (sale/avenger)
-- หน้า Dashboard แสดงชื่อ + เป้ายอดขายเดือนนี้ + % ที่ทำได้
-- ตัวเลขเป้าแสดงเป็น badge ข้างชื่อ (สีตาม % ที่ทำได้)`,
+### Dashboard ส่วนตัว
+- Sales Executive/Manager → เห็นยอดเป้าเดือนนี้ + % ที่ทำได้
+- ยอดขายอัปเดต live เมื่อ QT ถูกอนุมัติ`,
   },
   {
     title: "Notifications",
