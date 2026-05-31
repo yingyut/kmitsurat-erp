@@ -294,6 +294,7 @@ export interface BomItem {
   qty: number;
   unit: string;
   vendor?: string;
+  ref_url?: string;
   notes: string;
 }
 
@@ -503,6 +504,7 @@ export interface QuotationItem {
   total_selling: number;
   margin_percent: number;
   price_tier?: "general" | "member" | "special" | "custom"; // which tier price was used
+  ref_url?: string;
 }
 
 export interface SalesQuota {

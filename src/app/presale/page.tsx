@@ -51,8 +51,8 @@ const ATTACHMENT_TYPE_META: Record<string, { icon: string; label: string }> = {
   other:        { icon: "📎", label: "Other" },
 };
 
-const emptyBomItem: BomItem = { code: "", name: "", brand: "", qty: 1, unit: "pcs", vendor: "", notes: "" };
-const emptyBoqItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0 };
+const emptyBomItem: BomItem = { code: "", name: "", brand: "", qty: 1, unit: "pcs", vendor: "", ref_url: "", notes: "" };
+const emptyBoqItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0, ref_url: "" };
 const emptyAttachment: PresaleAttachment = { type: "design", name: "", url: "", uploaded_at: "", uploaded_by: "", notes: "" };
 
 type DetailTab = "summary" | "bom" | "boq" | "artifacts";
@@ -1045,6 +1045,7 @@ export default function PresalePage() {
                     <th className="px-2 py-1.5 w-16">Qty</th>
                     <th className="px-2 py-1.5 w-16">Unit</th>
                     <th className="px-2 py-1.5 w-32">ผู้จำหน่าย</th>
+                    <th className="px-2 py-1.5 w-36">ลิงก์ไฟล์</th>
                     <th className="px-2 py-1.5">หมายเหตุ</th>
                     <th className="px-2 py-1.5 w-8"></th>
                   </tr></thead>
@@ -1057,6 +1058,14 @@ export default function PresalePage() {
                       <td className="px-1 py-1"><input value={b.unit} onChange={e => updateBomRow(i, "unit", e.target.value)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-1 py-1"><input value={b.vendor ?? ""} onChange={e => updateBomRow(i, "vendor", e.target.value)} placeholder="ชื่อผู้จำหน่าย" className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-1 py-1">
+                        <div className="flex items-center gap-1">
+                          <input value={b.ref_url ?? ""} onChange={e => updateBomRow(i, "ref_url", e.target.value)} placeholder="วางลิงก์..." className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" />
+                          {b.ref_url && /^(https?:\/\/|www\.)\S+/.test(b.ref_url.trim()) && (
+                            <a href={b.ref_url.trim().startsWith("http") ? b.ref_url.trim() : `https://${b.ref_url.trim()}`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-blue-400 hover:text-blue-300 text-sm leading-none" title="เปิดลิงก์">↗</a>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-1 py-1">
                         {editingNotesIdx === i ? (
                           <input autoFocus value={b.notes} onChange={e => updateBomRow(i, "notes", e.target.value)} onBlur={() => setEditingNotesIdx(null)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" />
                         ) : (
@@ -1068,7 +1077,7 @@ export default function PresalePage() {
                       <td className="px-1 py-1"><button onClick={() => removeBomRow(i)} className="text-danger text-xs">✕</button></td>
                     </tr>
                   ))}{bomItems.length === 0 && (
-                    <tr><td colSpan={8} className="px-3 py-3 text-xs text-muted text-center">ยังไม่มี BOM items — กดเพิ่มได้เลย</td></tr>
+                    <tr><td colSpan={9} className="px-3 py-3 text-xs text-muted text-center">ยังไม่มี BOM items — กดเพิ่มได้เลย</td></tr>
                   )}</tbody>
                 </table>
               </div>
@@ -1092,6 +1101,7 @@ export default function PresalePage() {
                     <th className="px-2 py-1.5 w-16">ส่วนลด</th>
                     <th className="px-2 py-1.5 w-20 text-right">รวม</th>
                     <th className="px-2 py-1.5 w-14 text-right">Margin</th>
+                    <th className="px-2 py-1.5 w-36">ลิงก์ไฟล์</th>
                     <th className="px-2 py-1.5 w-8"></th>
                   </tr></thead>
                   <tbody>{boqItems.map((it, i) => (
@@ -1111,10 +1121,18 @@ export default function PresalePage() {
                       <td className="px-1 py-1"><input type="number" value={it.discount || ""} onChange={e => updateBoqRow(i, "discount", Number(e.target.value))} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-2 py-1 text-right">{it.total_selling.toLocaleString()}</td>
                       <td className={`px-2 py-1 text-right ${it.margin_percent >= 20 ? "text-green-400" : it.margin_percent >= 0 ? "text-yellow-400" : "text-red-400"}`}>{it.margin_percent.toFixed(1)}%</td>
+                      <td className="px-1 py-1">
+                        <div className="flex items-center gap-1">
+                          <input value={it.ref_url ?? ""} onChange={e => updateBoqRow(i, "ref_url", e.target.value)} placeholder="วางลิงก์..." className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" />
+                          {it.ref_url && /^(https?:\/\/|www\.)\S+/.test(it.ref_url.trim()) && (
+                            <a href={it.ref_url.trim().startsWith("http") ? it.ref_url.trim() : `https://${it.ref_url.trim()}`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-blue-400 hover:text-blue-300 text-sm leading-none" title="เปิดลิงก์">↗</a>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-1 py-1"><button onClick={() => removeBoqRow(i)} className="text-danger text-xs">✕</button></td>
                     </tr>
                   ))}{boqItems.length === 0 && (
-                    <tr><td colSpan={10} className="px-3 py-3 text-xs text-muted text-center">ยังไม่มี BOQ items</td></tr>
+                    <tr><td colSpan={11} className="px-3 py-3 text-xs text-muted text-center">ยังไม่มี BOQ items</td></tr>
                   )}</tbody>
                   {boqItems.length > 0 && (
                     <tfoot>
