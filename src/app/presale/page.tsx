@@ -143,6 +143,19 @@ function detectUrlProvider(url: string): { icon: string; label: string; color: s
   return { icon: "🔗", label: "External URL", color: "text-muted" };
 }
 
+const URL_RE = /(https?:\/\/[^\s]+|www\.[^\s]+)/g;
+function renderNotesWithLinks(text: string) {
+  const parts = text.split(URL_RE);
+  return parts.map((part, idx) => {
+    if (URL_RE.test(part)) {
+      URL_RE.lastIndex = 0;
+      const href = part.startsWith("http") ? part : `https://${part}`;
+      return <a key={idx} href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline underline-offset-2 break-all hover:text-blue-300">{part}</a>;
+    }
+    return <span key={idx}>{part}</span>;
+  });
+}
+
 function PriorityBadge({ priority }: { priority?: string }) {
   const cfg: Record<string, { label: string; cls: string }> = {
     low:    { label: "Low",    cls: "bg-slate-800/60 text-slate-400 border-slate-700/50" },
@@ -272,6 +285,7 @@ export default function PresalePage() {
   const [solutionSummary, setSolutionSummary] = useState("");
   const [artifactSearch, setArtifactSearch] = useState("");
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [editingNotesIdx, setEditingNotesIdx] = useState<number | null>(null);
 
   async function load() {
     const fs = await import("@/lib/firestore");
@@ -1043,12 +1057,13 @@ export default function PresalePage() {
                       <td className="px-1 py-1"><input value={b.unit} onChange={e => updateBomRow(i, "unit", e.target.value)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-1 py-1"><input value={b.vendor ?? ""} onChange={e => updateBomRow(i, "vendor", e.target.value)} placeholder="ชื่อผู้จำหน่าย" className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-1 py-1">
-                        <div className="flex items-center gap-1">
-                          <input value={b.notes} onChange={e => updateBomRow(i, "notes", e.target.value)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" />
-                          {/^(https?:\/\/|www\.)\S+/.test(b.notes.trim()) && (
-                            <a href={b.notes.trim().startsWith("http") ? b.notes.trim() : `https://${b.notes.trim()}`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-accent hover:text-accent/70 text-sm leading-none" title="เปิดลิงก์">↗</a>
-                          )}
-                        </div>
+                        {editingNotesIdx === i ? (
+                          <input autoFocus value={b.notes} onChange={e => updateBomRow(i, "notes", e.target.value)} onBlur={() => setEditingNotesIdx(null)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" />
+                        ) : (
+                          <div onClick={() => setEditingNotesIdx(i)} className="min-h-[26px] w-full rounded border border-transparent hover:border-border px-1.5 py-1 text-xs cursor-text leading-relaxed">
+                            {b.notes ? renderNotesWithLinks(b.notes) : <span className="text-muted/40">หมายเหตุ</span>}
+                          </div>
+                        )}
                       </td>
                       <td className="px-1 py-1"><button onClick={() => removeBomRow(i)} className="text-danger text-xs">✕</button></td>
                     </tr>
