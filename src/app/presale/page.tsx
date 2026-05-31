@@ -267,6 +267,8 @@ export default function PresalePage() {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [pageTab, setPageTab] = useState<"list" | "kanban" | "reports">("list");
   const [reportYear, setReportYear] = useState(new Date().getFullYear());
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [viewFilter, setViewFilter] = useState<"all" | "my" | "overdue" | "today" | "in_progress" | "waiting" | "completed" | "cancelled">("all");
   const [typeFilter, setTypeFilter] = useState<"" | PresaleRequest["type"]>("");
@@ -1593,29 +1595,49 @@ export default function PresalePage() {
 
       {/* ═══ KANBAN VIEW ═══ */}
       {pageTab === "kanban" && (
-        <div className="overflow-x-auto pb-4">
+        <div className="overflow-x-auto pb-4 select-none"
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); setDragOverCol(null); }}>
           <div className="flex gap-3 min-w-max">
             {(["new","pending","assigned","in_progress","waiting_info","waiting_approval","completed","cancelled"] as PresaleRequest["status"][]).map(col => {
               const cards = list.filter(r => r.status === col);
-              const colColor: Record<string, string> = {
+              const colBorder: Record<string, string> = {
                 new: "border-slate-700", pending: "border-blue-800", assigned: "border-indigo-800",
-                in_progress: "border-yellow-800", waiting_info: "border-orange-800", waiting_approval: "border-purple-800",
-                completed: "border-green-800", cancelled: "border-gray-700",
+                in_progress: "border-yellow-700", waiting_info: "border-orange-700", waiting_approval: "border-purple-700",
+                completed: "border-green-700", cancelled: "border-gray-700",
               };
+              const isDragTarget = dragOverCol === col && dragId !== null;
               return (
-                <div key={col} className={`w-60 shrink-0 rounded-xl border ${colColor[col]} bg-card/50`}>
+                <div key={col}
+                  className={`w-60 shrink-0 rounded-xl border-2 transition-colors ${isDragTarget ? "border-accent bg-accent/10 scale-[1.01]" : `${colBorder[col]} bg-card/50`}`}
+                  onDragOver={e => { e.preventDefault(); setDragOverCol(col); }}
+                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null); }}
+                  onDrop={async e => {
+                    e.preventDefault();
+                    setDragOverCol(null);
+                    if (!dragId) return;
+                    const r = list.find(x => x.id === dragId);
+                    if (r && r.status !== col) await changeStatus(r, col as PresaleRequest["status"]);
+                    setDragId(null);
+                  }}>
                   <div className="px-3 py-2 border-b border-border flex items-center justify-between">
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor[col]}`}>{statusLabel[col]}</span>
                     <span className="text-[10px] text-muted">{cards.length}</span>
                   </div>
-                  <div className="p-2 space-y-2 max-h-[70vh] overflow-y-auto">
-                    {cards.length === 0 && <p className="text-[10px] text-muted/50 text-center py-4">ไม่มีงาน</p>}
+                  <div className={`p-2 space-y-2 max-h-[70vh] overflow-y-auto min-h-[60px] transition-colors ${isDragTarget ? "bg-accent/5 rounded-b-xl" : ""}`}>
+                    {cards.length === 0 && !isDragTarget && <p className="text-[10px] text-muted/40 text-center py-4">ไม่มีงาน</p>}
+                    {isDragTarget && cards.length === 0 && <p className="text-[10px] text-accent/60 text-center py-4 border-2 border-dashed border-accent/30 rounded-lg">วางที่นี่</p>}
                     {cards.map(r => {
                       const td = typeDetails[r.type];
                       const isOverdue = !!(r.due_date && r.due_date < today && r.status !== "completed" && r.status !== "cancelled");
+                      const isDragging = dragId === r.id;
                       return (
-                        <div key={r.id} onClick={() => { setPageTab("list"); hydrateDetail(r); }}
-                          className={`rounded-lg bg-card border p-2.5 cursor-pointer hover:bg-card-hover transition-colors ${isOverdue ? "border-red-800/60" : "border-border"}`}>
+                        <div key={r.id}
+                          draggable
+                          onDragStart={e => { setDragId(r.id!); e.dataTransfer.effectAllowed = "move"; }}
+                          onDragEnd={() => { setDragId(null); setDragOverCol(null); }}
+                          onClick={() => { if (!dragId) { setPageTab("list"); hydrateDetail(r); } }}
+                          className={`rounded-lg bg-card border p-2.5 cursor-grab active:cursor-grabbing transition-all ${isDragging ? "opacity-40 scale-95" : "hover:bg-card-hover hover:shadow-md"} ${isOverdue ? "border-red-800/60" : "border-border"}`}>
                           <div className="flex items-start gap-1.5 mb-1.5">
                             <span className="text-base leading-none">{td?.icon || "📋"}</span>
                             <div className="flex-1 min-w-0">
