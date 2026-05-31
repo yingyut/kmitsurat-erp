@@ -293,6 +293,7 @@ export interface BomItem {
   brand: string;
   qty: number;
   unit: string;
+  vendor?: string;
   notes: string;
 }
 

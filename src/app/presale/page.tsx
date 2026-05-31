@@ -51,7 +51,7 @@ const ATTACHMENT_TYPE_META: Record<string, { icon: string; label: string }> = {
   other:        { icon: "📎", label: "Other" },
 };
 
-const emptyBomItem: BomItem = { code: "", name: "", brand: "", qty: 1, unit: "pcs", notes: "" };
+const emptyBomItem: BomItem = { code: "", name: "", brand: "", qty: 1, unit: "pcs", vendor: "", notes: "" };
 const emptyBoqItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0 };
 const emptyAttachment: PresaleAttachment = { type: "design", name: "", url: "", uploaded_at: "", uploaded_by: "", notes: "" };
 
@@ -1027,9 +1027,10 @@ export default function PresalePage() {
                   <thead><tr className="border-b border-border text-left text-[10px] text-muted uppercase">
                     <th className="px-2 py-1.5 w-28">รหัส</th>
                     <th className="px-2 py-1.5">ชื่อ</th>
-                    <th className="px-2 py-1.5 w-32">Brand</th>
+                    <th className="px-2 py-1.5 w-28">Brand</th>
                     <th className="px-2 py-1.5 w-16">Qty</th>
                     <th className="px-2 py-1.5 w-16">Unit</th>
+                    <th className="px-2 py-1.5 w-32">ผู้จำหน่าย</th>
                     <th className="px-2 py-1.5">หมายเหตุ</th>
                     <th className="px-2 py-1.5 w-8"></th>
                   </tr></thead>
@@ -1040,11 +1041,12 @@ export default function PresalePage() {
                       <td className="px-1 py-1"><input value={b.brand} onChange={e => updateBomRow(i, "brand", e.target.value)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-1 py-1"><input type="number" value={b.qty || ""} onChange={e => updateBomRow(i, "qty", Number(e.target.value))} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-1 py-1"><input value={b.unit} onChange={e => updateBomRow(i, "unit", e.target.value)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
+                      <td className="px-1 py-1"><input value={b.vendor ?? ""} onChange={e => updateBomRow(i, "vendor", e.target.value)} placeholder="ชื่อผู้จำหน่าย" className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-1 py-1"><input value={b.notes} onChange={e => updateBomRow(i, "notes", e.target.value)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-1 py-1"><button onClick={() => removeBomRow(i)} className="text-danger text-xs">✕</button></td>
                     </tr>
                   ))}{bomItems.length === 0 && (
-                    <tr><td colSpan={7} className="px-3 py-3 text-xs text-muted text-center">ยังไม่มี BOM items — กดเพิ่มได้เลย</td></tr>
+                    <tr><td colSpan={8} className="px-3 py-3 text-xs text-muted text-center">ยังไม่มี BOM items — กดเพิ่มได้เลย</td></tr>
                   )}</tbody>
                 </table>
               </div>
