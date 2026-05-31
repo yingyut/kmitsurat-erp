@@ -562,24 +562,28 @@ export default function HelpPage() {
         className="mb-4 w-full rounded-xl bg-card border border-border px-4 py-2.5 text-sm focus:outline-none focus:border-accent"
       />
 
-      {/* ── Mobile TOC accordion (< 640px only) ────────────────── */}
-      <div className="sm:hidden mb-4">
+      {/* ── TOC dropdown (ทุก screen size) ─────────────────────── */}
+      <div className="mb-4 relative">
         <button
           onClick={() => setTocOpen(o => !o)}
-          className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl bg-card border border-border text-sm"
+          className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl bg-card border border-border text-sm hover:border-accent/50 transition-colors"
         >
-          <span className="font-medium text-accent truncate">{current?.title}</span>
-          <span className="text-muted text-xs shrink-0">{tocOpen ? "▲ ปิด" : "☰ สารบัญ"}</span>
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="text-accent/50 text-xs shrink-0">☰</span>
+            <span className="font-medium text-foreground truncate">{current?.title}</span>
+            <span className="text-muted/60 text-xs truncate hidden sm:inline">— {current?.thai}</span>
+          </span>
+          <span className="text-muted text-xs shrink-0 ml-2">{tocOpen ? "▲" : "▼"}</span>
         </button>
 
         {tocOpen && (
-          <div className="mt-1 rounded-xl bg-card border border-border overflow-hidden divide-y divide-border/30">
+          <div className="absolute z-20 left-0 right-0 top-full mt-1 rounded-xl bg-card border border-border shadow-xl overflow-hidden divide-y divide-border/20 max-h-80 overflow-y-auto">
             {filtered.map((s, i) => (
               <button
                 key={i}
                 onClick={() => { setActive(i); setTocOpen(false); }}
-                className={`block w-full text-left px-4 py-3 text-sm transition-colors ${
-                  active === i ? "bg-accent/15 text-accent font-medium" : "text-muted"
+                className={`block w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                  active === i ? "bg-accent/15 text-accent font-medium" : "text-muted hover:bg-card-hover hover:text-foreground"
                 }`}
               >
                 {s.title}
@@ -590,44 +594,18 @@ export default function HelpPage() {
         )}
       </div>
 
-      {/* ── Main layout: block on mobile, flex on sm+ ───────────── */}
-      <div className="sm:flex sm:gap-4 sm:items-start">
-
-        {/* Sidebar — hidden on mobile, visible sm+ */}
-        <div className="hidden sm:block sm:w-56 sm:shrink-0">
-          <div className="rounded-xl bg-card border border-border p-3 sticky top-6">
-            <p className="text-xs text-accent/50 uppercase tracking-widest mb-2 px-2">สารบัญ</p>
-            {filtered.map((s, i) => (
-              <button
-                key={i}
-                onClick={() => setActive(i)}
-                className={`block w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
-                  active === i
-                    ? "bg-accent/15 text-accent font-medium"
-                    : "text-muted hover:bg-card-hover hover:text-foreground"
-                }`}
-              >
-                {s.title}
-                <span className="block text-[10px] opacity-60">{s.thai}</span>
-              </button>
-            ))}
+      {/* ── Content — full width ─────────────────────────────────── */}
+      <div
+        className="w-full min-w-0 rounded-xl bg-card border border-border p-4 sm:p-6"
+        style={{ wordBreak: "break-word", overflowWrap: "break-word", minHeight: "400px" }}
+      >
+        {current ? (
+          <div className="min-w-0 w-full">
+            {renderContent(current.content)}
           </div>
-        </div>
-
-        {/* Content — full width mobile, flex-1 desktop */}
-        <div
-          className="w-full min-w-0 sm:flex-1 rounded-xl bg-card border border-border p-4 sm:p-6"
-          style={{ wordBreak: "break-word", overflowWrap: "break-word", minHeight: "400px" }}
-        >
-          {current ? (
-            <div className="min-w-0 w-full">
-              {renderContent(current.content)}
-            </div>
-          ) : (
-            <p className="text-muted text-sm">ไม่พบหัวข้อที่ค้นหา</p>
-          )}
-        </div>
-
+        ) : (
+          <p className="text-muted text-sm">ไม่พบหัวข้อที่ค้นหา</p>
+        )}
       </div>
     </div>
   );
