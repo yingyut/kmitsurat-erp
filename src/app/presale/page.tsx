@@ -280,8 +280,10 @@ export default function PresalePage() {
 
   // Inline editing state for artifacts (kept in detail context)
   const [bomLink, setBomLink] = useState("");
+  const [bomLabel, setBomLabel] = useState("");
   const [bomItems, setBomItems] = useState<BomItem[]>([]);
   const [boqLink, setBoqLink] = useState("");
+  const [boqLabel, setBoqLabel] = useState("");
   const [boqItems, setBoqItems] = useState<QuotationItem[]>([]);
   const [attachments, setAttachments] = useState<PresaleAttachment[]>([]);
   const [solutionSummary, setSolutionSummary] = useState("");
@@ -321,8 +323,10 @@ export default function PresalePage() {
     setDetail(r);
     setSolutionSummary(r.solution_summary || "");
     setBomLink(r.bom_link || "");
+    setBomLabel(r.bom_label || "");
     setBomItems(r.bom_items || []);
     setBoqLink(r.boq_link || "");
+    setBoqLabel(r.boq_label || "");
     setBoqItems(r.boq_items || []);
     setAttachments(r.attachments || []);
   }
@@ -330,9 +334,9 @@ export default function PresalePage() {
     setDetail(null);
     setDetailTab("summary");
     setSolutionSummary("");
-    setBomLink("");
+    setBomLink(""); setBomLabel("");
     setBomItems([]);
-    setBoqLink("");
+    setBoqLink(""); setBoqLabel("");
     setBoqItems([]);
     setAttachments([]);
   }
@@ -518,9 +522,9 @@ export default function PresalePage() {
     try {
       await fs.presaleRequests.update(detail.id!, {
         solution_summary: solutionSummary,
-        bom_link: bomLink,
+        bom_link: bomLink, bom_label: bomLabel,
         bom_items: bomItems,
-        boq_link: boqLink,
+        boq_link: boqLink, boq_label: boqLabel,
         boq_items: boqItems,
         boq_total_cost: boqTotals.totalCost,
         boq_total_selling: boqTotals.totalSelling,
@@ -636,7 +640,7 @@ export default function PresalePage() {
       const qNum = (await generateNumber("quotation", { user_code: "" })) || `QT-${Date.now().toString(36).toUpperCase()}`;
       // Save artifacts first
       await fs.presaleRequests.update(detail.id!, {
-        solution_summary: solutionSummary, bom_link: bomLink, bom_items: bomItems, boq_link: boqLink, boq_items: boqItems,
+        solution_summary: solutionSummary, bom_link: bomLink, bom_label: bomLabel, bom_items: bomItems, boq_link: boqLink, boq_label: boqLabel, boq_items: boqItems,
         boq_total_cost: boqTotals.totalCost, boq_total_selling: boqTotals.totalSelling, boq_gp_percent: boqTotals.gpPercent,
         attachments,
       } as unknown as Record<string, unknown>);
@@ -1044,17 +1048,27 @@ export default function PresalePage() {
           {detailTab === "bom" && (
             <div className="space-y-3">
               {/* BOM Link */}
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2">
-                <span className="text-xs text-muted shrink-0">📎 BOM Link</span>
-                <input
-                  value={bomLink}
-                  onChange={e => setBomLink(e.target.value)}
-                  placeholder="วางลิงก์ไฟล์ BOM (OneDrive / Google Drive / SharePoint…)"
-                  className="flex-1 rounded bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent"
-                />
-                {bomLink && /^(https?:\/\/|www\.)\S+/.test(bomLink.trim()) && (
-                  <a href={bomLink.trim().startsWith("http") ? bomLink.trim() : `https://${bomLink.trim()}`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-blue-400 hover:text-blue-300 text-xs font-medium whitespace-nowrap" title="เปิดไฟล์ BOM">↗ เปิดไฟล์</a>
-                )}
+              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted shrink-0 w-20">📎 BOM Link</span>
+                  <input
+                    value={bomLabel}
+                    onChange={e => setBomLabel(e.target.value)}
+                    placeholder="ชื่อไฟล์ เช่น BOM_CCTV_ลูกค้า V1"
+                    className="w-52 shrink-0 rounded bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent"
+                  />
+                  <input
+                    value={bomLink}
+                    onChange={e => setBomLink(e.target.value)}
+                    placeholder="วางลิงก์ไฟล์ (OneDrive / Google Drive / SharePoint…)"
+                    className="flex-1 rounded bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent font-mono"
+                  />
+                  {bomLink && /^(https?:\/\/|www\.)\S+/.test(bomLink.trim()) && (
+                    <a href={bomLink.trim().startsWith("http") ? bomLink.trim() : `https://${bomLink.trim()}`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-blue-400 hover:text-blue-300 text-xs font-medium whitespace-nowrap">
+                      ↗ {bomLabel.trim() || "เปิดไฟล์"}
+                    </a>
+                  )}
+                </div>
               </div>
               <p className="text-[10px] text-muted">รายการอุปกรณ์ (เน้นการสั่งซื้อ — ไม่ต้องมีราคา)</p>
               <div className="overflow-x-auto rounded-lg border border-border">
@@ -1110,17 +1124,27 @@ export default function PresalePage() {
           {detailTab === "boq" && (
             <div className="space-y-3">
               {/* BOQ Link */}
-              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2">
-                <span className="text-xs text-muted shrink-0">📎 BOQ Link</span>
-                <input
-                  value={boqLink}
-                  onChange={e => setBoqLink(e.target.value)}
-                  placeholder="วางลิงก์ไฟล์ BOQ (OneDrive / Google Drive / SharePoint…)"
-                  className="flex-1 rounded bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent"
-                />
-                {boqLink && /^(https?:\/\/|www\.)\S+/.test(boqLink.trim()) && (
-                  <a href={boqLink.trim().startsWith("http") ? boqLink.trim() : `https://${boqLink.trim()}`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-blue-400 hover:text-blue-300 text-xs font-medium whitespace-nowrap" title="เปิดไฟล์ BOQ">↗ เปิดไฟล์</a>
-                )}
+              <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted shrink-0 w-20">📎 BOQ Link</span>
+                  <input
+                    value={boqLabel}
+                    onChange={e => setBoqLabel(e.target.value)}
+                    placeholder="ชื่อไฟล์ เช่น BOQ_Solar_ลูกค้า V1"
+                    className="w-52 shrink-0 rounded bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent"
+                  />
+                  <input
+                    value={boqLink}
+                    onChange={e => setBoqLink(e.target.value)}
+                    placeholder="วางลิงก์ไฟล์ (OneDrive / Google Drive / SharePoint…)"
+                    className="flex-1 rounded bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent font-mono"
+                  />
+                  {boqLink && /^(https?:\/\/|www\.)\S+/.test(boqLink.trim()) && (
+                    <a href={boqLink.trim().startsWith("http") ? boqLink.trim() : `https://${boqLink.trim()}`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-blue-400 hover:text-blue-300 text-xs font-medium whitespace-nowrap">
+                      ↗ {boqLabel.trim() || "เปิดไฟล์"}
+                    </a>
+                  )}
+                </div>
               </div>
               <p className="text-[10px] text-muted">BOQ พร้อมราคา — สามารถ Convert เป็น Quotation ได้ตรงๆ</p>
               <div className="overflow-x-auto rounded-lg border border-border">
