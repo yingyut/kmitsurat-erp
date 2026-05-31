@@ -317,7 +317,8 @@ export interface PresaleRequest {
   requirement: string;
   assigned_to: string;
   due_date: string;
-  status: "pending" | "in_progress" | "completed";
+  status: "new" | "pending" | "assigned" | "in_progress" | "waiting_info" | "waiting_approval" | "completed" | "cancelled";
+  priority?: "low" | "normal" | "high" | "urgent";
   // Artifacts
   solution_summary?: string;     // markdown / plain text
   bom_items?: BomItem[];          // light parts list

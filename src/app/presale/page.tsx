@@ -12,13 +12,26 @@ const typeLabels: Record<string, string> = { solution_design: "Solution Design",
 const empty = {
   activity_id: "", customer_id: "", customer_name: "", project_id: "", project_name: "",
   type: "boq" as PresaleRequest["type"], requirement: "", assigned_to: "", due_date: "",
-  status: "pending" as PresaleRequest["status"], value: 0,
+  status: "new" as PresaleRequest["status"], value: 0,
+  priority: "normal" as NonNullable<PresaleRequest["priority"]>,
 };
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
-const statusLabel: Record<string, string> = { pending: "ยังไม่เริ่ม", in_progress: "กำลังทำ", completed: "เสร็จแล้ว" };
-const statusColor: Record<string, string> = { pending: "bg-blue-900/50 text-blue-400", in_progress: "bg-yellow-900/50 text-yellow-400", completed: "bg-green-900/50 text-green-400" };
+const statusLabel: Record<string, string> = {
+  new: "ใหม่", pending: "ยังไม่เริ่ม", assigned: "มอบหมายแล้ว", in_progress: "กำลังทำ",
+  waiting_info: "รอข้อมูล", waiting_approval: "รออนุมัติ", completed: "เสร็จแล้ว", cancelled: "ยกเลิก",
+};
+const statusColor: Record<string, string> = {
+  new: "bg-slate-800/60 text-slate-300", pending: "bg-blue-900/50 text-blue-400",
+  assigned: "bg-indigo-900/50 text-indigo-400", in_progress: "bg-yellow-900/50 text-yellow-400",
+  waiting_info: "bg-orange-900/50 text-orange-400", waiting_approval: "bg-purple-900/50 text-purple-400",
+  completed: "bg-green-900/50 text-green-400", cancelled: "bg-gray-900/50 text-gray-500",
+};
+const priorityLabel: Record<string, string> = { low: "ต่ำ", normal: "ปกติ", high: "สูง", urgent: "ด่วน!" };
+const priorityColor: Record<string, string> = {
+  low: "text-gray-400", normal: "text-blue-400", high: "text-amber-400", urgent: "text-red-400",
+};
 
 const ATTACHMENT_TYPE_META: Record<string, { icon: string; label: string }> = {
   design:       { icon: "🎨", label: "Design Drawing" },
@@ -120,7 +133,8 @@ export default function PresalePage() {
   const [presaleUsers, setPresaleUsers] = useState<User[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | PresaleRequest["status"]>("all");
+  const [viewFilter, setViewFilter] = useState<"all" | "my" | "overdue" | "today" | "in_progress" | "waiting" | "completed" | "cancelled">("all");
+  const [typeFilter, setTypeFilter] = useState<"" | PresaleRequest["type"]>("");
   const [personFilter, setPersonFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -215,22 +229,31 @@ export default function PresalePage() {
   const filtered = list.filter((r) => {
     if (ownOnly && r.assigned_to !== myName) return false;
     if (personFilter && r.assigned_to !== personFilter) return false;
+    if (typeFilter && r.type !== typeFilter) return false;
     const s = search.toLowerCase();
-    const matchSearch = !s || r.requirement.toLowerCase().includes(s) || r.customer_name.toLowerCase().includes(s);
-    const matchStatus = statusFilter === "all" || r.status === statusFilter;
-    return matchSearch && matchStatus;
+    if (s && !r.requirement.toLowerCase().includes(s) && !r.customer_name.toLowerCase().includes(s) &&
+        !(r.project_name || "").toLowerCase().includes(s) && !(r.assigned_to || "").toLowerCase().includes(s)) return false;
+    if (viewFilter === "my") return r.assigned_to === myName;
+    if (viewFilter === "overdue") return !!(r.due_date && r.due_date < today && r.status !== "completed" && r.status !== "cancelled");
+    if (viewFilter === "today") return r.due_date === today && r.status !== "completed" && r.status !== "cancelled";
+    if (viewFilter === "in_progress") return r.status === "in_progress";
+    if (viewFilter === "waiting") return r.status === "waiting_info" || r.status === "waiting_approval";
+    if (viewFilter === "completed") return r.status === "completed";
+    if (viewFilter === "cancelled") return r.status === "cancelled";
+    return true;
   });
 
   // Dashboard stats (scoped to what user can see)
   const today = todayStr();
   const scopedList = ownOnly ? list.filter(r => r.assigned_to === myName) : list;
-  const overdueList = scopedList.filter(r => r.due_date && r.due_date < today && r.status !== "completed");
-  const dueTodayList = scopedList.filter(r => r.due_date === today && r.status !== "completed");
+  const overdueList = scopedList.filter(r => r.due_date && r.due_date < today && r.status !== "completed" && r.status !== "cancelled");
+  const dueTodayList = scopedList.filter(r => r.due_date === today && r.status !== "completed" && r.status !== "cancelled");
   const pendingApprovalList = list.filter(r => r.approval_status === "pending_review");
   const stats = {
     total: scopedList.length,
-    pending: scopedList.filter(r => r.status === "pending").length,
+    myTasks: list.filter(r => r.assigned_to === myName && r.status !== "completed" && r.status !== "cancelled").length,
     inProgress: scopedList.filter(r => r.status === "in_progress").length,
+    waiting: scopedList.filter(r => r.status === "waiting_info" || r.status === "waiting_approval").length,
     completed: scopedList.filter(r => r.status === "completed").length,
     overdue: overdueList.length,
     dueToday: dueTodayList.length,
@@ -268,6 +291,7 @@ export default function PresalePage() {
       project_id: r.project_id || "", project_name: r.project_name || "",
       type: r.type, requirement: r.requirement, assigned_to: r.assigned_to || "",
       due_date: r.due_date || "", status: r.status, value: r.value || 0,
+      priority: (r.priority || "normal") as NonNullable<PresaleRequest["priority"]>,
     });
     setShowForm(true);
     closeDetail();
@@ -609,48 +633,35 @@ export default function PresalePage() {
         </div>
       )}
 
-      {/* Dashboard */}
+      {/* Dashboard KPIs */}
       {!loading && (
-        <div className="space-y-3 mb-4">
-          {/* KPI cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
-            <button onClick={() => setStatusFilter("all")} className={`rounded-lg border p-2.5 text-left transition-colors ${statusFilter === "all" ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
-              <p className="text-base font-bold">{stats.total}</p>
-              <p className="text-[10px] text-muted">ทั้งหมด</p>
+        <div className="mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+            <button onClick={() => setViewFilter("all")} className={`rounded-xl border p-3 text-left transition-colors ${viewFilter === "all" ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
+              <p className="text-2xl font-bold">{stats.total}</p>
+              <p className="text-xs text-muted mt-0.5">ทั้งหมด</p>
             </button>
-            <button onClick={() => setStatusFilter("pending")} className={`rounded-lg border p-2.5 text-left transition-colors ${statusFilter === "pending" ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
-              <p className="text-base font-bold text-blue-400">{stats.pending}</p>
-              <p className="text-[10px] text-muted">ยังไม่เริ่ม</p>
+            <button onClick={() => setViewFilter("my")} className={`rounded-xl border p-3 text-left transition-colors ${viewFilter === "my" ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
+              <p className="text-2xl font-bold text-accent">{stats.myTasks}</p>
+              <p className="text-xs text-muted mt-0.5">งานของฉัน</p>
             </button>
-            <button onClick={() => setStatusFilter("in_progress")} className={`rounded-lg border p-2.5 text-left transition-colors ${statusFilter === "in_progress" ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
-              <p className="text-base font-bold text-yellow-400">{stats.inProgress}</p>
-              <p className="text-[10px] text-muted">กำลังทำ</p>
+            <button onClick={() => setViewFilter("overdue")} className={`rounded-xl border p-3 text-left transition-colors ${viewFilter === "overdue" ? "border-red-500 bg-red-900/10" : stats.overdue > 0 ? "border-red-800/50 bg-card hover:bg-card-hover" : "border-border bg-card hover:bg-card-hover"}`}>
+              <p className="text-2xl font-bold text-red-400">{stats.overdue}</p>
+              <p className="text-xs text-muted mt-0.5">เกินกำหนด</p>
             </button>
-            <button onClick={() => setStatusFilter("completed")} className={`rounded-lg border p-2.5 text-left transition-colors ${statusFilter === "completed" ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
-              <p className="text-base font-bold text-green-400">{stats.completed}</p>
-              <p className="text-[10px] text-muted">เสร็จแล้ว</p>
+            <button onClick={() => setViewFilter("today")} className={`rounded-xl border p-3 text-left transition-colors ${viewFilter === "today" ? "border-amber-500 bg-amber-900/10" : stats.dueToday > 0 ? "border-amber-800/40 bg-card hover:bg-card-hover" : "border-border bg-card hover:bg-card-hover"}`}>
+              <p className="text-2xl font-bold text-amber-400">{stats.dueToday}</p>
+              <p className="text-xs text-muted mt-0.5">ครบกำหนดวันนี้</p>
             </button>
-            <div className="rounded-lg border border-red-800/50 bg-red-900/10 p-2.5">
-              <p className="text-base font-bold text-red-400">{stats.overdue}</p>
-              <p className="text-[10px] text-muted">เลยกำหนด</p>
-            </div>
-            <div className="rounded-lg border border-amber-800/50 bg-amber-900/10 p-2.5">
-              <p className="text-base font-bold text-amber-400">{stats.dueToday}</p>
-              <p className="text-[10px] text-muted">ครบกำหนดวันนี้</p>
-            </div>
-            <div className="rounded-lg border border-purple-800/50 bg-purple-900/10 p-2.5">
-              <p className="text-base font-bold text-purple-400">{stats.pendingReqs}</p>
-              <p className="text-[10px] text-muted">Job Requests รอรับ</p>
-            </div>
-            {canApprove && (
-              <div className="rounded-lg border border-orange-800/50 bg-orange-900/10 p-2.5">
-                <p className="text-base font-bold text-orange-400">{stats.pendingApproval}</p>
-                <p className="text-[10px] text-muted">รอตรวจสอบ</p>
-              </div>
-            )}
+            <button onClick={() => setViewFilter("in_progress")} className={`rounded-xl border p-3 text-left transition-colors ${viewFilter === "in_progress" ? "border-yellow-500 bg-yellow-900/10" : "border-border bg-card hover:bg-card-hover"}`}>
+              <p className="text-2xl font-bold text-yellow-400">{stats.inProgress}</p>
+              <p className="text-xs text-muted mt-0.5">กำลังทำ</p>
+            </button>
+            <button onClick={() => setViewFilter("completed")} className={`rounded-xl border p-3 text-left transition-colors ${viewFilter === "completed" ? "border-green-500 bg-green-900/10" : "border-border bg-card hover:bg-card-hover"}`}>
+              <p className="text-2xl font-bold text-green-400">{stats.completed}</p>
+              <p className="text-xs text-muted mt-0.5">เสร็จแล้ว</p>
+            </button>
           </div>
-
-          {/* Per-person workload grid (manager view) */}
           {isManager && byPerson.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-2">
@@ -660,52 +671,16 @@ export default function PresalePage() {
               <div className="flex flex-wrap gap-2">
                 {byPerson.map(w => (
                   <button key={w.user.id} onClick={() => setPersonFilter(prev => prev === w.user.name ? "" : w.user.name)}
-                    className={`rounded-xl border px-3 py-2 text-left min-w-32 transition-all ${personFilter === w.user.name ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
-                    <p className="text-xs font-semibold truncate max-w-28">{w.user.name}</p>
+                    className={`rounded-xl border px-3 py-2 text-left transition-all ${personFilter === w.user.name ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}>
+                    <p className="text-xs font-semibold">{w.user.name}</p>
                     <p className="text-[10px] text-muted">{w.user.role}</p>
                     <div className="flex gap-2 mt-1">
                       <span className="text-[10px] text-yellow-400">{w.active} งาน</span>
-                      {w.overdue > 0 && <span className="text-[10px] text-red-400">⚠{w.overdue}</span>}
-                      {w.pendingApproval > 0 && <span className="text-[10px] text-orange-400">🔍{w.pendingApproval}</span>}
+                      {w.overdue > 0 && <span className="text-[10px] text-red-400">⚠ {w.overdue}</span>}
                     </div>
                   </button>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Alerts + workload */}
-          {(overdueList.length > 0 || dueTodayList.length > 0 || (!isManager && workload.length > 0)) && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="rounded-xl bg-card border border-border p-3">
-                <h3 className="text-xs font-semibold text-red-400 mb-2">⚠ เลยกำหนด ({overdueList.length})</h3>
-                {overdueList.length === 0 ? <p className="text-[11px] text-muted">ไม่มี</p> : overdueList.slice(0, 3).map(r => (
-                  <button key={r.id} onClick={() => hydrateDetail(r)} className="text-[11px] py-1 border-b border-border last:border-0 text-left w-full hover:text-accent">
-                    <p className="truncate">{typeLabels[r.type]} — {r.customer_name}</p>
-                    <p className="text-muted">กำหนด {r.due_date}{r.assigned_to && ` · ${r.assigned_to}`}</p>
-                  </button>
-                ))}
-              </div>
-              <div className="rounded-xl bg-card border border-border p-3">
-                <h3 className="text-xs font-semibold text-amber-400 mb-2">📅 ครบวันนี้ ({dueTodayList.length})</h3>
-                {dueTodayList.length === 0 ? <p className="text-[11px] text-muted">ไม่มี</p> : dueTodayList.slice(0, 3).map(r => (
-                  <button key={r.id} onClick={() => hydrateDetail(r)} className="text-[11px] py-1 border-b border-border last:border-0 text-left w-full hover:text-accent">
-                    <p className="truncate">{typeLabels[r.type]} — {r.customer_name}</p>
-                    <p className="text-muted">{r.assigned_to || "ยังไม่มอบหมาย"}</p>
-                  </button>
-                ))}
-              </div>
-              {!isManager && (
-                <div className="rounded-xl bg-card border border-border p-3">
-                  <h3 className="text-xs font-semibold text-blue-400 mb-2">👤 ภาระงานต่อคน (Active)</h3>
-                  {workload.length === 0 ? <p className="text-[11px] text-muted">ไม่มีงาน Active</p> : workload.map(w => (
-                    <div key={w.name} className="flex justify-between text-[11px] py-1 border-b border-border last:border-0">
-                      <span>{w.name}</span>
-                      <span className="font-semibold">{w.active} งาน</span>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -723,7 +698,22 @@ export default function PresalePage() {
               {presaleUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
             </select>
             <input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as PresaleRequest["status"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="completed">Completed</option></select>
+            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as PresaleRequest["status"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+              <option value="new">ใหม่</option>
+              <option value="pending">ยังไม่เริ่ม</option>
+              <option value="assigned">มอบหมายแล้ว</option>
+              <option value="in_progress">กำลังทำ</option>
+              <option value="waiting_info">รอข้อมูล</option>
+              <option value="waiting_approval">รออนุมัติ</option>
+              <option value="completed">เสร็จแล้ว</option>
+              <option value="cancelled">ยกเลิก</option>
+            </select>
+            <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as NonNullable<PresaleRequest["priority"]> })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+              <option value="low">▼ Priority: ต่ำ</option>
+              <option value="normal">● Priority: ปกติ</option>
+              <option value="high">▲ Priority: สูง</option>
+              <option value="urgent">🔴 Priority: ด่วน!</option>
+            </select>
             <div className="relative">
               <input type="number" placeholder="มูลค่าโครงการ (THB)" value={form.value || ""} onChange={e => setForm({ ...form, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
               {!editId && checkNeedsApproval(form.type, form.value || 0) && (
@@ -776,10 +766,15 @@ export default function PresalePage() {
               )}
             </div>
             <div className="flex gap-2 shrink-0">
-              <select value={detail.status} onChange={e => changeStatus(detail, e.target.value as PresaleRequest["status"])} className={`rounded-full px-3 py-1 text-xs border-0 focus:outline-none cursor-pointer ${statusColor[detail.status]}`}>
+              <select value={detail.status} onChange={e => changeStatus(detail, e.target.value as PresaleRequest["status"])} className={`rounded-full px-3 py-1 text-xs border-0 focus:outline-none cursor-pointer ${statusColor[detail.status] || ""}`}>
+                <option value="new">ใหม่</option>
                 <option value="pending">ยังไม่เริ่ม</option>
+                <option value="assigned">มอบหมายแล้ว</option>
                 <option value="in_progress">กำลังทำ</option>
+                <option value="waiting_info">รอข้อมูล</option>
+                <option value="waiting_approval">รออนุมัติ</option>
                 <option value="completed">เสร็จแล้ว</option>
+                <option value="cancelled">ยกเลิก</option>
               </select>
               <button onClick={() => openEdit(detail)} className="rounded-lg border border-border px-3 py-1.5 text-xs text-accent hover:bg-card-hover">แก้ไข Task</button>
               <button onClick={closeDetail} className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-card-hover">ปิด</button>
@@ -1020,66 +1015,114 @@ export default function PresalePage() {
           )}
         </div>
       )}
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <input placeholder="ค้นหา requirement / ลูกค้า..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-        <p className="text-xs text-muted shrink-0">
-          {filtered.length} รายการ
-          {statusFilter !== "all" && <span className="text-accent"> · {statusLabel[statusFilter]}</span>}
-          {personFilter && <span className="text-accent"> · {personFilter}</span>}
-        </p>
+      {/* Filter Bar */}
+      <div className="mb-3 space-y-2">
+        <div className="flex flex-wrap gap-1.5">
+          {(["all","my","overdue","today","in_progress","waiting","completed","cancelled"] as const).map(v => {
+            const vLabels: Record<string, string> = { all: "ทั้งหมด", my: "ของฉัน", overdue: "⚠ เกินกำหนด", today: "📅 วันนี้", in_progress: "กำลังทำ", waiting: "⏳ รอ", completed: "✅ เสร็จ", cancelled: "ยกเลิก" };
+            const vCounts: Record<string, number> = { all: list.length, my: stats.myTasks, overdue: stats.overdue, today: stats.dueToday, in_progress: stats.inProgress, waiting: stats.waiting, completed: stats.completed, cancelled: list.filter(r => r.status === "cancelled").length };
+            return (
+              <button key={v} onClick={() => setViewFilter(v)}
+                className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${viewFilter === v ? "bg-accent text-white border-accent" : "border-border text-muted hover:border-accent/50 hover:text-foreground"}`}>
+                {vLabels[v]}{vCounts[v] > 0 ? <span className="ml-1 opacity-60">({vCounts[v]})</span> : null}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex gap-2 flex-wrap items-center">
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as "" | PresaleRequest["type"])} className="rounded-lg bg-card border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent">
+            <option value="">ทุกประเภทงาน</option>
+            {reqTypes.map(t => <option key={t} value={t}>{typeLabels[t]}</option>)}
+          </select>
+          {isManager && (
+            <select value={personFilter} onChange={e => setPersonFilter(e.target.value)} className="rounded-lg bg-card border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent">
+              <option value="">ทุกคน</option>
+              {assigneeNames.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          )}
+          <input placeholder="🔍 ค้นหา requirement / ลูกค้า..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-40 rounded-lg bg-card border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent" />
+          <p className="text-xs text-muted shrink-0">{filtered.length} รายการ</p>
+        </div>
       </div>
-      {loading ? <p className="text-muted text-sm">Loading...</p> : filtered.length === 0 ? <p className="text-muted text-sm">ไม่พบงาน</p> : (
+
+      {/* Task List */}
+      {loading ? (
+        <div className="text-center py-12 text-muted text-sm">Loading...</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 rounded-xl bg-card border border-border">
+          <p className="text-4xl mb-3">📋</p>
+          <p className="text-base font-medium">ไม่มีงานในขณะนี้</p>
+          <p className="text-sm text-muted mt-1">
+            {viewFilter !== "all" ? "ลองเปลี่ยน filter หรือกดที่ \"ทั้งหมด\"" : "กด + New Task เพื่อสร้างงานใหม่"}
+          </p>
+        </div>
+      ) : (
         <div className="space-y-2">{filtered.map((r) => {
-          const overdue = r.due_date && r.due_date < today && r.status !== "completed";
+          const isOverdue = !!(r.due_date && r.due_date < today && r.status !== "completed" && r.status !== "cancelled");
+          const isDueToday = r.due_date === today && r.status !== "completed" && r.status !== "cancelled";
           const bomCount = (r.bom_items || []).length;
           const boqCount = (r.boq_items || []).length;
           const fileCount = (r.attachments || []).length;
           const isOpen = detail?.id === r.id;
+          const prio = r.priority || "normal";
           return (
-            <div key={r.id} className={`rounded-xl bg-card border p-4 hover:bg-card-hover cursor-pointer transition-colors ${isOpen ? "border-accent bg-accent/5" : r.approval_status === "pending_review" ? "border-orange-800/50" : "border-border"}`} onClick={() => isOpen ? closeDetail() : hydrateDetail(r)}>
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <p className="text-sm font-medium">{typeLabels[r.type]}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[r.status]}`}>{statusLabel[r.status]}</span>
-                    {overdue && <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-[10px] text-red-400">⚠ เลยกำหนด</span>}
-                    {/* Approval badges */}
-                    {r.approval_status === "pending_review" && <span className="rounded-full bg-orange-900/50 px-2 py-0.5 text-[10px] text-orange-400">🔍 รอตรวจสอบ</span>}
-                    {r.approval_status === "approved" && <span className="rounded-full bg-green-900/50 px-2 py-0.5 text-[10px] text-green-400" title={`อนุมัติโดย ${r.reviewed_by}`}>✅ อนุมัติ</span>}
-                    {r.approval_status === "rejected" && <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-[10px] text-red-400" title={r.review_note || ""}>❌ ส่งกลับ</span>}
-                    {/* Artifact badges */}
-                    {r.solution_summary && <span className="rounded-full bg-blue-900/50 px-2 py-0.5 text-[10px] text-blue-400" title="มี Solution Summary">📋</span>}
-                    {bomCount > 0 && <span className="rounded-full bg-amber-900/50 px-2 py-0.5 text-[10px] text-amber-400" title={`${bomCount} BOM items`}>🛒 {bomCount}</span>}
-                    {boqCount > 0 && <span className="rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] text-emerald-400" title={`${boqCount} BOQ items · ${(r.boq_total_selling || 0).toLocaleString()} THB`}>💰 {boqCount}</span>}
-                    {fileCount > 0 && <span className="rounded-full bg-purple-900/50 px-2 py-0.5 text-[10px] text-purple-400" title={`${fileCount} files`}>📎 {fileCount}</span>}
-                    {r.converted_to_quotation_id && (
-                      <Link href="/quotations" className="rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] text-emerald-400 hover:underline" title={`Converted to ${r.converted_quotation_number}`} onClick={e => e.stopPropagation()}>✓ → {r.converted_quotation_number}</Link>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted">{r.requirement}</p>
-                  <p className="text-xs text-muted mt-1 flex flex-wrap gap-x-2">
-                    {r.customer_id ? <Link href={`/customers/${r.customer_id}`} className="hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>{r.customer_name}</Link> : <span>{r.customer_name}</span>}
-                    {r.project_name && <span>· {r.project_name}</span>}
-                    {r.assigned_to && <span>· 👤 {r.assigned_to}</span>}
-                    {r.due_date && <span>· <span className={overdue ? "text-red-400" : ""}>📅 {r.due_date}</span></span>}
-                    {(r.value || 0) > 0 && <span>· 💰 {(r.value || 0).toLocaleString()} THB</span>}
-                  </p>
+            <div key={r.id}
+              className={`rounded-xl bg-card border p-4 cursor-pointer transition-colors hover:bg-card-hover ${isOpen ? "border-accent bg-accent/5" : isOverdue ? "border-red-800/50" : isDueToday ? "border-amber-800/40" : r.approval_status === "pending_review" ? "border-orange-800/50" : "border-border"}`}
+              onClick={() => isOpen ? closeDetail() : hydrateDetail(r)}>
+
+              {/* Row 1: type + badges */}
+              <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                <span className="rounded-md bg-accent/10 text-accent px-2 py-0.5 text-[11px] font-semibold shrink-0">{typeLabels[r.type]}</span>
+                {prio === "urgent" && <span className="text-[10px] font-bold text-red-400">🔴 ด่วน!</span>}
+                {prio === "high" && <span className="text-[10px] font-semibold text-amber-400">▲ สูง</span>}
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[r.status] || "bg-card text-muted"}`}>{statusLabel[r.status] || r.status}</span>
+                {isOverdue && <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-[10px] text-red-400 font-medium">⚠ เกินกำหนด</span>}
+                {isDueToday && <span className="rounded-full bg-amber-900/50 px-2 py-0.5 text-[10px] text-amber-400">📅 ครบวันนี้</span>}
+                {r.approval_status === "pending_review" && <span className="rounded-full bg-orange-900/50 px-2 py-0.5 text-[10px] text-orange-400">🔍 รอตรวจสอบ</span>}
+                {r.approval_status === "approved" && <span className="rounded-full bg-green-900/50 px-2 py-0.5 text-[10px] text-green-400" title={`อนุมัติโดย ${r.reviewed_by}`}>✅ อนุมัติ</span>}
+                {r.approval_status === "rejected" && <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-[10px] text-red-400" title={r.review_note || ""}>❌ ส่งกลับ</span>}
+                {r.converted_to_quotation_id && (
+                  <Link href="/quotations" className="rounded-full bg-emerald-900/50 px-2 py-0.5 text-[10px] text-emerald-400 hover:underline" title={`Converted to ${r.converted_quotation_number}`} onClick={e => e.stopPropagation()}>✓ → {r.converted_quotation_number}</Link>
+                )}
+              </div>
+
+              {/* Row 2: requirement */}
+              <p className="text-sm font-medium text-foreground line-clamp-2 mb-1.5">{r.requirement}</p>
+
+              {/* Row 3: meta info */}
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted mb-2">
+                {r.customer_id
+                  ? <Link href={`/customers/${r.customer_id}`} className="hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>🏢 {r.customer_name}</Link>
+                  : r.customer_name ? <span>🏢 {r.customer_name}</span> : null}
+                {r.project_id
+                  ? <Link href={`/projects/${r.project_id}`} className="hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>📁 {r.project_name}</Link>
+                  : r.project_name ? <span>📁 {r.project_name}</span> : null}
+                {r.assigned_to && <span>👤 {r.assigned_to}</span>}
+                {r.due_date && <span className={isOverdue ? "text-red-400 font-medium" : isDueToday ? "text-amber-400" : ""}>📅 {r.due_date}</span>}
+                {(r.value || 0) > 0 && <span>💰 {(r.value || 0).toLocaleString()} THB</span>}
+              </div>
+
+              {/* Row 4: artifacts + actions */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex gap-1 flex-wrap">
+                  {r.solution_summary && <span className="rounded bg-blue-900/30 px-1.5 py-0.5 text-[10px] text-blue-400">📋 Solution</span>}
+                  {bomCount > 0 && <span className="rounded bg-amber-900/30 px-1.5 py-0.5 text-[10px] text-amber-400">🛒 BOM {bomCount}</span>}
+                  {boqCount > 0 && <span className="rounded bg-emerald-900/30 px-1.5 py-0.5 text-[10px] text-emerald-400" title={`${(r.boq_total_selling || 0).toLocaleString()} THB`}>💰 BOQ {boqCount}</span>}
+                  {fileCount > 0 && <span className="rounded bg-purple-900/30 px-1.5 py-0.5 text-[10px] text-purple-400">📎 {fileCount}</span>}
                 </div>
-                <div className="flex gap-2 shrink-0 ml-3" onClick={e => e.stopPropagation()}>
-                  {/* Inline approve/reject for approvers */}
+                <div className="flex gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                   {canApprove && r.approval_status === "pending_review" && (
                     <>
                       <button onClick={() => handleApprove(r)} className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✅</button>
                       <button onClick={() => handleReject(r)} className="text-[10px] bg-red-800/50 text-red-400 rounded px-2 py-1 hover:bg-red-800">❌</button>
                     </>
                   )}
-                  {/* Request approval if not yet set */}
                   {!r.approval_status && checkNeedsApproval(r.type, r.value || 0) && (
-                    <button onClick={() => requestApproval(r)} className="text-[10px] text-orange-400 hover:underline">ขออนุมัติ</button>
+                    <button onClick={() => requestApproval(r)} className="text-[10px] text-orange-400 border border-orange-800/50 rounded px-2 py-1 hover:bg-orange-900/20">ขออนุมัติ</button>
                   )}
-                  <button onClick={() => isOpen ? closeDetail() : hydrateDetail(r)} className="text-xs text-accent hover:underline">{isOpen ? "ปิด" : "ดู Artifacts"}</button>
-                  <button onClick={() => openEdit(r)} className="text-xs text-accent hover:underline">แก้ไข</button>
-                  <button onClick={() => handleDelete(r.id!)} className="text-xs text-danger hover:underline">ลบ</button>
+                  <button onClick={() => isOpen ? closeDetail() : hydrateDetail(r)} className="text-[10px] rounded border border-border px-2 py-1 text-accent hover:bg-card-hover">{isOpen ? "ปิด" : "📋 Artifacts"}</button>
+                  <button onClick={() => openEdit(r)} className="text-[10px] rounded border border-border px-2 py-1 text-muted hover:bg-card-hover">✏ แก้ไข</button>
+                  <button onClick={() => handleDelete(r.id!)} className="text-[10px] rounded border border-red-900/50 px-2 py-1 text-danger hover:bg-red-900/20">🗑</button>
                 </div>
               </div>
             </div>
