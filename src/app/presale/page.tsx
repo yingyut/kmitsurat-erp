@@ -1042,7 +1042,14 @@ export default function PresalePage() {
                       <td className="px-1 py-1"><input type="number" value={b.qty || ""} onChange={e => updateBomRow(i, "qty", Number(e.target.value))} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-1 py-1"><input value={b.unit} onChange={e => updateBomRow(i, "unit", e.target.value)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
                       <td className="px-1 py-1"><input value={b.vendor ?? ""} onChange={e => updateBomRow(i, "vendor", e.target.value)} placeholder="ชื่อผู้จำหน่าย" className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
-                      <td className="px-1 py-1"><input value={b.notes} onChange={e => updateBomRow(i, "notes", e.target.value)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" /></td>
+                      <td className="px-1 py-1">
+                        <div className="flex items-center gap-1">
+                          <input value={b.notes} onChange={e => updateBomRow(i, "notes", e.target.value)} className="w-full rounded bg-background border border-border px-1.5 py-1 text-xs focus:outline-none focus:border-accent" />
+                          {/^(https?:\/\/|www\.)\S+/.test(b.notes.trim()) && (
+                            <a href={b.notes.trim().startsWith("http") ? b.notes.trim() : `https://${b.notes.trim()}`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-accent hover:text-accent/70 text-sm leading-none" title="เปิดลิงก์">↗</a>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-1 py-1"><button onClick={() => removeBomRow(i)} className="text-danger text-xs">✕</button></td>
                     </tr>
                   ))}{bomItems.length === 0 && (
