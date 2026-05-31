@@ -323,11 +323,9 @@ export interface PresaleRequest {
   priority?: "low" | "normal" | "high" | "urgent";
   // Artifacts
   solution_summary?: string;     // markdown / plain text
-  bom_link?: string;              // external BOM file link (OneDrive / Google Drive / etc.)
-  bom_label?: string;             // display name for the BOM link
-  bom_items?: BomItem[];          // light parts list
-  boq_link?: string;              // external BOQ file link
-  boq_label?: string;             // display name for the BOQ link
+  bom_links?: { label: string; url: string }[];   // external BOM file links (multiple versions)
+  bom_items?: BomItem[];                           // light parts list
+  boq_links?: { label: string; url: string }[];   // external BOQ file links (multiple versions)
   boq_items?: QuotationItem[];    // structured BOQ — convertible to Quotation
   boq_total_cost?: number;
   boq_total_selling?: number;
