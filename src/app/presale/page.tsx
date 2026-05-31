@@ -55,7 +55,7 @@ const emptyBomItem: BomItem = { code: "", name: "", brand: "", qty: 1, unit: "pc
 const emptyBoqItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0 };
 const emptyAttachment: PresaleAttachment = { type: "design", name: "", url: "", uploaded_at: "", uploaded_by: "", notes: "" };
 
-type DetailTab = "summary" | "bom" | "boq" | "files";
+type DetailTab = "summary" | "bom" | "boq" | "artifacts";
 
 // ─── UI Helpers ───────────────────────────────────────────────────────────────
 
@@ -131,6 +131,16 @@ function SearchableSelect({ value, options, onChange, placeholder = "เลื�
       )}
     </div>
   );
+}
+
+function detectUrlProvider(url: string): { icon: string; label: string; color: string } {
+  if (!url) return { icon: "🔗", label: "Link", color: "text-muted" };
+  const u = url.toLowerCase();
+  if (u.includes("sharepoint.com"))                             return { icon: "📁", label: "SharePoint",   color: "text-blue-400" };
+  if (u.includes("onedrive.live.com") || u.includes("1drv.ms")) return { icon: "☁️", label: "OneDrive",    color: "text-blue-400" };
+  if (u.includes("drive.google.com") || u.includes("docs.google.com")) return { icon: "📂", label: "Google Drive", color: "text-yellow-400" };
+  if (u.includes("dropbox.com"))                                return { icon: "📦", label: "Dropbox",     color: "text-blue-400" };
+  return { icon: "🔗", label: "External URL", color: "text-muted" };
 }
 
 function PriorityBadge({ priority }: { priority?: string }) {
@@ -260,6 +270,8 @@ export default function PresalePage() {
   const [boqItems, setBoqItems] = useState<QuotationItem[]>([]);
   const [attachments, setAttachments] = useState<PresaleAttachment[]>([]);
   const [solutionSummary, setSolutionSummary] = useState("");
+  const [artifactSearch, setArtifactSearch] = useState("");
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   async function load() {
     const fs = await import("@/lib/firestore");
@@ -578,6 +590,13 @@ export default function PresalePage() {
     setAttachments(attachments.map((a, i) => i === idx ? { ...a, [field]: val } : a));
   }
   function removeAttachment(idx: number) { setAttachments(attachments.filter((_, i) => i !== idx)); }
+
+  function copyLink(url: string) {
+    navigator.clipboard?.writeText(url).then(() => {
+      setCopiedUrl(url);
+      setTimeout(() => setCopiedUrl(null), 2000);
+    });
+  }
 
   // === Convert BOQ → Quotation ===
   async function convertToQuotation() {
@@ -968,12 +987,13 @@ export default function PresalePage() {
 
           {/* Tabs */}
           <div className="flex gap-1 mb-3 border-b border-border overflow-x-auto">
-            {(["summary","bom","boq","files"] as const).map(t => {
+            {(["summary","bom","boq","artifacts"] as const).map(t => {
+              const summarySections = solutionSummary.trim() ? ((solutionSummary.match(/^#{1,3}\s/gm) || []).length || 1) : 0;
               const labels: Record<DetailTab, string> = {
-                summary: "📋 Solution Summary",
-                bom: `🛒 BOM (${bomItems.length})`,
-                boq: `💰 BOQ (${boqItems.length})`,
-                files: `📎 Files (${attachments.length})`,
+                summary: `📋 Solution${summarySections > 0 ? ` (${summarySections})` : ""}`,
+                bom: `🛒 BOM${bomItems.length > 0 ? ` (${bomItems.length})` : ""}`,
+                boq: `💰 BOQ${boqItems.length > 0 ? ` (${boqItems.length})` : ""}`,
+                artifacts: `📎 Artifacts${attachments.length > 0 ? ` (${attachments.length})` : ""}`,
               };
               return (
                 <button key={t} onClick={() => setDetailTab(t)} className={`whitespace-nowrap px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${detailTab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>{labels[t]}</button>
@@ -1108,12 +1128,34 @@ export default function PresalePage() {
             </div>
           )}
 
-          {/* Files tab */}
-          {detailTab === "files" && (
-            <div className="space-y-2">
-              <p className="text-[10px] text-muted">ลิงก์ไฟล์ภายนอก (Google Drive, OneDrive, Dropbox, etc.) — ไม่อัพโหลดเข้าระบบ</p>
+          {/* Artifacts tab */}
+          {detailTab === "artifacts" && (
+            <div className="space-y-3">
+              {/* Stats row */}
+              {attachments.length > 0 && (() => {
+                const withLink = attachments.filter(a => !!a.url).length;
+                const last = [...attachments].filter(a => a.uploaded_at).sort((x, y) => y.uploaded_at.localeCompare(x.uploaded_at))[0];
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="rounded-lg bg-background border border-border px-3 py-2">
+                      <p className="text-xl font-bold">{attachments.length}</p>
+                      <p className="text-[10px] text-muted">รายการทั้งหมด</p>
+                    </div>
+                    <div className="rounded-lg bg-background border border-border px-3 py-2">
+                      <p className="text-xl font-bold text-accent">{withLink}</p>
+                      <p className="text-[10px] text-muted">มี URL</p>
+                    </div>
+                    {last ? (
+                      <div className="rounded-lg bg-background border border-border px-3 py-2 col-span-2">
+                        <p className="text-xs font-medium truncate">👤 {last.uploaded_by || "—"}</p>
+                        <p className="text-[10px] text-muted">อัปโหลดล่าสุด · {last.uploaded_at}</p>
+                      </div>
+                    ) : <div className="col-span-2" />}
+                  </div>
+                );
+              })()}
 
-              {/* Suggested folders from integration */}
+              {/* Integration folder suggestions (unchanged) */}
               {integration && detail.customer_name && (
                 <div className="rounded-lg bg-emerald-900/10 border border-emerald-800/40 p-3">
                   <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
@@ -1121,65 +1163,127 @@ export default function PresalePage() {
                       📁 Folder ใน {integration.label}
                       {detail.project_name ? ` — ${detail.project_name}` : ` — ${detail.customer_name}`}
                     </p>
-                    <a
-                      href={buildProjectFolderUrl(integration, { customer_name: detail.customer_name, project_name: detail.project_name, customer_id: detail.customer_id, project_id: detail.project_id })}
-                      target="_blank" rel="noopener noreferrer"
-                      className="text-[11px] text-accent hover:underline"
-                      title="เปิด root folder ของโปรเจคนี้"
-                    >🔗 เปิด root folder ↗</a>
+                    <a href={buildProjectFolderUrl(integration, { customer_name: detail.customer_name, project_name: detail.project_name, customer_id: detail.customer_id, project_id: detail.project_id })}
+                      target="_blank" rel="noopener noreferrer" className="text-[11px] text-accent hover:underline">🔗 เปิด root folder ↗</a>
                   </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1.5">
                     {(integration.default_subfolders || []).map(sub => {
                       const url = buildSubfolderUrl(integration, { customer_name: detail.customer_name, project_name: detail.project_name, customer_id: detail.customer_id, project_id: detail.project_id }, sub);
-                      const guessType: PresaleAttachment["type"] =
-                        /solution/i.test(sub) ? "design" :
-                        /BOM|BOQ/i.test(sub) ? "spec" :
-                        /draw/i.test(sub) ? "drawing" :
-                        /present/i.test(sub) ? "presentation" :
-                        /photo|image|site/i.test(sub) ? "image" :
-                        /contract|hand/i.test(sub) ? "document" : "other";
+                      const guessType: PresaleAttachment["type"] = /solution/i.test(sub) ? "design" : /BOM|BOQ/i.test(sub) ? "spec" : /draw/i.test(sub) ? "drawing" : /present/i.test(sub) ? "presentation" : /photo|image|site/i.test(sub) ? "image" : /contract|hand/i.test(sub) ? "document" : "other";
                       const alreadyAdded = attachments.some(a => a.url === url);
                       return (
                         <div key={sub} className="flex items-center gap-1.5 rounded bg-card border border-border px-2 py-1.5 text-[11px]">
                           <span className="flex-1 truncate font-mono">{sub}</span>
-                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline shrink-0" title={url}>↗ เปิด</a>
-                          {alreadyAdded ? (
-                            <span className="text-[10px] text-muted shrink-0">✓ added</span>
-                          ) : (
-                            <button onClick={() => addAttachmentWithUrl(url, sub, guessType)} className="text-emerald-400 hover:underline shrink-0" title="เพิ่มเป็น attachment">+ ใช้ลิงก์นี้</button>
-                          )}
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline shrink-0">↗</a>
+                          {alreadyAdded ? <span className="text-[10px] text-muted shrink-0">✓</span> : <button onClick={() => addAttachmentWithUrl(url, sub, guessType)} className="text-emerald-400 hover:underline shrink-0">+ เพิ่ม</button>}
                         </div>
                       );
                     })}
                   </div>
-                  <p className="text-[10px] text-muted mt-2">💡 ลิงก์อ้างอิงโครงสร้าง folder ที่ตั้งค่าไว้ — สร้าง folder ใน SharePoint ตามที่ template กำหนด ก่อนใช้งาน</p>
+                  <p className="text-[10px] text-muted mt-2">💡 ลิงก์อ้างอิงโครงสร้าง folder — สร้าง folder ใน SharePoint ก่อนใช้งาน</p>
                 </div>
               )}
               {!integration && (
                 <div className="rounded-lg bg-blue-900/10 border border-blue-800/40 p-3 text-[11px]">
-                  💡 ตั้งค่า SharePoint / OneDrive ที่ <Link href="/settings/integrations" className="text-accent hover:underline">/settings/integrations</Link> เพื่อให้ระบบสร้างลิงก์ folder อัตโนมัติ
+                  💡 ตั้งค่า SharePoint / OneDrive ที่ <Link href="/settings/integrations" className="text-accent hover:underline">/settings/integrations</Link>
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                {attachments.map((a, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-center rounded-lg bg-background border border-border p-2">
-                    <select value={a.type} onChange={e => updateAttachment(i, "type", e.target.value)} className="col-span-2 rounded bg-card border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent">
-                      {Object.entries(ATTACHMENT_TYPE_META).map(([k, m]) => <option key={k} value={k}>{m.icon} {m.label}</option>)}
-                    </select>
-                    <input value={a.name} onChange={e => updateAttachment(i, "name", e.target.value)} placeholder="ชื่อไฟล์ / คำอธิบาย" className="col-span-3 rounded bg-card border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent" />
-                    <input value={a.url} onChange={e => updateAttachment(i, "url", e.target.value)} placeholder="https://drive.google.com/..." className="col-span-4 rounded bg-card border border-border px-2 py-1 text-xs font-mono focus:outline-none focus:border-accent" />
-                    <input value={a.notes || ""} onChange={e => updateAttachment(i, "notes", e.target.value)} placeholder="หมายเหตุ" className="col-span-2 rounded bg-card border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent" />
-                    <div className="col-span-1 flex gap-1.5 justify-end">
-                      {a.url && <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-accent hover:underline" title="เปิดในแท็บใหม่">↗</a>}
-                      <button onClick={() => removeAttachment(i)} className="text-danger text-xs">✕</button>
-                    </div>
+              {/* Search */}
+              {attachments.length > 2 && (
+                <input value={artifactSearch} onChange={e => setArtifactSearch(e.target.value)}
+                  placeholder="🔍 ค้นหา ชื่อไฟล์ / URL..."
+                  className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
+              )}
+
+              {/* Artifact cards */}
+              <div className="space-y-2">
+                {attachments.length === 0 ? (
+                  <div className="text-center py-10 rounded-xl bg-background border border-border/50">
+                    <p className="text-3xl mb-2">📎</p>
+                    <p className="text-sm font-medium">ยังไม่มีไฟล์หรือลิงก์</p>
+                    <p className="text-xs text-muted mt-1">รองรับ OneDrive · SharePoint · Google Drive · Dropbox · External URL</p>
                   </div>
-                ))}
-                {attachments.length === 0 && <p className="text-xs text-muted text-center py-3">ยังไม่มีไฟล์ — เพิ่มลิงก์ Google Drive / OneDrive / etc.</p>}
+                ) : attachments.map((a, i) => {
+                  if (artifactSearch && !a.name.toLowerCase().includes(artifactSearch.toLowerCase()) && !a.url.toLowerCase().includes(artifactSearch.toLowerCase())) return null;
+                  const provider = detectUrlProvider(a.url);
+                  const meta = ATTACHMENT_TYPE_META[a.type] || ATTACHMENT_TYPE_META.other;
+                  const isCopied = copiedUrl === a.url;
+                  return (
+                    <div key={i} className="rounded-xl bg-background border border-border p-3 hover:border-border/80 transition-colors">
+                      <div className="flex items-start gap-3">
+                        {/* File type icon */}
+                        <div className="w-9 h-9 rounded-lg bg-card border border-border flex items-center justify-center text-lg shrink-0 mt-0.5">{meta.icon}</div>
+                        {/* Main content */}
+                        <div className="flex-1 min-w-0 space-y-2">
+                          {/* Provider + uploader meta */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <select value={a.type} onChange={e => updateAttachment(i, "type", e.target.value)}
+                              className="rounded bg-card border border-border px-2 py-0.5 text-xs focus:outline-none focus:border-accent text-muted">
+                              {Object.entries(ATTACHMENT_TYPE_META).map(([k, m]) => <option key={k} value={k}>{m.icon} {m.label}</option>)}
+                            </select>
+                            {a.url && <span className={`text-[10px] font-medium ${provider.color}`}>{provider.icon} {provider.label}</span>}
+                            {a.uploaded_by && <span className="text-[10px] text-muted">👤 {a.uploaded_by}</span>}
+                            {a.uploaded_at && <span className="text-[10px] text-muted">📅 {a.uploaded_at}</span>}
+                          </div>
+                          {/* Name */}
+                          <input value={a.name} onChange={e => updateAttachment(i, "name", e.target.value)}
+                            placeholder="ชื่อไฟล์ / คำอธิบาย"
+                            className="w-full rounded-lg bg-card border border-border px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
+                          {/* URL row */}
+                          <div className="flex gap-1.5 items-center">
+                            <input value={a.url} onChange={e => updateAttachment(i, "url", e.target.value)}
+                              placeholder="https://..."
+                              className="flex-1 rounded-lg bg-card border border-border px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
+                            {a.url && <>
+                              <a href={a.url} target="_blank" rel="noopener noreferrer" title="เปิดในแท็บใหม่"
+                                className="shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs text-accent hover:bg-card-hover transition-colors">↗</a>
+                              <button onClick={() => copyLink(a.url)} title="คัดลอก URL"
+                                className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${isCopied ? "border-green-700 text-green-400 bg-green-900/20" : "border-border text-muted hover:bg-card-hover"}`}>
+                                {isCopied ? "✓" : "📋"}
+                              </button>
+                            </>}
+                          </div>
+                          {/* Notes */}
+                          <input value={a.notes || ""} onChange={e => updateAttachment(i, "notes", e.target.value)}
+                            placeholder="หมายเหตุ (ไม่บังคับ)"
+                            className="w-full rounded-lg bg-card border border-border px-2.5 py-1.5 text-xs focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
+                        </div>
+                        {/* Delete */}
+                        <button onClick={() => removeAttachment(i)} className="shrink-0 w-7 h-7 rounded-lg border border-red-900/50 text-danger hover:bg-red-900/20 flex items-center justify-center text-xs mt-0.5">✕</button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+
               <button onClick={addAttachmentRow} className="text-xs text-accent hover:underline">+ เพิ่มไฟล์ / ลิงก์</button>
+
+              {/* Activity log — derived from existing uploaded_by/uploaded_at fields */}
+              {attachments.some(a => a.uploaded_by || a.uploaded_at) && (
+                <div className="rounded-xl bg-background border border-border/50 p-3 mt-1">
+                  <p className="text-[10px] font-semibold text-muted uppercase tracking-wide mb-2">Activity Log</p>
+                  <div className="space-y-2">
+                    {[...attachments]
+                      .filter(a => a.uploaded_by || a.uploaded_at)
+                      .sort((x, y) => (y.uploaded_at || "").localeCompare(x.uploaded_at || ""))
+                      .slice(0, 5)
+                      .map((a, i) => (
+                        <div key={i} className="flex items-center gap-2 text-[11px]">
+                          <div className={`w-5 h-5 rounded-full ${avatarBg(a.uploaded_by || "?")} flex items-center justify-center text-[8px] font-bold text-white shrink-0`}>
+                            {(a.uploaded_by || "?").slice(0, 2).toUpperCase()}
+                          </div>
+                          <span className="text-muted flex-1 min-w-0">
+                            <span className="text-foreground font-medium">{a.uploaded_by || "—"}</span>{" "}
+                            เพิ่ม {ATTACHMENT_TYPE_META[a.type]?.icon}{" "}
+                            <span className="text-foreground">{a.name || a.url || "ไฟล์"}</span>
+                          </span>
+                          {a.uploaded_at && <span className="text-muted/70 shrink-0">{a.uploaded_at}</span>}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
