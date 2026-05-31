@@ -310,6 +310,7 @@ export interface PresaleAttachment {
 export interface PresaleRequest {
   id?: string;
   tenant_id: string;
+  created_at?: unknown;
   activity_id: string;
   customer_id: string;
   customer_name: string;
@@ -331,6 +332,7 @@ export interface PresaleRequest {
   boq_total_selling?: number;
   boq_gp_percent?: number;
   attachments?: PresaleAttachment[];
+  completed_at?: string;
   // Convert tracking
   converted_to_quotation_id?: string;
   converted_quotation_number?: string;

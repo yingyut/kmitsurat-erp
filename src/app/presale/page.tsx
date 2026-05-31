@@ -265,6 +265,8 @@ export default function PresalePage() {
   const [incomingReqs, setIncomingReqs] = useState<JobRequest[]>([]);
   const [presaleUsers, setPresaleUsers] = useState<User[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [pageTab, setPageTab] = useState<"list" | "kanban" | "reports">("list");
+  const [reportYear, setReportYear] = useState(new Date().getFullYear());
   const [search, setSearch] = useState("");
   const [viewFilter, setViewFilter] = useState<"all" | "my" | "overdue" | "today" | "in_progress" | "waiting" | "completed" | "cancelled">("all");
   const [typeFilter, setTypeFilter] = useState<"" | PresaleRequest["type"]>("");
@@ -508,7 +510,9 @@ export default function PresalePage() {
 
   async function changeStatus(r: PresaleRequest, status: PresaleRequest["status"]) {
     const fs = await import("@/lib/firestore");
-    await fs.presaleRequests.update(r.id!, { status });
+    const extra: Record<string, unknown> = {};
+    if (status === "completed" && !r.completed_at) extra.completed_at = todayStr();
+    await fs.presaleRequests.update(r.id!, { status, ...extra });
     await load();
   }
 
@@ -731,6 +735,14 @@ export default function PresalePage() {
         </div>
       </div>
 
+      {/* Main page tabs */}
+      <div className="flex gap-1 mb-4 border-b border-border">
+        {([["list","📋 รายการ"],["kanban","📅 แผนงาน"],["reports","📊 รายงาน"]] as const).map(([t, label]) => (
+          <button key={t} onClick={() => setPageTab(t)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${pageTab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>{label}</button>
+        ))}
+      </div>
+
+      {pageTab === "list" && (<>
       {/* Approval Settings Panel */}
       {showApprovalSettings && isManager && (
         <div className="rounded-xl bg-card border border-accent/40 p-5 mb-4">
@@ -1503,7 +1515,7 @@ export default function PresalePage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-2">{filtered.map((r) => {
+        <div className="space-y-2">{pageTab === "list" && filtered.map((r) => {
           const isOverdue = !!(r.due_date && r.due_date < today && r.status !== "completed" && r.status !== "cancelled");
           const isDueToday = r.due_date === today && r.status !== "completed" && r.status !== "cancelled";
           const bomCount = (r.bom_items || []).length;
@@ -1577,6 +1589,209 @@ export default function PresalePage() {
           );
         })}</div>
       )}
+      </>)}
+
+      {/* ═══ KANBAN VIEW ═══ */}
+      {pageTab === "kanban" && (
+        <div className="overflow-x-auto pb-4">
+          <div className="flex gap-3 min-w-max">
+            {(["new","pending","assigned","in_progress","waiting_info","waiting_approval","completed","cancelled"] as PresaleRequest["status"][]).map(col => {
+              const cards = list.filter(r => r.status === col);
+              const colColor: Record<string, string> = {
+                new: "border-slate-700", pending: "border-blue-800", assigned: "border-indigo-800",
+                in_progress: "border-yellow-800", waiting_info: "border-orange-800", waiting_approval: "border-purple-800",
+                completed: "border-green-800", cancelled: "border-gray-700",
+              };
+              return (
+                <div key={col} className={`w-60 shrink-0 rounded-xl border ${colColor[col]} bg-card/50`}>
+                  <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor[col]}`}>{statusLabel[col]}</span>
+                    <span className="text-[10px] text-muted">{cards.length}</span>
+                  </div>
+                  <div className="p-2 space-y-2 max-h-[70vh] overflow-y-auto">
+                    {cards.length === 0 && <p className="text-[10px] text-muted/50 text-center py-4">ไม่มีงาน</p>}
+                    {cards.map(r => {
+                      const td = typeDetails[r.type];
+                      const isOverdue = !!(r.due_date && r.due_date < today && r.status !== "completed" && r.status !== "cancelled");
+                      return (
+                        <div key={r.id} onClick={() => { setPageTab("list"); hydrateDetail(r); }}
+                          className={`rounded-lg bg-card border p-2.5 cursor-pointer hover:bg-card-hover transition-colors ${isOverdue ? "border-red-800/60" : "border-border"}`}>
+                          <div className="flex items-start gap-1.5 mb-1.5">
+                            <span className="text-base leading-none">{td?.icon || "📋"}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-semibold leading-tight truncate">{r.customer_name || "ไม่ระบุลูกค้า"}</p>
+                              <p className="text-[10px] text-muted truncate">{td?.thai || r.type}</p>
+                            </div>
+                          </div>
+                          {r.requirement && <p className="text-[10px] text-muted line-clamp-2 mb-1.5">{r.requirement}</p>}
+                          <div className="flex items-center justify-between gap-1 mt-1">
+                            <div className="flex items-center gap-1">
+                              {r.assigned_to && (
+                                <span className={`w-5 h-5 rounded-full ${avatarBg(r.assigned_to)} flex items-center justify-center text-[8px] font-bold text-white`} title={r.assigned_to}>{r.assigned_to.slice(0,2).toUpperCase()}</span>
+                              )}
+                              {r.priority && r.priority !== "normal" && (
+                                <span className={`text-[9px] font-medium ${priorityColor[r.priority]}`}>{priorityLabel[r.priority]}</span>
+                              )}
+                            </div>
+                            {r.due_date && (
+                              <span className={`text-[9px] ${isOverdue ? "text-red-400" : "text-muted"}`}>📅 {r.due_date}</span>
+                            )}
+                          </div>
+                          {(r.boq_total_selling || 0) > 0 && (
+                            <p className="text-[9px] text-green-400 mt-1">{(r.boq_total_selling || 0).toLocaleString()} ฿</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ REPORTS VIEW ═══ */}
+      {pageTab === "reports" && (() => {
+        const years = Array.from(new Set(list.map(r => r.created_at ? new Date((r.created_at as unknown as { seconds: number })?.seconds ? (r.created_at as unknown as { seconds: number }).seconds * 1000 : r.created_at as unknown as number).getFullYear() : new Date().getFullYear()))).sort((a,b) => b - a);
+        if (!years.includes(reportYear)) years.push(reportYear);
+        const yearList = list.filter(r => {
+          const y = r.created_at ? new Date((r.created_at as unknown as { seconds: number })?.seconds ? (r.created_at as unknown as { seconds: number }).seconds * 1000 : r.created_at as unknown as number).getFullYear() : 0;
+          return y === reportYear;
+        });
+        const MONTHS = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+        const byMonth = MONTHS.map((m, mi) => {
+          const items = yearList.filter(r => {
+            const d = r.created_at ? new Date((r.created_at as unknown as { seconds: number })?.seconds ? (r.created_at as unknown as { seconds: number }).seconds * 1000 : r.created_at as unknown as number) : null;
+            return d && d.getMonth() === mi;
+          });
+          return { m, count: items.length, value: items.reduce((s,r) => s + (r.boq_total_selling || 0), 0) };
+        });
+        const maxCount = Math.max(...byMonth.map(b => b.count), 1);
+        const byType = reqTypes.map(t => {
+          const items = yearList.filter(r => r.type === t);
+          const done = items.filter(r => r.status === "completed");
+          const avgDays = done.length > 0 ? Math.round(done.reduce((s,r) => {
+            if (!r.completed_at || !r.created_at) return s;
+            const c = new Date((r.created_at as unknown as { seconds: number })?.seconds ? (r.created_at as unknown as { seconds: number }).seconds * 1000 : r.created_at as unknown as number);
+            const d = new Date(r.completed_at);
+            return s + Math.round((d.getTime() - c.getTime()) / 86400000);
+          }, 0) / done.length) : null;
+          return { type: t, count: items.length, done: done.length, value: items.reduce((s,r) => s + (r.boq_total_selling || 0), 0), avgDays };
+        }).filter(x => x.count > 0).sort((a,b) => b.count - a.count);
+        const byPerson2 = Array.from(new Set(yearList.map(r => r.assigned_to).filter(Boolean))).map(name => ({
+          name: name!,
+          count: yearList.filter(r => r.assigned_to === name).length,
+          done: yearList.filter(r => r.assigned_to === name && r.status === "completed").length,
+          value: yearList.filter(r => r.assigned_to === name).reduce((s,r) => s + (r.boq_total_selling || 0), 0),
+        })).sort((a,b) => b.count - a.count);
+        const totalValue = yearList.reduce((s,r) => s + (r.boq_total_selling || 0), 0);
+        const completedCount = yearList.filter(r => r.status === "completed").length;
+        const inProgressCount = yearList.filter(r => ["in_progress","waiting_info","waiting_approval","assigned"].includes(r.status)).length;
+        return (
+          <div className="space-y-5">
+            {/* Year selector */}
+            <div className="flex items-center gap-3">
+              <p className="text-sm font-semibold">📊 รายงาน Presale</p>
+              <div className="flex gap-1">
+                {years.map(y => (
+                  <button key={y} onClick={() => setReportYear(y)} className={`px-3 py-1 rounded-lg text-xs border transition-colors ${reportYear === y ? "bg-accent text-white border-accent" : "border-border text-muted hover:border-accent/50"}`}>{y}</button>
+                ))}
+              </div>
+              <p className="text-xs text-muted ml-auto">{yearList.length} งานทั้งหมดในปี {reportYear}</p>
+            </div>
+            {/* KPI row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "งานทั้งหมด", value: yearList.length, sub: `ปี ${reportYear}`, color: "text-foreground" },
+                { label: "เสร็จแล้ว", value: completedCount, sub: yearList.length ? `${Math.round(completedCount/yearList.length*100)}%` : "—", color: "text-green-400" },
+                { label: "กำลังดำเนินการ", value: inProgressCount, sub: "รวมรอข้อมูล/อนุมัติ", color: "text-yellow-400" },
+                { label: "มูลค่า BOQ รวม", value: totalValue > 0 ? `${(totalValue/1000000).toFixed(1)}M` : "—", sub: `${totalValue.toLocaleString()} ฿`, color: "text-blue-400" },
+              ].map(k => (
+                <div key={k.label} className="rounded-xl border border-border bg-card p-3">
+                  <p className={`text-2xl font-bold ${k.color}`}>{k.value}</p>
+                  <p className="text-xs font-medium mt-0.5">{k.label}</p>
+                  <p className="text-[10px] text-muted mt-0.5">{k.sub}</p>
+                </div>
+              ))}
+            </div>
+            {/* Monthly bar chart */}
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs font-semibold mb-3 text-muted">จำนวนงานรายเดือน ({reportYear})</p>
+              <div className="flex items-end gap-1.5 h-32">
+                {byMonth.map(b => (
+                  <div key={b.m} className="flex-1 flex flex-col items-center gap-1">
+                    <p className="text-[9px] text-muted">{b.count > 0 ? b.count : ""}</p>
+                    <div className="w-full rounded-t bg-accent/70 transition-all" style={{ height: `${Math.round((b.count / maxCount) * 80)}px`, minHeight: b.count > 0 ? "4px" : "0" }} />
+                    <p className="text-[9px] text-muted">{b.m}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Type breakdown */}
+            {byType.length > 0 && (
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-border">
+                  <p className="text-xs font-semibold">แยกตามประเภทงาน</p>
+                </div>
+                <table className="w-full text-xs">
+                  <thead><tr className="border-b border-border text-[10px] text-muted uppercase">
+                    <th className="px-4 py-2 text-left">ประเภท</th>
+                    <th className="px-4 py-2 text-center">ทั้งหมด</th>
+                    <th className="px-4 py-2 text-center">เสร็จ</th>
+                    <th className="px-4 py-2 text-right">มูลค่า BOQ</th>
+                    <th className="px-4 py-2 text-right">เฉลี่ย (วัน)</th>
+                  </tr></thead>
+                  <tbody>{byType.map(row => (
+                    <tr key={row.type} className="border-b border-border last:border-0 hover:bg-card-hover">
+                      <td className="px-4 py-2 font-medium">{typeDetails[row.type]?.icon} {typeDetails[row.type]?.thai || row.type}</td>
+                      <td className="px-4 py-2 text-center">{row.count}</td>
+                      <td className="px-4 py-2 text-center text-green-400">{row.done}</td>
+                      <td className="px-4 py-2 text-right text-blue-400">{row.value > 0 ? row.value.toLocaleString() : "—"}</td>
+                      <td className="px-4 py-2 text-right text-muted">{row.avgDays !== null ? `${row.avgDays} วัน` : "—"}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+            {/* Workload by person */}
+            {byPerson2.length > 0 && (
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-border">
+                  <p className="text-xs font-semibold">Workload แต่ละคน</p>
+                </div>
+                <table className="w-full text-xs">
+                  <thead><tr className="border-b border-border text-[10px] text-muted uppercase">
+                    <th className="px-4 py-2 text-left">ชื่อ</th>
+                    <th className="px-4 py-2 text-center">ได้รับงาน</th>
+                    <th className="px-4 py-2 text-center">เสร็จ</th>
+                    <th className="px-4 py-2 text-right">มูลค่า BOQ</th>
+                  </tr></thead>
+                  <tbody>{byPerson2.map(p => (
+                    <tr key={p.name} className="border-b border-border last:border-0 hover:bg-card-hover">
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-6 h-6 rounded-full ${avatarBg(p.name)} flex items-center justify-center text-[9px] font-bold text-white`}>{p.name.slice(0,2).toUpperCase()}</span>
+                          <span className="font-medium">{p.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-center">{p.count}</td>
+                      <td className="px-4 py-2 text-center text-green-400">{p.done}</td>
+                      <td className="px-4 py-2 text-right text-blue-400">{p.value > 0 ? p.value.toLocaleString() : "—"}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+            {yearList.length === 0 && (
+              <div className="rounded-xl border border-border bg-card p-12 text-center">
+                <p className="text-3xl mb-2">📊</p>
+                <p className="text-sm text-muted">ยังไม่มีข้อมูลในปี {reportYear}</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
