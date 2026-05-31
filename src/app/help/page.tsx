@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 type Section = { title: string; thai: string; content: string };
 
@@ -459,18 +459,14 @@ Open → In Progress → Resolved → Closed
 export default function HelpPage() {
   const [active, setActive] = useState(0);
   const [searchHelp, setSearchHelp] = useState("");
-  const [isMobile, setIsMobile] = useState(true);
   const [tocOpen, setTocOpen] = useState(false);
 
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
   const filtered = searchHelp
-    ? sections.filter(s => s.title.toLowerCase().includes(searchHelp.toLowerCase()) || s.thai.includes(searchHelp) || s.content.toLowerCase().includes(searchHelp.toLowerCase()))
+    ? sections.filter(s =>
+        s.title.toLowerCase().includes(searchHelp.toLowerCase()) ||
+        s.thai.includes(searchHelp) ||
+        s.content.toLowerCase().includes(searchHelp.toLowerCase())
+      )
     : sections;
 
   const current = filtered[active] || filtered[0];
@@ -478,13 +474,17 @@ export default function HelpPage() {
   function renderInline(text: string) {
     const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
     if (parts.length === 1) return <span>{text}</span>;
-    return <>{parts.map((p, i) => {
-      if (p.startsWith("**") && p.endsWith("**"))
-        return <strong key={i} className="text-foreground font-semibold">{p.slice(2, -2)}</strong>;
-      if (p.startsWith("`") && p.endsWith("`"))
-        return <code key={i} className="bg-black/30 rounded px-1 text-accent/80 font-mono text-[11px]">{p.slice(1, -1)}</code>;
-      return <span key={i}>{p}</span>;
-    })}</>;
+    return (
+      <>
+        {parts.map((p, i) => {
+          if (p.startsWith("**") && p.endsWith("**"))
+            return <strong key={i} className="text-foreground font-semibold">{p.slice(2, -2)}</strong>;
+          if (p.startsWith("`") && p.endsWith("`"))
+            return <code key={i} className="bg-black/30 rounded px-1 text-accent/80 font-mono text-[11px]">{p.slice(1, -1)}</code>;
+          return <span key={i}>{p}</span>;
+        })}
+      </>
+    );
   }
 
   function renderContent(content: string) {
@@ -500,20 +500,20 @@ export default function HelpPage() {
         if (!cells.length) return null;
         const isHeader = i + 1 < lines.length && lines[i + 1].startsWith("|---");
         return (
-          <div key={i} className={`flex gap-2 text-sm py-2 border-b border-border/15 ${isHeader ? "font-semibold text-foreground border-border/40 bg-card-hover/30 px-2 rounded-t" : "px-2"}`}>
-            <span className="w-36 shrink-0 text-foreground/80">{renderInline(cells[0].trim())}</span>
-            <span className="flex-1 text-muted leading-snug">{cells[1] ? renderInline(cells[1].trim()) : ""}</span>
+          <div key={i} className={`flex flex-col sm:flex-row sm:gap-2 text-sm py-2 border-b border-border/15 px-2 ${isHeader ? "font-semibold text-foreground bg-card-hover/30 rounded-t border-border/40" : ""}`}>
+            <span className="text-foreground/80 sm:w-36 sm:shrink-0">{renderInline(cells[0].trim())}</span>
+            <span className="text-muted leading-snug min-w-0">{cells[1] ? renderInline(cells[1].trim()) : ""}</span>
           </div>
         );
       }
       if (line.startsWith("> "))
-        return <div key={i} className="my-3 pl-4 border-l-2 border-accent/50 text-sm text-muted/80 italic leading-relaxed">{renderInline(line.slice(2))}</div>;
+        return <div key={i} className="my-3 pl-3 border-l-2 border-accent/50 text-sm text-muted/80 italic leading-relaxed">{renderInline(line.slice(2))}</div>;
       if (line.startsWith("- **")) {
         const match = line.match(/^- \*\*(.+?)\*\*(.*)$/);
         if (match) return (
-          <div key={i} className="flex gap-2 text-sm my-2 ml-3">
-            <span className="text-accent/60 shrink-0 mt-1">•</span>
-            <span className="leading-relaxed">
+          <div key={i} className="flex gap-2 text-sm my-2 ml-2">
+            <span className="text-accent/60 shrink-0 mt-1 select-none">•</span>
+            <span className="leading-relaxed min-w-0 flex-1">
               <strong className="text-foreground font-semibold">{match[1]}</strong>
               <span className="text-muted">{renderInline(match[2])}</span>
             </span>
@@ -522,17 +522,17 @@ export default function HelpPage() {
       }
       if (line.startsWith("- "))
         return (
-          <div key={i} className="flex gap-2 text-sm my-1.5 ml-3 text-muted">
-            <span className="text-accent/40 shrink-0 mt-1">•</span>
-            <span className="leading-relaxed">{renderInline(line.slice(2))}</span>
+          <div key={i} className="flex gap-2 text-sm my-1.5 ml-2 text-muted">
+            <span className="text-accent/40 shrink-0 mt-1 select-none">•</span>
+            <span className="leading-relaxed min-w-0 flex-1">{renderInline(line.slice(2))}</span>
           </div>
         );
       if (/^\d+\. /.test(line)) {
         const num = line.match(/^(\d+)/)?.[1] || "";
         return (
-          <div key={i} className="flex gap-2 text-sm my-1.5 ml-3 text-muted">
-            <span className="text-accent font-bold shrink-0 min-w-[18px]">{num}.</span>
-            <span className="leading-relaxed">{renderInline(line.replace(/^\d+\. /, ""))}</span>
+          <div key={i} className="flex gap-2 text-sm my-1.5 ml-2 text-muted">
+            <span className="text-accent font-bold shrink-0 min-w-[18px] select-none">{num}.</span>
+            <span className="leading-relaxed min-w-0 flex-1">{renderInline(line.replace(/^\d+\. /, ""))}</span>
           </div>
         );
       }
@@ -544,7 +544,8 @@ export default function HelpPage() {
   }
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="w-full max-w-full overflow-x-hidden px-3 py-4 sm:px-6 sm:py-6">
+
       {/* Header */}
       <div className="mb-4">
         <h1 className="text-xl font-bold text-gradient">Help / คู่มือการใช้งาน</h1>
@@ -558,79 +559,75 @@ export default function HelpPage() {
         placeholder="🔍 ค้นหาในคู่มือ..."
         value={searchHelp}
         onChange={e => { setSearchHelp(e.target.value); setActive(0); setTocOpen(false); }}
-        className="mb-3 w-full rounded-xl bg-card border border-border px-4 py-2.5 text-sm focus:outline-none focus:border-accent"
+        className="mb-4 w-full rounded-xl bg-card border border-border px-4 py-2.5 text-sm focus:outline-none focus:border-accent"
       />
 
-      {/* Mobile: collapsible TOC */}
-      {isMobile && (
-        <div className="mb-4">
-          <button
-            onClick={() => setTocOpen(o => !o)}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-card border border-border text-sm transition-colors"
-          >
-            <span className="font-medium text-accent flex-1 text-left truncate">
-              {current?.title}
-              <span className="text-muted font-normal"> — {current?.thai}</span>
-            </span>
-            <span className="text-muted text-xs shrink-0">{tocOpen ? "▲ ปิด" : "☰ สารบัญ"}</span>
-          </button>
-          {tocOpen && (
-            <div className="mt-1 rounded-xl bg-card border border-border divide-y divide-border/30 overflow-hidden">
-              {filtered.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setActive(i); setTocOpen(false); }}
-                  className={`block w-full text-left px-4 py-3 text-sm transition-colors ${
-                    active === i
-                      ? "bg-accent/15 text-accent font-medium"
-                      : "text-muted hover:bg-card-hover hover:text-foreground"
-                  }`}
-                >
-                  {s.title}
-                  <span className="block text-[11px] opacity-60 mt-0.5">{s.thai}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* ── Mobile TOC accordion (< 640px only) ────────────────── */}
+      <div className="sm:hidden mb-4">
+        <button
+          onClick={() => setTocOpen(o => !o)}
+          className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl bg-card border border-border text-sm"
+        >
+          <span className="font-medium text-accent truncate">{current?.title}</span>
+          <span className="text-muted text-xs shrink-0">{tocOpen ? "▲ ปิด" : "☰ สารบัญ"}</span>
+        </button>
 
-      {/* Main layout: 1-col on mobile, 2-col on desktop */}
-      <div className={isMobile ? "block" : "flex gap-4"}>
-        {/* Desktop sidebar only */}
-        {!isMobile && (
-          <div className="w-56 shrink-0">
-            <div className="rounded-xl bg-card border border-border p-3 sticky top-6">
-              <p className="text-xs text-accent/50 uppercase tracking-widest mb-2 px-2">สารบัญ</p>
-              {filtered.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => setActive(i)}
-                  className={`block w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
-                    active === i
-                      ? "bg-accent/15 text-accent font-medium shadow-[0_0_12px_rgba(99,102,241,0.1)]"
-                      : "text-muted hover:bg-card-hover hover:text-foreground"
-                  }`}
-                >
-                  {s.title}
-                  <span className="block text-[10px] opacity-60">{s.thai}</span>
-                </button>
-              ))}
-            </div>
+        {tocOpen && (
+          <div className="mt-1 rounded-xl bg-card border border-border overflow-hidden divide-y divide-border/30">
+            {filtered.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => { setActive(i); setTocOpen(false); }}
+                className={`block w-full text-left px-4 py-3 text-sm transition-colors ${
+                  active === i ? "bg-accent/15 text-accent font-medium" : "text-muted"
+                }`}
+              >
+                {s.title}
+                <span className="block text-[11px] opacity-60 mt-0.5">{s.thai}</span>
+              </button>
+            ))}
           </div>
         )}
+      </div>
 
-        {/* Content — full width on mobile, flex-1 on desktop */}
+      {/* ── Main layout: block on mobile, flex on sm+ ───────────── */}
+      <div className="sm:flex sm:gap-4 sm:items-start">
+
+        {/* Sidebar — hidden on mobile, visible sm+ */}
+        <div className="hidden sm:block sm:w-56 sm:shrink-0">
+          <div className="rounded-xl bg-card border border-border p-3 sticky top-6">
+            <p className="text-xs text-accent/50 uppercase tracking-widest mb-2 px-2">สารบัญ</p>
+            {filtered.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => setActive(i)}
+                className={`block w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
+                  active === i
+                    ? "bg-accent/15 text-accent font-medium"
+                    : "text-muted hover:bg-card-hover hover:text-foreground"
+                }`}
+              >
+                {s.title}
+                <span className="block text-[10px] opacity-60">{s.thai}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content — full width mobile, flex-1 desktop */}
         <div
-          className="flex-1 min-w-0 rounded-xl bg-card border border-border p-4 md:p-6 min-h-[400px]"
-          style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
+          className="w-full min-w-0 sm:flex-1 rounded-xl bg-card border border-border p-4 sm:p-6"
+          style={{ wordBreak: "break-word", overflowWrap: "break-word", minHeight: "400px" }}
         >
           {current ? (
-            <div>{renderContent(current.content)}</div>
+            <div className="min-w-0 w-full">
+              {renderContent(current.content)}
+            </div>
           ) : (
             <p className="text-muted text-sm">ไม่พบหัวข้อที่ค้นหา</p>
           )}
         </div>
+
       </div>
     </div>
   );
