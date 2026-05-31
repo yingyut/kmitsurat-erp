@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useCurrentUser } from "@/lib/UserContext";
 import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 
 type NavItem = { href: string; label: string; thai: string; icon: string };
 type Section = { title?: string; subtitle?: string; items: NavItem[] };
@@ -74,9 +75,11 @@ interface SidebarProps {
 
 export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = false }: SidebarProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const activeTab = searchParams.get("tab") || "";
+  const [activeTab, setActiveTab] = useState("");
+  useEffect(() => {
+    setActiveTab(new URLSearchParams(window.location.search).get("tab") || "");
+  }, [pathname]);
   const { currentUser, logout, hasAccess } = useCurrentUser();
 
   function isActive(href: string): boolean {
