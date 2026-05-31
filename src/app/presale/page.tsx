@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import type { PresaleRequest, PresaleApprovalSettings, Customer, Project, JobRequest, User, Product, QuotationItem, BomItem, PresaleAttachment, IntegrationSetting } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
@@ -8,6 +8,14 @@ import { buildProjectFolderUrl, buildSubfolderUrl } from "@/lib/integrations";
 
 const reqTypes = ["solution_design","requirement_summary","boq","technical_proposal","site_survey","project_planning"] as const;
 const typeLabels: Record<string, string> = { solution_design: "Solution Design", requirement_summary: "Requirement Summary", boq: "BOQ Preparation", technical_proposal: "Technical Proposal", site_survey: "Site Survey", project_planning: "Project Planning" };
+const typeDetails: Record<string, { icon: string; thai: string }> = {
+  solution_design:     { icon: "🏗", thai: "ออกแบบระบบ" },
+  requirement_summary: { icon: "📝", thai: "สรุปความต้องการ" },
+  boq:                 { icon: "📊", thai: "จัดทำ BOQ" },
+  technical_proposal:  { icon: "📄", thai: "เขียน Proposal" },
+  site_survey:         { icon: "🔍", thai: "สำรวจหน้างาน" },
+  project_planning:    { icon: "📅", thai: "วางแผนโครงการ" },
+};
 
 const empty = {
   activity_id: "", customer_id: "", customer_name: "", project_id: "", project_name: "",
@@ -48,6 +56,95 @@ const emptyBoqItem: QuotationItem = { product_id: "", product_code: "", product_
 const emptyAttachment: PresaleAttachment = { type: "design", name: "", url: "", uploaded_at: "", uploaded_by: "", notes: "" };
 
 type DetailTab = "summary" | "bom" | "boq" | "files";
+
+// ─── UI Helpers ───────────────────────────────────────────────────────────────
+
+function avatarBg(name: string): string {
+  const palette = ["bg-blue-600","bg-violet-600","bg-pink-600","bg-indigo-600","bg-teal-600","bg-emerald-600","bg-amber-600","bg-rose-600"];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffff;
+  return palette[Math.abs(h) % palette.length];
+}
+
+type SelectOption = { value: string; label: string; sublabel?: string };
+
+function SearchableSelect({ value, options, onChange, placeholder = "เลือก...", emptyLabel, renderTrigger, renderItem }: {
+  value: string; options: SelectOption[]; onChange: (v: string) => void;
+  placeholder?: string; emptyLabel?: string;
+  renderTrigger?: (sel: SelectOption | undefined) => ReactNode;
+  renderItem?: (o: SelectOption, isSel: boolean) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setQ(""); } };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [open]);
+  const selected = options.find(o => o.value === value);
+  const filtered = q ? options.filter(o =>
+    o.label.toLowerCase().includes(q.toLowerCase()) ||
+    (o.sublabel || "").toLowerCase().includes(q.toLowerCase())
+  ) : options;
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen(x => !x)}
+        className="w-full flex items-center justify-between gap-2 rounded-lg bg-background border border-border px-3 py-2 text-sm text-left hover:border-accent/60 focus:outline-none focus:border-accent transition-colors min-h-[38px]">
+        <span className="flex-1 min-w-0 truncate">
+          {selected
+            ? (renderTrigger ? renderTrigger(selected) : <span className="text-foreground">{selected.label}</span>)
+            : <span className="text-muted">{placeholder}</span>}
+        </span>
+        <svg className={`w-3.5 h-3.5 text-muted shrink-0 transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-1 rounded-xl bg-card border border-border shadow-2xl overflow-hidden min-w-48">
+          <div className="p-1.5 border-b border-border/40">
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} onClick={e => e.stopPropagation()}
+              placeholder="ค้นหา..." className="w-full rounded-lg bg-background border border-border/60 px-2.5 py-1.5 text-xs focus:outline-none focus:border-accent" />
+          </div>
+          <div className="max-h-56 overflow-y-auto overscroll-contain">
+            {emptyLabel !== undefined && (
+              <button type="button" onClick={() => { onChange(""); setQ(""); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-sm transition-colors ${!value ? "bg-accent/10 text-accent" : "text-muted hover:bg-card-hover"}`}>
+                {emptyLabel}
+              </button>
+            )}
+            {filtered.length === 0
+              ? <p className="px-3 py-4 text-xs text-muted text-center">ไม่พบรายการ</p>
+              : filtered.map(o => (
+                <button type="button" key={o.value} onClick={() => { onChange(o.value); setQ(""); setOpen(false); }}
+                  className={`w-full text-left px-3 py-2 transition-colors ${o.value === value ? "bg-accent/10 text-accent" : "hover:bg-card-hover"}`}>
+                  {renderItem ? renderItem(o, o.value === value) : <>
+                    <p className="text-sm leading-tight">{o.label}</p>
+                    {o.sublabel && <p className="text-[11px] text-muted mt-0.5">{o.sublabel}</p>}
+                  </>}
+                </button>
+              ))
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PriorityBadge({ priority }: { priority?: string }) {
+  const cfg: Record<string, { label: string; cls: string }> = {
+    low:    { label: "Low",    cls: "bg-slate-800/60 text-slate-400 border-slate-700/50" },
+    normal: { label: "Normal", cls: "bg-blue-900/40 text-blue-400 border-blue-800/40" },
+    high:   { label: "High",   cls: "bg-amber-900/40 text-amber-400 border-amber-800/50" },
+    urgent: { label: "Urgent", cls: "bg-red-900/50 text-red-400 border-red-800/50 font-bold" },
+  };
+  const p = priority || "normal";
+  if (p === "normal") return null;
+  const c = cfg[p] || cfg.normal;
+  return <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] tracking-wide ${c.cls}`}>{c.label}</span>;
+}
 
 // === SAMPLE TEMPLATES ===
 
@@ -688,43 +785,127 @@ export default function PresalePage() {
 
       {showForm && (
         <div className="rounded-xl bg-card border border-border p-5 mb-5">
-          <h2 className="text-base font-semibold mb-3">{editId ? "แก้ไข Task" : "เพิ่ม Task ใหม่"}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as PresaleRequest["type"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">{reqTypes.map((t) => <option key={t} value={t}>{typeLabels[t]}</option>)}</select>
-            <select value={form.customer_id} onChange={(e) => selectCust(e.target.value)} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="">-- Customer --</option>{custs.map((c) => <option key={c.id} value={c.id}>{c.company_name}</option>)}</select>
-            <select value={form.project_id} onChange={(e) => selectProj(e.target.value)} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"><option value="">-- Project --</option>{projs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <select value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-              <option value="">-- Assigned To --</option>
-              {presaleUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
-            </select>
-            <input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as PresaleRequest["status"] })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-              <option value="new">ใหม่</option>
-              <option value="pending">ยังไม่เริ่ม</option>
-              <option value="assigned">มอบหมายแล้ว</option>
-              <option value="in_progress">กำลังทำ</option>
-              <option value="waiting_info">รอข้อมูล</option>
-              <option value="waiting_approval">รออนุมัติ</option>
-              <option value="completed">เสร็จแล้ว</option>
-              <option value="cancelled">ยกเลิก</option>
-            </select>
-            <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as NonNullable<PresaleRequest["priority"]> })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-              <option value="low">▼ Priority: ต่ำ</option>
-              <option value="normal">● Priority: ปกติ</option>
-              <option value="high">▲ Priority: สูง</option>
-              <option value="urgent">🔴 Priority: ด่วน!</option>
-            </select>
-            <div className="relative">
-              <input type="number" placeholder="มูลค่าโครงการ (THB)" value={form.value || ""} onChange={e => setForm({ ...form, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-              {!editId && checkNeedsApproval(form.type, form.value || 0) && (
-                <p className="text-[10px] text-orange-400 mt-0.5">⚠ งานนี้จะต้องผ่านการอนุมัติ</p>
-              )}
-            </div>
-            <textarea placeholder="Requirement *" value={form.requirement} onChange={(e) => setForm({ ...form, requirement: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-20 resize-y" />
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold">{editId ? "✏ แก้ไข Task" : "+ Task ใหม่"}</h2>
+            <button type="button" onClick={() => { setShowForm(false); setEditId(null); }} className="w-7 h-7 rounded-lg border border-border text-muted hover:bg-card-hover flex items-center justify-center text-sm leading-none">✕</button>
           </div>
-          <div className="flex gap-2">
-            <button onClick={handleSave} disabled={saving || !form.requirement.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "Saving..." : editId ? "บันทึก" : "เพิ่ม"}</button>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-muted mb-1.5 font-medium">ประเภทงาน <span className="text-red-400">*</span></p>
+                <SearchableSelect
+                  value={form.type}
+                  options={reqTypes.map(t => ({ value: t, label: `${typeDetails[t]?.icon} ${typeLabels[t]}`, sublabel: typeDetails[t]?.thai }))}
+                  onChange={v => setForm({ ...form, type: v as PresaleRequest["type"] })}
+                  placeholder="เลือกประเภทงาน"
+                />
+              </div>
+              <div>
+                <p className="text-xs text-muted mb-1.5 font-medium">Priority</p>
+                <SearchableSelect
+                  value={form.priority}
+                  options={[
+                    { value: "low",    label: "Low",    sublabel: "ความสำคัญต่ำ" },
+                    { value: "normal", label: "Normal", sublabel: "ปกติ" },
+                    { value: "high",   label: "High",   sublabel: "ความสำคัญสูง" },
+                    { value: "urgent", label: "Urgent", sublabel: "ด่วน — ต้องดำเนินการทันที" },
+                  ]}
+                  onChange={v => setForm({ ...form, priority: v as NonNullable<PresaleRequest["priority"]> })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-muted mb-1.5 font-medium">ลูกค้า</p>
+                <SearchableSelect
+                  value={form.customer_id}
+                  options={custs.map(c => ({ value: c.id || "", label: c.company_name, sublabel: c.province || "" }))}
+                  onChange={v => selectCust(v)}
+                  emptyLabel="— ไม่ระบุลูกค้า —"
+                  placeholder="เลือกลูกค้า"
+                />
+              </div>
+              <div>
+                <p className="text-xs text-muted mb-1.5 font-medium">
+                  โปรเจค {form.customer_id && <span className="text-accent/70 font-normal">· filter ตามลูกค้า</span>}
+                </p>
+                <SearchableSelect
+                  value={form.project_id}
+                  options={(form.customer_id ? projs.filter(p => p.customer_id === form.customer_id) : projs).map(p => ({ value: p.id || "", label: p.name, sublabel: p.customer_name }))}
+                  onChange={v => selectProj(v)}
+                  emptyLabel="— ไม่ระบุโปรเจค —"
+                  placeholder="เลือกโปรเจค"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-muted mb-1.5 font-medium">มอบหมายให้</p>
+                <SearchableSelect
+                  value={form.assigned_to}
+                  options={presaleUsers.map(u => ({ value: u.name, label: u.name, sublabel: u.role }))}
+                  onChange={v => setForm({ ...form, assigned_to: v })}
+                  emptyLabel="— ยังไม่มอบหมาย —"
+                  placeholder="เลือกผู้รับผิดชอบ"
+                  renderTrigger={sel => sel ? (
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className={`w-5 h-5 rounded-full ${avatarBg(sel.value)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{sel.value.slice(0,2).toUpperCase()}</span>
+                      <span className="text-foreground truncate">{sel.label}</span>
+                      <span className="text-muted text-[11px] shrink-0">{sel.sublabel}</span>
+                    </span>
+                  ) : undefined}
+                  renderItem={(o, isSel) => (
+                    <div className="flex items-center gap-2.5 py-0.5">
+                      <div className={`w-7 h-7 rounded-full ${avatarBg(o.value)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{o.value.slice(0,2).toUpperCase()}</div>
+                      <div>
+                        <p className={`text-sm leading-tight ${isSel ? "font-medium" : ""}`}>{o.label}</p>
+                        <p className="text-[11px] text-muted">{o.sublabel}</p>
+                      </div>
+                    </div>
+                  )}
+                />
+              </div>
+              <div>
+                <p className="text-xs text-muted mb-1.5 font-medium">Due Date</p>
+                <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-muted mb-1.5 font-medium">Status</p>
+                <SearchableSelect
+                  value={form.status}
+                  options={[
+                    { value: "new",              label: "ใหม่",          sublabel: "New" },
+                    { value: "pending",          label: "ยังไม่เริ่ม",   sublabel: "Pending" },
+                    { value: "assigned",         label: "มอบหมายแล้ว",   sublabel: "Assigned" },
+                    { value: "in_progress",      label: "กำลังทำ",       sublabel: "In Progress" },
+                    { value: "waiting_info",     label: "รอข้อมูล",      sublabel: "Waiting Info" },
+                    { value: "waiting_approval", label: "รออนุมัติ",     sublabel: "Waiting Approval" },
+                    { value: "completed",        label: "เสร็จแล้ว",     sublabel: "Completed" },
+                    { value: "cancelled",        label: "ยกเลิก",        sublabel: "Cancelled" },
+                  ]}
+                  onChange={v => setForm({ ...form, status: v as PresaleRequest["status"] })}
+                />
+              </div>
+              <div>
+                <p className="text-xs text-muted mb-1.5 font-medium">มูลค่าโครงการ (THB)</p>
+                <input type="number" placeholder="0" value={form.value || ""} onChange={e => setForm({ ...form, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
+                {!editId && checkNeedsApproval(form.type, form.value || 0) && (
+                  <p className="text-[10px] text-orange-400 mt-1">⚠ งานนี้จะต้องผ่านการอนุมัติ</p>
+                )}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-muted mb-1.5 font-medium">Requirement <span className="text-red-400">*</span></p>
+              <textarea placeholder="อธิบายความต้องการ / สิ่งที่ต้องทำ..." value={form.requirement} onChange={e => setForm({ ...form, requirement: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent hover:border-accent/50 transition-colors min-h-24 resize-y" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-border">
             <button onClick={() => { setShowForm(false); setEditId(null); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+            <button onClick={handleSave} disabled={saving || !form.requirement.trim()} className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">
+              {saving ? "กำลังบันทึก..." : editId ? "💾 บันทึก" : "➕ สร้าง Task"}
+            </button>
           </div>
         </div>
       )}
@@ -735,7 +916,11 @@ export default function PresalePage() {
           <div className="flex items-start justify-between mb-3 gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <h2 className="text-lg font-bold">{typeLabels[detail.type]}</h2>
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <span>{typeDetails[detail.type]?.icon}</span>
+                  <span>{typeLabels[detail.type]}</span>
+                  <span className="text-sm font-normal text-muted">{typeDetails[detail.type]?.thai}</span>
+                </h2>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[detail.status]}`}>{statusLabel[detail.status]}</span>
                 {/* Approval badge */}
                 {detail.approval_status === "pending_review" && <span className="rounded-full bg-orange-900/50 text-orange-400 px-2 py-0.5 text-[10px]">🔍 รอตรวจสอบ</span>}
@@ -1030,17 +1215,45 @@ export default function PresalePage() {
           })}
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as "" | PresaleRequest["type"])} className="rounded-lg bg-card border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent">
-            <option value="">ทุกประเภทงาน</option>
-            {reqTypes.map(t => <option key={t} value={t}>{typeLabels[t]}</option>)}
-          </select>
+          <div className="w-52 shrink-0">
+            <SearchableSelect
+              value={typeFilter}
+              options={reqTypes.map(t => ({ value: t, label: `${typeDetails[t]?.icon} ${typeLabels[t]}`, sublabel: typeDetails[t]?.thai }))}
+              onChange={v => setTypeFilter(v as "" | PresaleRequest["type"])}
+              emptyLabel="ทุกประเภทงาน"
+              placeholder="ทุกประเภทงาน"
+            />
+          </div>
           {isManager && (
-            <select value={personFilter} onChange={e => setPersonFilter(e.target.value)} className="rounded-lg bg-card border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent">
-              <option value="">ทุกคน</option>
-              {assigneeNames.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <div className="w-44 shrink-0">
+              <SearchableSelect
+                value={personFilter}
+                options={assigneeNames.map(n => {
+                  const u = presaleUsers.find(u => u.name === n) || allUsers.find(u => u.name === n);
+                  return { value: n, label: n, sublabel: u?.role || "" };
+                })}
+                onChange={v => setPersonFilter(v)}
+                emptyLabel="ทุกคน"
+                placeholder="ทุกคน"
+                renderTrigger={sel => sel ? (
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className={`w-4 h-4 rounded-full ${avatarBg(sel.value)} flex items-center justify-center text-[8px] font-bold text-white shrink-0`}>{sel.value.slice(0,2).toUpperCase()}</span>
+                    <span className="text-foreground truncate">{sel.label}</span>
+                  </span>
+                ) : undefined}
+                renderItem={(o, isSel) => (
+                  <div className="flex items-center gap-2 py-0.5">
+                    <div className={`w-6 h-6 rounded-full ${avatarBg(o.value)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{o.value.slice(0,2).toUpperCase()}</div>
+                    <div>
+                      <p className={`text-sm leading-tight ${isSel ? "font-medium" : ""}`}>{o.label}</p>
+                      <p className="text-[11px] text-muted">{o.sublabel}</p>
+                    </div>
+                  </div>
+                )}
+              />
+            </div>
           )}
-          <input placeholder="🔍 ค้นหา requirement / ลูกค้า..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-40 rounded-lg bg-card border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent" />
+          <input placeholder="🔍 ค้นหา requirement / ลูกค้า / โปรเจค..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-40 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
           <p className="text-xs text-muted shrink-0">{filtered.length} รายการ</p>
         </div>
       </div>
@@ -1072,9 +1285,11 @@ export default function PresalePage() {
 
               {/* Row 1: type + badges */}
               <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                <span className="rounded-md bg-accent/10 text-accent px-2 py-0.5 text-[11px] font-semibold shrink-0">{typeLabels[r.type]}</span>
-                {prio === "urgent" && <span className="text-[10px] font-bold text-red-400">🔴 ด่วน!</span>}
-                {prio === "high" && <span className="text-[10px] font-semibold text-amber-400">▲ สูง</span>}
+                <span className="inline-flex items-center gap-1 rounded-md bg-accent/10 text-accent px-2 py-0.5 text-[11px] font-semibold shrink-0">
+                  <span>{typeDetails[r.type]?.icon}</span>
+                  <span>{typeLabels[r.type]}</span>
+                </span>
+                <PriorityBadge priority={prio} />
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[r.status] || "bg-card text-muted"}`}>{statusLabel[r.status] || r.status}</span>
                 {isOverdue && <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-[10px] text-red-400 font-medium">⚠ เกินกำหนด</span>}
                 {isDueToday && <span className="rounded-full bg-amber-900/50 px-2 py-0.5 text-[10px] text-amber-400">📅 ครบวันนี้</span>}
