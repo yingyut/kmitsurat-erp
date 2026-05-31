@@ -889,6 +889,26 @@ export interface Todo {
   updated_at?: string;
 }
 
+// ─── Quotation Documents (external file links) ───────────────────────────────
+export type QuotationDocType = "quotation" | "bom" | "boq" | "proposal" | "tor" | "site_survey" | "other";
+export type QuotationDocOwner = "sales" | "presale" | "service" | "other";
+
+export interface QuotationDocument {
+  id?: string;
+  tenant_id?: string;
+  quotation_id: string;
+  customer_id: string;
+  project_id?: string;
+  document_type: QuotationDocType;
+  document_name: string;
+  document_url?: string;
+  owner_team: QuotationDocOwner;
+  note?: string;
+  created_by: string;
+  createdAt: string;
+  created_at?: unknown;
+}
+
 export interface CompanySettings {
   id?: string;
   tenant_id: string;

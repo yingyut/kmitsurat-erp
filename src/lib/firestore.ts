@@ -11,7 +11,7 @@ import type {
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow,
   PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem, PresalePreset,
-  ActivityLog, Asset, CompanySettings, Todo, PresaleApprovalSettings,
+  ActivityLog, Asset, CompanySettings, Todo, PresaleApprovalSettings, QuotationDocument,
 } from "./types";
 
 // Re-export types
@@ -24,7 +24,7 @@ export type {
   PresaleToolType, PresaleToolStatus, PresaleProjectStatus, BOQCategory,
   CCTVDesignData, CCTVCamera, CCTVRecorder, CCTVInfraItem, CCTVLaborItem, CatalogItemType,
   PresalePreset, ActivityLog, Asset, AssetDocument, CompanySettings, Todo, TodoPriority, TodoStatus,
-  PresaleApprovalSettings,
+  PresaleApprovalSettings, QuotationDocument, QuotationDocType, QuotationDocOwner,
 } from "./types";
 
 // ============================================================
@@ -122,6 +122,7 @@ export const presaleRequests = svc<PresaleRequest>("presale_requests");
 export const serviceTickets = svc<ServiceTicket>("service_tickets");
 export const serviceContracts = svc<ServiceContract>("service_contracts");
 export const quotations = svc<Quotation>("quotations");
+export const quotationDocuments = svc<QuotationDocument>("quotation_documents");
 export const products = svc<Product>("products");
 export const projectTypes = svc<ProjectType>("project_types");
 export const projectTasks = svc<ProjectTask>("project_tasks");

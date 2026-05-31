@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { Quotation, QuotationItem, Customer, Project, Product, User } from "@/lib/types";
+import type { Quotation, QuotationItem, Customer, Project, Product, User, QuotationDocument, QuotationDocType, QuotationDocOwner } from "@/lib/types";
 import { generateNumber } from "@/lib/numbering";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
@@ -192,7 +192,7 @@ export default function QuotationsPage() {
   const beforeVat = vatMode === "inclusive" ? subtotalSelling - vatAmount : subtotalSelling;
 
   async function handleSave() {
-    if (!custId || items.length === 0) return; setSaving(true);
+    if (!custId) return; setSaving(true);
     const { quotations } = await import("@/lib/firestore");
     const creator = users.find(u => u.id === createdById);
     const userCode = creator?.sales_code || "";
@@ -219,6 +219,16 @@ export default function QuotationsPage() {
   // Quotation detail panel
   const [selectedQ, setSelectedQ] = useState<Quotation | null>(null);
 
+  // Quotation documents
+  const [qDocs, setQDocs] = useState<QuotationDocument[]>([]);
+  const [showDocForm, setShowDocForm] = useState(false);
+  const [savingDoc, setSavingDoc] = useState(false);
+  const [newDocType, setNewDocType] = useState<QuotationDocType>("quotation");
+  const [newDocName, setNewDocName] = useState("");
+  const [newDocUrl, setNewDocUrl] = useState("");
+  const [newDocOwner, setNewDocOwner] = useState<QuotationDocOwner>("sales");
+  const [newDocNote, setNewDocNote] = useState("");
+
   // Revise reason modal (replaces prompt())
   const [reviseTarget, setReviseTarget] = useState<Quotation | null>(null);
   const [reviseReason, setReviseReason] = useState("");
@@ -230,6 +240,40 @@ export default function QuotationsPage() {
       if (selectedQ?.id === id) setSelectedQ(null);
       await load();
     }});
+  }
+
+  // Load docs when selected QT changes
+  useEffect(() => {
+    if (!selectedQ?.id) { setQDocs([]); setShowDocForm(false); return; }
+    import("@/lib/firestore").then(fs =>
+      fs.quotationDocuments.listWhere("quotation_id", selectedQ.id!).then(setQDocs)
+    );
+  }, [selectedQ?.id]);
+
+  async function addQuotationDoc(q: Quotation) {
+    if (!newDocName.trim()) return;
+    setSavingDoc(true);
+    try {
+      const { quotationDocuments } = await import("@/lib/firestore");
+      const doc: Omit<QuotationDocument, "id"> = {
+        quotation_id: q.id!, customer_id: q.customer_id, project_id: q.project_id || "",
+        document_type: newDocType, document_name: newDocName.trim(),
+        document_url: newDocUrl.trim() || undefined,
+        owner_team: newDocOwner, note: newDocNote.trim() || undefined,
+        created_by: currentUser?.name || "", createdAt: new Date().toISOString(),
+      };
+      await quotationDocuments.add(doc as unknown as Record<string, unknown>);
+      setNewDocName(""); setNewDocUrl(""); setNewDocNote(""); setShowDocForm(false);
+      const fresh = await quotationDocuments.listWhere("quotation_id", q.id!);
+      setQDocs(fresh);
+    } finally { setSavingDoc(false); }
+  }
+
+  async function removeQuotationDoc(docId: string, qId: string) {
+    const { quotationDocuments } = await import("@/lib/firestore");
+    await quotationDocuments.remove(docId);
+    const fresh = await quotationDocuments.listWhere("quotation_id", qId);
+    setQDocs(fresh);
   }
 
   async function doRevise() {
@@ -458,7 +502,7 @@ export default function QuotationsPage() {
             </div>
           </div>
 
-          <p className="text-sm font-medium mb-2">รายการสินค้า / บริการ <span className="text-[10px] text-muted ml-1">(พิมพ์ค้นหา หรือใส่ชื่อเองได้)</span></p>
+          <p className="text-sm font-medium mb-2">รายการสินค้า / บริการ <span className="text-[10px] text-muted ml-1">(พิมพ์ค้นหา หรือใส่ชื่อเองได้ · ถ้าไม่มีรายการ สามารถแนบลิงก์เอกสารในขั้นตอนถัดไปได้)</span></p>
           <div className="overflow-visible mb-3">
             <table className="w-full text-xs">
               <thead><tr className="text-left text-muted uppercase">
@@ -664,6 +708,7 @@ export default function QuotationsPage() {
                 <p className="text-sm font-medium">{q.quotation_number}</p>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[q.status] || "bg-gray-700"}`}>{statusLabel[q.status] || q.status}</span>
                 {q.version && q.version > 1 && <span className="rounded-full bg-purple-700 text-white px-1.5 py-0.5 text-[10px] font-medium">v{q.version}</span>}
+                {(q.items?.length ?? 0) === 0 && <span className="rounded-full bg-amber-700/30 text-amber-400 px-1.5 py-0.5 text-[10px]">📎 ลิงก์เอกสาร</span>}
               </div>
               <p className="text-xs text-muted">{q.customer_name}{q.project_name && ` · ${q.project_name}`}</p>
               <p className="text-xs text-muted mt-0.5">
@@ -883,6 +928,117 @@ export default function QuotationsPage() {
                   <p className="text-xs whitespace-pre-wrap">{selectedQ.notes}</p>
                 </div>
               )}
+
+              {/* ── Document Links Section ─────────────────────────── */}
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                    📎 เอกสาร / ลิงก์แนบ
+                    {qDocs.length > 0 && <span className="rounded-full bg-sky-700/30 text-sky-400 px-1.5 py-0.5 text-[10px]">{qDocs.length}</span>}
+                  </p>
+                  <button onClick={() => setShowDocForm(f => !f)} className="text-xs text-accent hover:underline">
+                    {showDocForm ? "ยกเลิก" : "+ เพิ่มเอกสาร"}
+                  </button>
+                </div>
+
+                {/* List */}
+                {qDocs.length === 0 && !showDocForm && (
+                  <div className="rounded-lg border border-dashed border-border py-4 text-center">
+                    <p className="text-xs text-muted">ยังไม่มีเอกสารแนบ</p>
+                    <button onClick={() => setShowDocForm(true)} className="text-xs text-accent hover:underline mt-1">+ เพิ่มลิงก์เอกสาร</button>
+                  </div>
+                )}
+
+                <div className="space-y-2 mb-2">
+                  {qDocs.map(d => (
+                    <div key={d.id} className="rounded-lg bg-background border border-border p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <span className="text-base mt-0.5 shrink-0">
+                            {d.document_type === "quotation" ? "📄" : d.document_type === "bom" ? "📦" : d.document_type === "boq" ? "📊" : d.document_type === "proposal" ? "📋" : d.document_type === "tor" ? "📜" : d.document_type === "site_survey" ? "🗺️" : "📎"}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium leading-snug">{d.document_name}</p>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                              <span className="text-[10px] bg-card rounded px-1.5 py-0.5 border border-border/50">
+                                {d.document_type === "quotation" ? "Quotation" : d.document_type === "bom" ? "BOM" : d.document_type === "boq" ? "BOQ" : d.document_type === "proposal" ? "Proposal" : d.document_type === "tor" ? "TOR" : d.document_type === "site_survey" ? "Site Survey" : "อื่นๆ"}
+                              </span>
+                              <span className="text-[10px] text-muted">
+                                {d.owner_team === "sales" ? "👤 Sales" : d.owner_team === "presale" ? "🔬 Presale" : d.owner_team === "service" ? "🔧 Service" : "📁 อื่นๆ"}
+                              </span>
+                              <span className="text-[10px] text-muted/60">· {d.created_by}</span>
+                            </div>
+                            {d.note && <p className="text-[10px] text-muted italic mt-1">{d.note}</p>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {d.document_url && (
+                            <a href={d.document_url} target="_blank" rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="rounded px-2 py-1 text-[10px] bg-accent/10 text-accent hover:bg-accent/20 font-medium transition-colors">
+                              🔗 เปิด
+                            </a>
+                          )}
+                          <button onClick={() => removeQuotationDoc(d.id!, selectedQ.id!)} className="text-[11px] text-danger/50 hover:text-danger transition-colors">✕</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add form */}
+                {showDocForm && (
+                  <div className="rounded-lg bg-background border border-border p-3 space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-muted block mb-0.5">ประเภทเอกสาร</label>
+                        <select value={newDocType} onChange={e => setNewDocType(e.target.value as QuotationDocType)}
+                          className="w-full rounded bg-card border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent">
+                          <option value="quotation">📄 Quotation</option>
+                          <option value="bom">📦 BOM</option>
+                          <option value="boq">📊 BOQ</option>
+                          <option value="proposal">📋 Proposal</option>
+                          <option value="tor">📜 TOR</option>
+                          <option value="site_survey">🗺️ Site Survey</option>
+                          <option value="other">📎 อื่นๆ</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-muted block mb-0.5">เจ้าของไฟล์</label>
+                        <select value={newDocOwner} onChange={e => setNewDocOwner(e.target.value as QuotationDocOwner)}
+                          className="w-full rounded bg-card border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent">
+                          <option value="sales">👤 Sales</option>
+                          <option value="presale">🔬 Presale</option>
+                          <option value="service">🔧 Service</option>
+                          <option value="other">📁 อื่นๆ</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted block mb-0.5">ชื่อเอกสาร *</label>
+                      <input value={newDocName} onChange={e => setNewDocName(e.target.value)}
+                        placeholder="เช่น BOQ-Final_v3.xlsx, Proposal-WiFi-Campus.pdf"
+                        className="w-full rounded bg-card border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted block mb-0.5">ลิงก์เอกสาร (OneDrive / SharePoint / Google Drive)</label>
+                      <input value={newDocUrl} onChange={e => setNewDocUrl(e.target.value)}
+                        placeholder="วาง URL จาก OneDrive หรือ SharePoint..."
+                        className="w-full rounded bg-card border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted block mb-0.5">หมายเหตุ</label>
+                      <input value={newDocNote} onChange={e => setNewDocNote(e.target.value)}
+                        placeholder="เช่น ฉบับที่ลูกค้าขอ, รอ Presale confirm..."
+                        className="w-full rounded bg-card border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent" />
+                    </div>
+                    <button onClick={() => addQuotationDoc(selectedQ)} disabled={!newDocName.trim() || savingDoc}
+                      className="w-full rounded-lg bg-accent text-white py-2 text-xs font-medium hover:bg-accent-hover disabled:opacity-40 transition-colors">
+                      {savingDoc ? "กำลังบันทึก..." : "+ เพิ่มเอกสาร"}
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Revision history inline */}
               {(selectedQ.revisions || []).length > 0 && (
