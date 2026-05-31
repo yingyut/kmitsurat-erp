@@ -477,9 +477,22 @@ export default function HelpPage() {
 
       <input placeholder="🔍 ค้นหาในคู่มือ..." value={searchHelp} onChange={e => { setSearchHelp(e.target.value); setActive(0); }} className="mb-4 w-full rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
 
+      {/* Mobile: dropdown nav */}
+      <div className="md:hidden mb-3">
+        <select
+          value={active}
+          onChange={e => setActive(Number(e.target.value))}
+          className="w-full rounded-lg bg-card border border-border px-3 py-2.5 text-sm focus:outline-none focus:border-accent"
+        >
+          {filtered.map((s, i) => (
+            <option key={i} value={i}>{s.title} — {s.thai}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="flex gap-4">
-        {/* Sidebar */}
-        <div className="w-56 shrink-0">
+        {/* Sidebar — desktop only */}
+        <div className="hidden md:block w-56 shrink-0">
           <div className="rounded-xl bg-card border border-border p-3 sticky top-6">
             <p className="text-xs text-accent/50 uppercase tracking-widest mb-2 px-2">สารบัญ</p>
             {filtered.map((s, i) => (
@@ -493,7 +506,7 @@ export default function HelpPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 rounded-xl bg-card border border-border p-6 min-h-[500px]">
+        <div className="flex-1 rounded-xl bg-card border border-border p-4 md:p-6 min-h-[500px]">
           {current ? (
             <div className="prose prose-invert prose-sm max-w-none">
               {current.content.split("\n").map((line, i) => {
