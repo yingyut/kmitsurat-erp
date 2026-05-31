@@ -108,7 +108,24 @@ export type NotifyTrigger =
   | "project_opened"
   | "contract_expiring"
   | "service_ticket_created"
-  | "ticket_status_changed";
+  | "ticket_status_changed"
+  | "presale_status_changed"
+  | "presale_task_created"
+  | "presale_task_overdue";
+
+export interface InAppNotification {
+  id?: string;
+  tenant_id: string;
+  created_at?: unknown;
+  module: string;
+  trigger: string;
+  title: string;
+  body: string;
+  link?: string;
+  metadata?: Record<string, unknown>;
+  recipients: string[];
+  read_by: string[];
+}
 
 export interface NotificationWorkflow {
   id?: string;

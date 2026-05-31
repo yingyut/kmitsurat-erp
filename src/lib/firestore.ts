@@ -11,13 +11,13 @@ import type {
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow,
   PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem, PresalePreset,
-  ActivityLog, Asset, CompanySettings, Todo, PresaleApprovalSettings, QuotationDocument,
+  ActivityLog, Asset, CompanySettings, Todo, PresaleApprovalSettings, QuotationDocument, InAppNotification,
 } from "./types";
 
 // Re-export types
 export type {
   User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
-  BomItem, PresaleAttachment,
+  BomItem, PresaleAttachment, InAppNotification,
   ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, QuotationItem, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow, NotifyChannelType, NotifyTrigger,
   PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem,
@@ -149,6 +149,7 @@ export const assets = svc<Asset>("assets");
 export const companySettings = svc<CompanySettings>("company_settings");
 export const todos = svc<Todo>("todos", "created_at");
 export const presaleApprovalSettings = svc<PresaleApprovalSettings>("presale_approval_settings");
+export const inAppNotifications = svc<InAppNotification>("notifications");
 
 export async function logActivity(entry: Omit<ActivityLog, "id" | "tenant_id" | "created_at">) {
   try { await activityLogs.add(entry as Record<string, unknown>); } catch { /* non-blocking */ }

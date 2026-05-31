@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import Link from "next/link";
-import type { PresaleRequest, PresaleApprovalSettings, Customer, Project, JobRequest, User, Product, QuotationItem, BomItem, PresaleAttachment, IntegrationSetting } from "@/lib/types";
+import type { PresaleRequest, PresaleApprovalSettings, Customer, Project, JobRequest, User, Product, QuotationItem, BomItem, PresaleAttachment, IntegrationSetting, NotificationWorkflow, NotificationChannel, InAppNotification } from "@/lib/types";
+import { sendPresaleStatusNotification } from "@/lib/notify";
 import { useCurrentUser } from "@/lib/UserContext";
 import { generateNumber } from "@/lib/numbering";
 import { buildProjectFolderUrl, buildSubfolderUrl } from "@/lib/integrations";
@@ -261,6 +262,10 @@ export default function PresalePage() {
   const [custs, setCusts] = useState<Customer[]>([]);
   const [projs, setProjs] = useState<Project[]>([]);
   const [prods, setProds] = useState<Product[]>([]);
+  const [notifWorkflows, setNotifWorkflows] = useState<NotificationWorkflow[]>([]);
+  const [notifChannels, setNotifChannels] = useState<NotificationChannel[]>([]);
+  const [myNotifs, setMyNotifs] = useState<InAppNotification[]>([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [integration, setIntegration] = useState<IntegrationSetting | null>(null);
   const [incomingReqs, setIncomingReqs] = useState<JobRequest[]>([]);
   const [presaleUsers, setPresaleUsers] = useState<User[]>([]);
@@ -309,10 +314,11 @@ export default function PresalePage() {
   async function load() {
     const fs = await import("@/lib/firestore");
     try {
-      const [r, c, p, jr, u, pd, ints, aps] = await Promise.all([
+      const [r, c, p, jr, u, pd, ints, aps, wfs, chs] = await Promise.all([
         fs.presaleRequests.list(), fs.customers.list(), fs.projects.list(),
         fs.jobRequests.list(), fs.users.list(), fs.products.list(),
         fs.integrationSettings.list(), fs.presaleApprovalSettings.list(),
+        fs.notificationWorkflows.list(), fs.notificationChannels.list(),
       ]);
       setList(r); setCusts(c); setProjs(p);
       setProds(pd.filter(x => x.active));
@@ -320,8 +326,11 @@ export default function PresalePage() {
       setIncomingReqs(jr.filter(j => j.request_to_team === "presale"));
       const presaleRoles = new Set(["presale", "Presales Engineer", "Presales Manager"]);
       setPresaleUsers(u.filter(x => x.active && (presaleRoles.has(x.role) || (x.extra_roles ?? []).some(r => presaleRoles.has(r)))));
-      // Pick the first active integration (UX: simplicity)
       setIntegration(ints.find(i => i.active) || null);
+      setNotifWorkflows(wfs); setNotifChannels(chs);
+      const myName = u.find(x => x.email === currentUser?.email)?.name || currentUser?.name || "";
+      const notifs = await fs.inAppNotifications.list();
+      setMyNotifs(notifs.filter(n => n.recipients.includes(myName)));
       const latestAps = aps[0] || null;
       setApprovalSettings(latestAps);
       if (latestAps) setApForm({ require_for_types: latestAps.require_for_types || [], value_threshold: latestAps.value_threshold || 0, primary_approver: latestAps.primary_approver || "", substitute_approvers: latestAps.substitute_approvers || [] });
@@ -511,10 +520,22 @@ export default function PresalePage() {
   }
 
   async function changeStatus(r: PresaleRequest, status: PresaleRequest["status"]) {
+    const oldStatus = r.status;
     const fs = await import("@/lib/firestore");
     const extra: Record<string, unknown> = {};
     if (status === "completed" && !r.completed_at) extra.completed_at = todayStr();
     await fs.presaleRequests.update(r.id!, { status, ...extra });
+    // Fire notification (non-blocking)
+    const myName = currentUser?.name || currentUser?.email || "ระบบ";
+    sendPresaleStatusNotification({
+      task: { ...r, status },
+      newStatus: status,
+      oldStatus,
+      actor: myName,
+      users: allUsers,
+      workflows: notifWorkflows,
+      channels: notifChannels,
+    }).catch(e => console.warn("[notify]", e));
     await load();
   }
 
@@ -728,11 +749,72 @@ export default function PresalePage() {
           <h1 className="text-xl font-bold" title="งานพรีเซลล์ — BOQ / Solution Design / Site Survey">Presale Tasks</h1>
           <p className="text-xs text-muted">งาน BOQ / Solution Design / Site Survey — รับงานจาก Sales และติดตามสถานะ</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           {isManager && (
             <button onClick={() => setShowApprovalSettings(v => !v)} className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:bg-card-hover" title="ตั้งค่าการอนุมัติ">⚙ Approval</button>
           )}
           <Link href="/presale/calendar" title="ปฏิทินงาน Presale" className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:bg-card-hover">📅 ปฏิทิน</Link>
+          {/* Notification bell */}
+          <div className="relative">
+            <button onClick={() => setShowNotifPanel(v => !v)} className="relative rounded-lg border border-border px-3 py-2 text-sm text-muted hover:bg-card-hover" title="การแจ้งเตือน">
+              🔔
+              {myNotifs.filter(n => {
+                const myName = allUsers.find(u => u.email === currentUser?.email)?.name || currentUser?.name || "";
+                return !n.read_by.includes(myName);
+              }).length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
+                  {Math.min(myNotifs.filter(n => { const myName = allUsers.find(u => u.email === currentUser?.email)?.name || currentUser?.name || ""; return !n.read_by.includes(myName); }).length, 9)}
+                </span>
+              )}
+            </button>
+            {showNotifPanel && (
+              <div className="absolute right-0 top-10 z-50 w-80 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                  <p className="text-xs font-semibold">🔔 การแจ้งเตือน</p>
+                  <button onClick={async () => {
+                    const myName = allUsers.find(u => u.email === currentUser?.email)?.name || currentUser?.name || "";
+                    if (!myName) return;
+                    const fs = await import("@/lib/firestore");
+                    await Promise.all(myNotifs.filter(n => !n.read_by.includes(myName)).map(n =>
+                      fs.inAppNotifications.update(n.id!, { read_by: [...n.read_by, myName] })
+                    ));
+                    await load();
+                  }} className="text-[10px] text-accent hover:underline">อ่านทั้งหมด</button>
+                </div>
+                <div className="max-h-80 overflow-y-auto divide-y divide-border">
+                  {myNotifs.length === 0 && <p className="text-xs text-muted text-center py-6">ไม่มีการแจ้งเตือน</p>}
+                  {myNotifs.slice(0, 20).map(n => {
+                    const myName = allUsers.find(u => u.email === currentUser?.email)?.name || currentUser?.name || "";
+                    const isRead = n.read_by.includes(myName);
+                    return (
+                      <div key={n.id} className={`px-3 py-2.5 cursor-pointer hover:bg-card-hover ${isRead ? "opacity-50" : ""}`}
+                        onClick={async () => {
+                          if (!isRead && myName) {
+                            const fs = await import("@/lib/firestore");
+                            await fs.inAppNotifications.update(n.id!, { read_by: [...n.read_by, myName] });
+                            await load();
+                          }
+                          setShowNotifPanel(false);
+                          setPageTab("list");
+                        }}>
+                        <div className="flex items-start gap-2">
+                          {!isRead && <span className="w-1.5 h-1.5 rounded-full bg-accent mt-1.5 shrink-0" />}
+                          {isRead && <span className="w-1.5 h-1.5 shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium leading-tight truncate">{n.title}</p>
+                            <p className="text-[10px] text-muted mt-0.5 line-clamp-2">{n.body}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="border-t border-border px-3 py-2">
+                  <Link href="/settings/notifications" className="text-[10px] text-accent hover:underline" onClick={() => setShowNotifPanel(false)}>⚙ ตั้งค่าช่องทางแจ้งเตือน</Link>
+                </div>
+              </div>
+            )}
+          </div>
           <button onClick={() => { if (showForm) { setShowForm(false); setEditId(null); } else openAdd(); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Task"}</button>
         </div>
       </div>
