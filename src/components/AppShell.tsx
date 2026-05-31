@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { UserProvider, useCurrentUser } from "@/lib/UserContext";
 import Sidebar from "@/components/Sidebar";
@@ -91,7 +91,9 @@ function AppContent({ children }: { children: ReactNode }) {
   return (
     <div className="flex w-full min-h-screen">
       {!isNarrow && (
-        <Sidebar mobileOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
+        <Suspense fallback={<div className="w-52 shrink-0" />}>
+          <Sidebar mobileOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
+        </Suspense>
       )}
 
       <main className={`@container flex-1 min-h-screen pb-16 ${!isNarrow ? "ml-52 pt-12 sm:pt-0" : ""}`}>
@@ -107,7 +109,9 @@ function AppContent({ children }: { children: ReactNode }) {
             <div className="@container device-narrow mx-auto bg-background min-h-screen shadow-2xl overflow-x-hidden relative"
               style={{ maxWidth: meta.width ?? undefined, width: "100%" }}>
               {/* Sidebar for narrow preview (alwaysMobile keeps it hidden until opened) */}
-              <Sidebar alwaysMobile mobileOpen={narrowSidebarOpen} onClose={() => setNarrowSidebarOpen(false)} />
+              <Suspense fallback={null}>
+                <Sidebar alwaysMobile mobileOpen={narrowSidebarOpen} onClose={() => setNarrowSidebarOpen(false)} />
+              </Suspense>
               {/* Sticky top bar inside the frame */}
               <div className="sticky top-0 z-30 flex items-center h-12 px-3 bg-sidebar border-b border-sidebar-hover/50">
                 <button
