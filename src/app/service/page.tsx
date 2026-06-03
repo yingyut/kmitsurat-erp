@@ -119,6 +119,28 @@ function getQuickActions(status: ServiceStatus): Array<{ status: ServiceStatus; 
   }
 }
 
+function DocLinkAdder({ onAdd }: { onAdd: (link: { label: string; url: string }) => void }) {
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  function add() {
+    if (!label.trim() || !url.trim()) return;
+    onAdd({ label: label.trim(), url: url.trim() });
+    setLabel(""); setUrl("");
+  }
+  return (
+    <div className="flex gap-2 flex-wrap pt-2">
+      <input placeholder="ชื่อเอกสาร เช่น Network Diagram" value={label} onChange={e => setLabel(e.target.value)}
+        className="flex-1 min-w-[140px] rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+      <input placeholder="URL (https://...)" value={url} onChange={e => setUrl(e.target.value)}
+        className="flex-1 min-w-[200px] rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+      <button onClick={add} disabled={!label.trim() || !url.trim()}
+        className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">
+        + เพิ่ม
+      </button>
+    </div>
+  );
+}
+
 export default function ServicePage() {
   const { currentUser, hasPermission } = useCurrentUser();
   const [list, setList]               = useState<ServiceTicket[]>([]);
@@ -140,7 +162,17 @@ export default function ServicePage() {
   const [showSlaDetail, setShowSlaDetail]   = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [activeView, setActiveView]         = useState<ServiceView>("all");
-  const [managerSection, setManagerSection] = useState<"tickets" | "team" | "costs" | "analytics">("tickets");
+  const [managerSection, setManagerSection] = useState<"tickets" | "team" | "assets" | "docs" | "costs" | "analytics">("tickets");
+  const [openSect, setOpenSect] = useState<Record<string,boolean>>({});
+  function toggleSect(k: string) { setOpenSect(v => ({ ...v, [k]: !v[k] })); }
+  function sectOpen(k: string, def = true) { return k in openSect ? openSect[k] : def; }
+  const [docLinks, setDocLinks] = useState<{label:string;url:string}[]>(() => {
+    try { return JSON.parse(localStorage.getItem("kmit_svc_doclinks") || "[]"); } catch { return []; }
+  });
+  function saveDocLinks(links: {label:string;url:string}[]) {
+    setDocLinks(links);
+    try { localStorage.setItem("kmit_svc_doclinks", JSON.stringify(links)); } catch {}
+  }
 
   async function load() {
     const fs = await import("@/lib/firestore");
@@ -353,6 +385,53 @@ export default function ServicePage() {
       ["resolved","closed"].includes(p.status) && (p.resolved_at || "") > cutoff);
   });
 
+  // Tickets with no status update in >48h
+  const noUpdateTickets = list.filter(t => {
+    if (!isActive(t.status)) return false;
+    const history = t.status_history;
+    const refTs = history?.length
+      ? parseISO(history[history.length - 1].timestamp)
+      : parseISO(t.opened_at);
+    if (refTs === null) return false;
+    return (nowMs - refTs) / 3600000 > 48;
+  });
+
+  // Last activity timestamp per technician
+  const techLastActivity: Record<string, number> = {};
+  for (const u of svcUsers) {
+    let latestMs = 0;
+    for (const t of list.filter(x => x.technician === u.name)) {
+      const h = t.status_history;
+      if (h?.length) {
+        const ts = parseISO(h[h.length - 1].timestamp);
+        if (ts && ts > latestMs) latestMs = ts;
+      }
+    }
+    techLastActivity[u.name] = latestMs;
+  }
+
+  // Asset failure frequency (from ticket data)
+  const assetTicketMap: Record<string, { km: string; model: string; sn: string; cust: string; count: number; repairCount: number; lastDate: string }> = {};
+  for (const t of list) {
+    if (!t.asset_id) continue;
+    const a = assetList.find(x => x.id === t.asset_id);
+    if (!assetTicketMap[t.asset_id]) {
+      assetTicketMap[t.asset_id] = {
+        km: a?.km_number || t.asset_id, model: a?.device_model || "",
+        sn: a?.serial_number || "", cust: t.customer_name,
+        count: 0, repairCount: 0, lastDate: "",
+      };
+    }
+    assetTicketMap[t.asset_id].count++;
+    if (t.type === "repair") assetTicketMap[t.asset_id].repairCount++;
+    if (t.service_date && t.service_date > assetTicketMap[t.asset_id].lastDate)
+      assetTicketMap[t.asset_id].lastDate = t.service_date;
+  }
+  const frequentlyBroken = Object.values(assetTicketMap)
+    .filter(x => x.repairCount >= 2).sort((a, b) => b.repairCount - a.repairCount).slice(0, 10);
+  const highTicketAssets = Object.values(assetTicketMap)
+    .filter(x => x.count >= 3).sort((a, b) => b.count - a.count).slice(0, 8);
+
   function exportCSV() {
     const rows = [
       ["ID","Type","Customer","Technician","Status","Priority","Date","SLA(h)","Cost","Value"],
@@ -559,22 +638,24 @@ export default function ServicePage() {
             </button>
           </div>
 
-          {/* 6-card quick overview — always visible */}
+          {/* 8-card quick overview — always visible */}
           {!loading && (
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4">
+            <div className="grid grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
               {[
-                { label:"งานเปิด",     n:list.filter(t=>isActive(t.status)).length,                  icon:"📋", c:"text-accent",   bg:"border-accent/30 bg-accent/5",                       onClick:()=>{setManagerSection("tickets");setActiveView("all");setStatusFilter("all");} },
-                { label:"เกิน SLA",   n:slaBreachActive.length,                                     icon:"🚨", c:"text-rose-400", bg:slaBreachActive.length>0?"border-rose-800/50 bg-rose-900/10":"border-border bg-card",   onClick:()=>{setManagerSection("tickets");setActiveView("sla");} },
-                { label:"รออะไหล่",  n:list.filter(t=>t.status==="waiting_parts").length,           icon:"📦", c:"text-purple-400",bg:list.filter(t=>t.status==="waiting_parts").length>0?"border-purple-800/40 bg-purple-900/10":"border-border bg-card", onClick:()=>{setManagerSection("tickets");setActiveView("parts");} },
-                { label:"รอลูกค้า",  n:waitingCust.length,                                          icon:"⏳", c:"text-rose-300", bg:waitingCust.length>0?"border-rose-800/30 bg-rose-900/5":"border-border bg-card",         onClick:()=>{setManagerSection("tickets");setActiveView("all");setStatusFilter("waiting_approval" as ServiceStatus);} },
-                { label:"PM / MA",   n:pmMaActive.length,                                           icon:"🔵", c:"text-blue-400", bg:"border-blue-800/30 bg-blue-900/5",                   onClick:()=>{setManagerSection("tickets");setActiveView("pm");} },
-                { label:"งานย้อนซ่อม",n:reworkList.length,                                         icon:"🔄", c:"text-amber-400",bg:reworkList.length>0?"border-amber-800/40 bg-amber-900/10":"border-border bg-card",      onClick:()=>{setManagerSection("tickets");setActiveView("all");setTypeFilter("repair");setStatusFilter("all");} },
+                { label:"งานเปิด",      n:list.filter(t=>isActive(t.status)).length,                icon:"📋", c:"text-accent",    bg:"border-accent/30 bg-accent/5",                                             onClick:()=>{setManagerSection("tickets");setActiveView("all");setStatusFilter("all");} },
+                { label:"เกิน SLA",    n:slaBreachActive.length,                                   icon:"🚨", c:"text-rose-400",  bg:slaBreachActive.length>0?"border-rose-800/50 bg-rose-900/10":"border-border bg-card",    onClick:()=>{setManagerSection("tickets");setActiveView("sla");} },
+                { label:"ไม่มีคนรับ",  n:unassigned.length,                                        icon:"📋", c:"text-orange-400",bg:unassigned.length>0?"border-orange-800/40 bg-orange-900/10":"border-border bg-card",     onClick:()=>{setManagerSection("team");} },
+                { label:"ไม่มี Update",n:noUpdateTickets.length,                                   icon:"💤", c:"text-slate-400", bg:noUpdateTickets.length>0?"border-slate-700/50 bg-slate-800/20":"border-border bg-card",   onClick:()=>{setManagerSection("tickets");setActiveView("all");} },
+                { label:"รออะไหล่",   n:list.filter(t=>t.status==="waiting_parts").length,         icon:"📦", c:"text-purple-400",bg:list.filter(t=>t.status==="waiting_parts").length>0?"border-purple-800/40 bg-purple-900/10":"border-border bg-card",  onClick:()=>{setManagerSection("tickets");setActiveView("parts");} },
+                { label:"รอลูกค้า",   n:waitingCust.length,                                        icon:"⏳", c:"text-rose-300",  bg:waitingCust.length>0?"border-rose-800/30 bg-rose-900/5":"border-border bg-card",          onClick:()=>{setManagerSection("tickets");setActiveView("all");setStatusFilter("waiting_approval" as ServiceStatus);} },
+                { label:"PM / MA",    n:pmMaActive.length,                                         icon:"🔵", c:"text-blue-400",  bg:"border-blue-800/30 bg-blue-900/5",                                         onClick:()=>{setManagerSection("tickets");setActiveView("pm");} },
+                { label:"งานย้อนซ่อม",n:reworkList.length,                                        icon:"🔄", c:"text-amber-400", bg:reworkList.length>0?"border-amber-800/40 bg-amber-900/10":"border-border bg-card",        onClick:()=>{setManagerSection("tickets");setActiveView("all");setTypeFilter("repair");setStatusFilter("all");} },
               ].map(k => (
                 <button key={k.label} onClick={k.onClick}
-                  className={`rounded-xl border p-3 text-left transition-all hover:scale-[1.02] active:scale-100 ${k.bg}`}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-sm leading-none">{k.icon}</span>
-                    <p className={`text-2xl font-bold tabular-nums ${k.c}`}>{k.n}</p>
+                  className={`rounded-xl border p-2.5 text-left transition-all hover:scale-[1.02] active:scale-100 ${k.bg}`}>
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <span className="text-xs leading-none">{k.icon}</span>
+                    <p className={`text-xl font-bold tabular-nums ${k.c}`}>{k.n}</p>
                   </div>
                   <p className="text-[10px] text-muted leading-tight">{k.label}</p>
                 </button>
@@ -588,13 +669,15 @@ export default function ServicePage() {
               {([
                 {id:"tickets"   as const, icon:"🎫", label:"Tickets",   sub:"รายการงาน"},
                 {id:"team"      as const, icon:"👥", label:"Team",      sub:"ทีมช่าง"},
+                {id:"assets"    as const, icon:"🖥️", label:"Assets",    sub:"อุปกรณ์"},
+                {id:"docs"      as const, icon:"📂", label:"Docs",      sub:"เอกสาร"},
                 {id:"costs"     as const, icon:"💰", label:"Costs",     sub:"ต้นทุน"},
                 {id:"analytics" as const, icon:"📈", label:"Analytics", sub:"วิเคราะห์"},
               ]).map(s => (
                 <button key={s.id} onClick={()=>setManagerSection(s.id)}
-                  className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold border transition-all ${managerSection===s.id?"bg-accent/20 text-accent border-accent/40":"bg-card border-border text-muted hover:bg-card-hover"}`}>
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold border transition-all ${managerSection===s.id?"bg-accent/20 text-accent border-accent/40":"bg-card border-border text-muted hover:bg-card-hover"}`}>
                   {s.icon} {s.label}
-                  <span className="text-[9px] text-muted/60 hidden sm:inline">· {s.sub}</span>
+                  <span className="text-[9px] text-muted/60 hidden md:inline">· {s.sub}</span>
                 </button>
               ))}
             </div>
@@ -874,7 +957,7 @@ export default function ServicePage() {
                       <th className="text-center pb-2 font-medium">ปิดเฉลี่ย</th>
                       <th className="text-center pb-2 font-medium">ค้าง⚠</th>
                       <th className="text-center pb-2 font-medium">รออะไหล่📦</th>
-                      <th className="text-center pb-2 font-medium">Repair</th>
+                      <th className="text-center pb-2 font-medium">Last Active</th>
                       <th className="text-right pb-2 font-medium">Actions</th>
                     </tr>
                   </thead>
@@ -898,10 +981,20 @@ export default function ServicePage() {
                         <td className="py-2.5 text-center">
                           {u.waitParts > 0 ? <span className="font-bold text-purple-400">{u.waitParts}</span> : <span className="text-muted">—</span>}
                         </td>
-                        <td className="py-2.5 text-center text-muted">{u.repair}</td>
+                        <td className="py-2.5 text-center">
+                          {(() => {
+                            const lastMs = techLastActivity[u.name] || 0;
+                            if (!lastMs) return <span className="text-muted">—</span>;
+                            const diffH = (nowMs - lastMs) / 3600000;
+                            const cls = diffH > 48 ? "text-red-400" : diffH > 24 ? "text-amber-400" : "text-green-400";
+                            return <span className={`text-[10px] font-medium ${cls}`}>{diffH < 1 ? `${Math.round(diffH*60)}m` : diffH < 24 ? `${diffH.toFixed(0)}h` : `${(diffH/24).toFixed(0)}d`}</span>;
+                          })()}
+                        </td>
                         <td className="py-2.5 text-right">
-                          <button onClick={() => { setManagerSection("tickets"); setShowForm(true); setForm(f => ({ ...f, technician: u.name })); }}
-                            className="text-[10px] text-accent hover:underline">+ Assign</button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => { setManagerSection("tickets"); setShowForm(true); setForm(f => ({ ...f, technician: u.name })); }}
+                              className="text-[10px] text-accent hover:underline">+ Assign</button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1144,6 +1237,234 @@ export default function ServicePage() {
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── Asset Monitoring Panel ── */}
+      {!loading && !isTechView && managerSection === "assets" && (
+        <div className="space-y-4 mb-4">
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-xl bg-card border border-border p-4">
+              <p className="text-[10px] text-muted mb-1">อุปกรณ์ทั้งหมด</p>
+              <p className="text-2xl font-bold">{assetList.length}</p>
+              <p className="text-[10px] text-muted">ในระบบ</p>
+            </div>
+            <div className={`rounded-xl border p-4 ${frequentlyBroken.length>0?"border-red-800/40 bg-red-900/10 bg-card":"border-border bg-card"}`}>
+              <p className="text-[10px] text-muted mb-1">เสียซ้ำ (≥2 ครั้ง)</p>
+              <p className={`text-2xl font-bold ${frequentlyBroken.length>0?"text-red-400":"text-muted"}`}>{frequentlyBroken.length}</p>
+              <p className="text-[10px] text-muted">SN</p>
+            </div>
+            <div className={`rounded-xl border p-4 ${highTicketAssets.length>0?"border-amber-800/40 bg-amber-900/10":"border-border bg-card"}`}>
+              <p className="text-[10px] text-muted mb-1">Ticket สูง (≥3)</p>
+              <p className={`text-2xl font-bold ${highTicketAssets.length>0?"text-amber-400":"text-muted"}`}>{highTicketAssets.length}</p>
+              <p className="text-[10px] text-muted">SN</p>
+            </div>
+            <div className="rounded-xl bg-card border border-border p-4">
+              <p className="text-[10px] text-muted mb-1">มี Ticket ผูกอยู่</p>
+              <p className="text-2xl font-bold text-blue-400">{Object.keys(assetTicketMap).length}</p>
+              <p className="text-[10px] text-muted">SN</p>
+            </div>
+          </div>
+
+          {/* Frequently broken */}
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-card-hover transition-colors"
+              onClick={() => toggleSect("asset_freq")}>
+              <div>
+                <span className="text-sm font-bold">🔧 อุปกรณ์เสียซ้ำ (Repair ≥ 2 ครั้ง)</span>
+                <span className="text-[10px] text-muted ml-2">{frequentlyBroken.length} รายการ</span>
+              </div>
+              <span className="text-muted text-xs" style={{ transform: sectOpen("asset_freq") ? "rotate(0deg)" : "rotate(-90deg)", display:"inline-block", transition:"transform 0.15s" }}>▾</span>
+            </button>
+            {sectOpen("asset_freq") && (
+              <div className="border-t border-border">
+                {frequentlyBroken.length === 0 ? (
+                  <p className="text-sm text-muted text-center py-6">ไม่พบอุปกรณ์ที่เสียซ้ำ</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead><tr className="border-b border-border text-muted bg-background/50">
+                        <th className="text-left px-4 py-2">KM No.</th>
+                        <th className="text-left px-4 py-2">Model</th>
+                        <th className="text-left px-4 py-2">S/N</th>
+                        <th className="text-left px-4 py-2">ลูกค้า</th>
+                        <th className="text-center px-4 py-2">Repair</th>
+                        <th className="text-center px-4 py-2">Ticket รวม</th>
+                        <th className="text-right px-4 py-2">ล่าสุด</th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-border">
+                        {frequentlyBroken.map((a, i) => (
+                          <tr key={i} className="hover:bg-card-hover">
+                            <td className="px-4 py-2.5 font-mono font-semibold text-accent">{a.km}</td>
+                            <td className="px-4 py-2.5 text-muted">{a.model || "—"}</td>
+                            <td className="px-4 py-2.5 font-mono text-[11px]">{a.sn || "—"}</td>
+                            <td className="px-4 py-2.5 truncate max-w-[120px]">{a.cust}</td>
+                            <td className="px-4 py-2.5 text-center">
+                              <span className={`font-bold ${a.repairCount>=4?"text-red-400":a.repairCount>=3?"text-amber-400":"text-yellow-400"}`}>{a.repairCount}</span>
+                            </td>
+                            <td className="px-4 py-2.5 text-center text-muted">{a.count}</td>
+                            <td className="px-4 py-2.5 text-right text-muted">{a.lastDate || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* High-ticket assets */}
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-card-hover transition-colors"
+              onClick={() => toggleSect("asset_high")}>
+              <div>
+                <span className="text-sm font-bold">📊 อุปกรณ์ที่มี Ticket สูง (≥ 3 ครั้ง)</span>
+                <span className="text-[10px] text-muted ml-2">{highTicketAssets.length} รายการ</span>
+              </div>
+              <span className="text-muted text-xs" style={{ transform: sectOpen("asset_high") ? "rotate(0deg)" : "rotate(-90deg)", display:"inline-block", transition:"transform 0.15s" }}>▾</span>
+            </button>
+            {sectOpen("asset_high") && (
+              <div className="border-t border-border">
+                {highTicketAssets.length === 0 ? (
+                  <p className="text-sm text-muted text-center py-6">ไม่พบอุปกรณ์ที่มี Ticket สูง</p>
+                ) : (
+                  <div className="space-y-0">
+                    {highTicketAssets.map((a, i) => {
+                      const maxC = highTicketAssets[0].count;
+                      return (
+                        <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-0 hover:bg-card-hover">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold font-mono text-accent">{a.km}</p>
+                            <p className="text-[10px] text-muted truncate">{a.model} · {a.cust}</p>
+                          </div>
+                          <div className="w-24 h-1.5 rounded-full bg-muted/20 overflow-hidden">
+                            <div className="h-full rounded-full bg-amber-400" style={{ width: `${(a.count/maxC)*100}%` }} />
+                          </div>
+                          <span className={`text-xs font-bold w-8 text-right ${a.count>=5?"text-red-400":a.count>=4?"text-amber-400":"text-yellow-400"}`}>{a.count}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Asset search by SN */}
+          <div className="rounded-xl bg-blue-900/10 border border-blue-800/30 p-4">
+            <p className="text-xs font-semibold text-blue-400 mb-1">🔍 ค้นหาประวัติ Asset</p>
+            <p className="text-xs text-muted mb-2">ดูประวัติ Ticket ทั้งหมดของอุปกรณ์แต่ละชิ้น → <Link href="/assets" className="text-accent hover:underline">เปิดหน้า Assets →</Link></p>
+            <div className="flex gap-2">
+              <Link href="/assets" className="rounded-lg bg-accent px-4 py-2 text-xs font-medium text-white hover:bg-accent-hover">🖥️ ไปหน้า Assets</Link>
+              <Link href="/service?tab=history" className="rounded-lg border border-border px-4 py-2 text-xs text-muted hover:bg-card-hover">📁 ประวัติงานทั้งหมด</Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Documents Panel ── */}
+      {!loading && !isTechView && managerSection === "docs" && (
+        <div className="space-y-4 mb-4">
+          {/* Internal links */}
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-card-hover transition-colors"
+              onClick={() => toggleSect("docs_internal")}>
+              <span className="text-sm font-bold">📁 เอกสารภายในระบบ</span>
+              <span className="text-muted text-xs" style={{ transform: sectOpen("docs_internal") ? "rotate(0deg)" : "rotate(-90deg)", display:"inline-block", transition:"transform 0.15s" }}>▾</span>
+            </button>
+            {sectOpen("docs_internal") && (
+              <div className="border-t border-border p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { href: "/service/backup",   icon: "💾", label: "Config Backup",  desc: "บันทึก Config อุปกรณ์" },
+                  { href: "/service/manuals",  icon: "📖", label: "Manuals",         desc: "คู่มือการใช้งาน" },
+                  { href: "/service/checklist",icon: "✅", label: "Checklist",        desc: "Service Checklist" },
+                  { href: "/service/remote",   icon: "🖥️", label: "Remote Support",  desc: "Remote Access Tools" },
+                ].map(d => (
+                  <Link key={d.href} href={d.href}
+                    className="rounded-xl border border-border bg-background hover:bg-card-hover p-4 flex flex-col gap-2 transition-colors group">
+                    <span className="text-2xl">{d.icon}</span>
+                    <div>
+                      <p className="text-sm font-semibold group-hover:text-accent transition-colors">{d.label}</p>
+                      <p className="text-[10px] text-muted">{d.desc}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* External links (OneDrive / SharePoint / Diagram) */}
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-card-hover transition-colors"
+              onClick={() => toggleSect("docs_external")}>
+              <div>
+                <span className="text-sm font-bold">🔗 ลิงก์ภายนอก (OneDrive / SharePoint / Diagram)</span>
+                <span className="text-[10px] text-muted ml-2">{docLinks.length} ลิงก์</span>
+              </div>
+              <span className="text-muted text-xs" style={{ transform: sectOpen("docs_external") ? "rotate(0deg)" : "rotate(-90deg)", display:"inline-block", transition:"transform 0.15s" }}>▾</span>
+            </button>
+            {sectOpen("docs_external") && (
+              <div className="border-t border-border p-4 space-y-3">
+                {docLinks.length === 0 && (
+                  <p className="text-sm text-muted text-center py-4">ยังไม่มีลิงก์ภายนอก — เพิ่มด้านล่าง</p>
+                )}
+                {docLinks.map((d, i) => (
+                  <div key={i} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                    <span className="text-base">🔗</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{d.label}</p>
+                      <a href={d.url} target="_blank" rel="noreferrer"
+                        className="text-[11px] text-accent hover:underline truncate block max-w-xs">{d.url}</a>
+                    </div>
+                    <button onClick={() => saveDocLinks(docLinks.filter((_, j) => j !== i))}
+                      className="text-[10px] text-danger hover:underline shrink-0">ลบ</button>
+                  </div>
+                ))}
+                {/* Add link form */}
+                <DocLinkAdder onAdd={link => saveDocLinks([...docLinks, link])} />
+              </div>
+            )}
+          </div>
+
+          {/* Diagram placeholder */}
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-card-hover transition-colors"
+              onClick={() => toggleSect("docs_diagram")}>
+              <span className="text-sm font-bold">🗺️ Network Diagram / แผนผัง</span>
+              <span className="text-muted text-xs" style={{ transform: sectOpen("docs_diagram") ? "rotate(0deg)" : "rotate(-90deg)", display:"inline-block", transition:"transform 0.15s" }}>▾</span>
+            </button>
+            {sectOpen("docs_diagram") && (
+              <div className="border-t border-border p-4">
+                <p className="text-xs text-muted mb-3">ใส่ URL รูปภาพ / Embed Diagram (draw.io, Visio export, Miro iframe) หรือ Link ไปยัง SharePoint</p>
+                <div className="rounded-xl border border-dashed border-border p-8 text-center">
+                  <p className="text-muted text-sm">🗺️ เพิ่ม Network Diagram ผ่าน External Links ด้านบน</p>
+                  <p className="text-[10px] text-muted mt-1">รองรับ OneDrive · SharePoint · draw.io · Google Drive</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Export section */}
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-card-hover transition-colors"
+              onClick={() => toggleSect("docs_export")}>
+              <span className="text-sm font-bold">📥 Export Report</span>
+              <span className="text-muted text-xs" style={{ transform: sectOpen("docs_export") ? "rotate(0deg)" : "rotate(-90deg)", display:"inline-block", transition:"transform 0.15s" }}>▾</span>
+            </button>
+            {sectOpen("docs_export") && (
+              <div className="border-t border-border p-4 flex flex-wrap gap-3">
+                <button onClick={exportCSV}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover flex items-center gap-2">
+                  📥 Export Tickets CSV
+                </button>
+                <Link href="/reports" className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover flex items-center gap-2">
+                  📊 หน้า Reports ทั้งหมด
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       )}
