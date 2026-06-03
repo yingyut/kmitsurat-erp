@@ -43,6 +43,11 @@ function ProductsContent() {
   const [groupPickQty, setGroupPickQty] = useState(1);
   const [groupPickItemType, setGroupPickItemType] = useState<PackageItemType>("product");
   const [autoCalcGroupPrice, setAutoCalcGroupPrice] = useState(true);
+  // Inline new category
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatIcon, setNewCatIcon] = useState("📁");
+  const [addingCat, setAddingCat] = useState(false);
+  const [showNewCatInput, setShowNewCatInput] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -259,10 +264,22 @@ function ProductsContent() {
 
   async function quickSetCategory(id: string, category: string) {
     const { products } = await import("@/lib/firestore");
-    // Optimistic update
     setList(list.map(p => p.id === id ? { ...p, category } : p));
     try { await products.update(id, { category }); }
-    catch (e) { console.error(e); await load(); /* revert on error */ }
+    catch (e) { console.error(e); await load(); }
+  }
+
+  async function saveNewCategory() {
+    if (!newCatName.trim()) return;
+    setAddingCat(true);
+    const fs = await import("@/lib/firestore");
+    try {
+      await fs.productCategories.add({ name: newCatName.trim(), description: "", icon: newCatIcon } as unknown as Record<string, unknown>);
+      setForm(f => ({ ...f, category: newCatName.trim() }));
+      setNewCatName(""); setNewCatIcon("📁"); setShowNewCatInput(false);
+      await load();
+    } catch (e) { console.error(e); }
+    finally { setAddingCat(false); }
   }
 
   if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
@@ -312,14 +329,42 @@ function ProductsContent() {
             </div>
             <div>
               <label className="text-[10px] text-muted">หมวดหมู่</label>
-              <div className="flex gap-1.5 mt-1">
-                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="flex-1 rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-                  <option value="">-- เลือกหมวด --</option>
-                  {categories.map(c => <option key={c.id} value={c.name}>{c.icon || "📁"} {c.name}</option>)}
-                </select>
-                <Link href="/settings/product-categories" target="_blank" title="เพิ่ม/แก้ไขหมวดหมู่" className="shrink-0 rounded-lg border border-border px-2.5 py-2 text-sm text-accent hover:bg-card-hover">+</Link>
-              </div>
-              {categories.length === 0 && <p className="text-[10px] text-amber-400 mt-1">ยังไม่มีหมวด <Link href="/settings/product-categories" className="underline">คลิกเพื่อเพิ่ม</Link></p>}
+              {showNewCatInput ? (
+                <div className="mt-1 space-y-1.5">
+                  <div className="flex gap-1.5">
+                    <input value={newCatIcon} onChange={e => setNewCatIcon(e.target.value)} maxLength={2}
+                      className="w-12 rounded-lg bg-background border border-border px-2 py-2 text-sm text-center focus:outline-none focus:border-accent" placeholder="📁" />
+                    <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") saveNewCategory(); if (e.key === "Escape") { setShowNewCatInput(false); setNewCatName(""); } }}
+                      autoFocus placeholder="ชื่อหมวดหมู่ใหม่..."
+                      className="flex-1 rounded-lg bg-background border border-accent px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                    <button onClick={saveNewCategory} disabled={addingCat || !newCatName.trim()}
+                      className="shrink-0 rounded-lg bg-accent px-3 py-2 text-sm text-white hover:bg-accent-hover disabled:opacity-50">
+                      {addingCat ? "..." : "บันทึก"}
+                    </button>
+                    <button onClick={() => { setShowNewCatInput(false); setNewCatName(""); }}
+                      className="shrink-0 rounded-lg border border-border px-2.5 py-2 text-sm text-muted hover:bg-card-hover">✕</button>
+                  </div>
+                  <p className="text-[10px] text-muted">กด Enter เพื่อบันทึก · Esc เพื่อยกเลิก</p>
+                </div>
+              ) : (
+                <div className="flex gap-1.5 mt-1">
+                  <select value={form.category}
+                    onChange={e => {
+                      if (e.target.value === "__new__") { setShowNewCatInput(true); setNewCatName(""); }
+                      else setForm({ ...form, category: e.target.value });
+                    }}
+                    className="flex-1 rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                    <option value="">-- เลือกหมวด --</option>
+                    {categories.map(c => <option key={c.id} value={c.name}>{c.icon || "📁"} {c.name}</option>)}
+                    <option value="__new__">✏️ เพิ่มหมวดใหม่...</option>
+                  </select>
+                  <Link href="/settings/product-categories" target="_blank" title="จัดการหมวดหมู่ทั้งหมด" className="shrink-0 rounded-lg border border-border px-2.5 py-2 text-sm text-accent hover:bg-card-hover">⚙️</Link>
+                </div>
+              )}
+              {!showNewCatInput && categories.length === 0 && (
+                <p className="text-[10px] text-amber-400 mt-1">ยังไม่มีหมวด — เลือก "เพิ่มหมวดใหม่" ด้านบน หรือ <Link href="/settings/product-categories" className="underline">ไปหน้า Settings</Link></p>
+              )}
             </div>
             <div>
               <label className="text-[10px] text-muted">หน่วย</label>
