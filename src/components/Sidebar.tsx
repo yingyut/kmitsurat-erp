@@ -53,16 +53,29 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
-    id: "service", title: "เซอร์วิส", subtitle: "SERVICE", dot: "bg-rose-500",
-    roleTitle: {
-      "service":            { title: "งานของฉัน", subtitle: "MY WORK" },
-      "Service Technician": { title: "งานของฉัน", subtitle: "MY WORK" },
-    },
+    id: "service-work", title: "งานของฉัน", subtitle: "MY WORK", dot: "bg-rose-500",
     items: [
-      { href: "/service",            label: "Service Tickets", thai: "งานบริการ / ติดตั้ง / ซ่อม", icon: "🔧", badgeKey: "tickets" },
-      { href: "/contracts",          label: "Contracts",       thai: "สัญญา / รับประกัน / MA",      icon: "🛡️" },
-      { href: "/assets",             label: "Assets",          thai: "อุปกรณ์ / Serial Tracking",   icon: "🖥️" },
-      { href: "/assets/pm-schedule", label: "PM Schedule",     thai: "ตารางงาน PM อุปกรณ์",         icon: "🔩" },
+      { href: "/service",             label: "Service Tickets", thai: "งานบริการ / ติดตั้ง / ซ่อม", icon: "🔧", badgeKey: "tickets" },
+      { href: "/service?tab=today",   label: "Today Jobs",      thai: "งานวันนี้",                   icon: "📅" },
+      { href: "/assets/pm-schedule",  label: "PM Schedule",     thai: "ตารางงาน PM",                 icon: "🔩" },
+      { href: "/service?tab=parts",   label: "Waiting Parts",   thai: "รออะไหล่",                    icon: "📦" },
+    ],
+  },
+  {
+    id: "service-tools", title: "เครื่องมือช่าง", subtitle: "TOOLS", dot: "bg-blue-500",
+    items: [
+      { href: "/service/manuals",   label: "Manuals",        thai: "คู่มือการใช้งาน",   icon: "📖" },
+      { href: "/service/checklist", label: "Checklist",      thai: "Service Checklist", icon: "✅" },
+      { href: "/service/remote",    label: "Remote Support", thai: "Remote Access",     icon: "🖥️" },
+      { href: "/service/backup",    label: "Config Backup",  thai: "บันทึก Config",     icon: "💾" },
+    ],
+  },
+  {
+    id: "service-history", title: "ประวัติ", subtitle: "HISTORY", dot: "bg-emerald-500",
+    items: [
+      { href: "/service?tab=history", label: "Service History", thai: "ประวัติงาน",           icon: "📁" },
+      { href: "/contracts",           label: "Warranty Check",  thai: "สัญญา / การรับประกัน", icon: "🛡️" },
+      { href: "/assets",              label: "Search SN",       thai: "ค้นหา Serial Number",  icon: "🔍" },
     ],
   },
   {
