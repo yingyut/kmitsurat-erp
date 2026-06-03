@@ -86,6 +86,36 @@ const ALL_STATUSES: ServiceStatus[] = [
   "waiting_parts","resume","resolved","closed","cancelled","waiting_approval",
 ];
 
+// ─── Service view tabs ────────────────────────────────────────────────────────
+
+type ServiceView = "all" | "new" | "doing" | "parts" | "overdue" | "today" | "pm";
+
+const VIEWS: Array<{ id: ServiceView; label: string; icon: string }> = [
+  { id: "all",     label: "ทั้งหมด",   icon: "📋" },
+  { id: "new",     label: "งานใหม่",   icon: "🆕" },
+  { id: "doing",   label: "กำลังทำ",  icon: "⚙️" },
+  { id: "parts",   label: "รออะไหล่", icon: "📦" },
+  { id: "overdue", label: "เลย SLA",  icon: "⚠️" },
+  { id: "today",   label: "วันนี้",    icon: "📅" },
+  { id: "pm",      label: "PM",        icon: "🔵" },
+];
+
+// Quick action buttons per status (Timer system: เปิดงาน→รับงาน→เริ่มงาน→หยุดรอ→ปิดงาน)
+function getQuickActions(status: ServiceStatus): Array<{ status: ServiceStatus; label: string; primary: boolean }> {
+  switch (status) {
+    case "open":         return [{ status: "acknowledged", label: "📲 รับงาน",      primary: true  }, { status: "traveling",    label: "🚗 เดินทาง",   primary: false }];
+    case "acknowledged": return [{ status: "traveling",    label: "🚗 เดินทาง",    primary: true  }, { status: "on_site",      label: "📍 ถึงที่แล้ว", primary: false }];
+    case "traveling":    return [{ status: "on_site",      label: "📍 ถึงที่แล้ว", primary: true  }];
+    case "on_site":      return [{ status: "repair_start", label: "🔧 เริ่มซ่อม",  primary: true  }];
+    case "repair_start":
+    case "in_progress":
+    case "resume":       return [{ status: "resolved",     label: "✅ แก้งานแล้ว", primary: true  }, { status: "waiting_parts", label: "📦 รออะไหล่", primary: false }];
+    case "waiting_parts":return [{ status: "resume",       label: "▶️ ทำต่อ",      primary: true  }];
+    case "resolved":     return [{ status: "closed",       label: "🔒 ปิดงาน",     primary: true  }];
+    default:             return [];
+  }
+}
+
 export default function ServicePage() {
   const { currentUser, hasPermission } = useCurrentUser();
   const [list, setList]               = useState<ServiceTicket[]>([]);
@@ -106,6 +136,7 @@ export default function ServicePage() {
   const [showRevenue, setShowRevenue]       = useState(false);
   const [showSlaDetail, setShowSlaDetail]   = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
+  const [activeView, setActiveView]         = useState<ServiceView>("all");
 
   async function load() {
     const fs = await import("@/lib/firestore");
@@ -120,10 +151,25 @@ export default function ServicePage() {
 
   const ownTicketsOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_tickets");
   const baseTickets = ownTicketsOnly ? list.filter(t => t.technician === currentUser?.name) : list;
+  const canSeeFinance = hasPermission("view_finance");
+  const custMap = new Map(custs.map(c => [c.id, c]));
 
-  const filtered = baseTickets.filter((t) => {
+  const viewBase = (() => {
+    switch (activeView) {
+      case "new":     return baseTickets.filter(t => ["open","acknowledged"].includes(t.status));
+      case "doing":   return baseTickets.filter(t => ["traveling","on_site","repair_start","in_progress","resume"].includes(t.status));
+      case "parts":   return baseTickets.filter(t => t.status === "waiting_parts");
+      case "overdue": return baseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date < today);
+      case "today":   return baseTickets.filter(t => t.service_date === today && isActive(t.status));
+      case "pm":      return baseTickets.filter(t => t.type === "pm_service" && isActive(t.status));
+      default:        return baseTickets;
+    }
+  })();
+
+  const filtered = viewBase.filter((t) => {
     const s = search.toLowerCase();
-    const matchSearch = !s || t.issue.toLowerCase().includes(s) || t.customer_name.toLowerCase().includes(s);
+    const matchSearch = !s || t.issue.toLowerCase().includes(s) || t.customer_name.toLowerCase().includes(s)
+      || (t.km_number || "").toLowerCase().includes(s);
     const matchStatus = statusFilter === "all" || t.status === statusFilter;
     const matchType   = !typeFilter || t.type === typeFilter;
     return matchSearch && matchStatus && matchType;
@@ -598,17 +644,17 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── Advanced Stats Toggles (Revenue & SLA Detail hidden by default) ── */}
+      {/* ── Advanced Stats Toggles — Revenue gated behind view_finance permission ── */}
       {!loading && list.length > 0 && (
         <div className="flex flex-wrap gap-3 mb-3">
-          {/* Revenue toggle */}
-          <button onClick={() => setShowRevenue(v => !v)}
+          {/* Revenue toggle — ซ่อนสำหรับ technician / ไม่มีสิทธิ์การเงิน */}
+          {canSeeFinance && <button onClick={() => setShowRevenue(v => !v)}
             className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors ${showRevenue ? "border-purple-500/50 bg-purple-900/10 text-purple-300" : "border-border bg-card text-muted hover:bg-card-hover"}`}>
             <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${showRevenue ? "bg-purple-500" : "bg-border"}`}>
               <span className={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${showRevenue ? "translate-x-3.5" : "translate-x-0.5"}`} />
             </span>
             💎 ยอดขาย / Revenue &amp; GP
-          </button>
+          </button>}
           {/* SLA Detail toggle */}
           <button onClick={() => setShowSlaDetail(v => !v)}
             className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors ${showSlaDetail ? "border-rose-500/50 bg-rose-900/10 text-rose-300" : "border-border bg-card text-muted hover:bg-card-hover"}`}>
@@ -748,10 +794,47 @@ export default function ServicePage() {
         </div>
       )}
 
+      {/* ── View Tabs (งานใหม่ / กำลังทำ / รออะไหล่ / เลย SLA / วันนี้ / PM) ── */}
+      <div className="flex flex-wrap gap-1 mb-3">
+        {VIEWS.map(v => {
+          const count = (() => {
+            switch (v.id) {
+              case "all":     return baseTickets.length;
+              case "new":     return baseTickets.filter(t => ["open","acknowledged"].includes(t.status)).length;
+              case "doing":   return baseTickets.filter(t => ["traveling","on_site","repair_start","in_progress","resume"].includes(t.status)).length;
+              case "parts":   return baseTickets.filter(t => t.status === "waiting_parts").length;
+              case "overdue": return baseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date < today).length;
+              case "today":   return baseTickets.filter(t => t.service_date === today && isActive(t.status)).length;
+              case "pm":      return baseTickets.filter(t => t.type === "pm_service" && isActive(t.status)).length;
+              default:        return 0;
+            }
+          })();
+          const isActive2 = activeView === v.id;
+          return (
+            <button key={v.id} onClick={() => setActiveView(v.id)}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all border ${
+                isActive2 ? "bg-accent/20 text-accent border-accent/40" : "bg-card border-border text-muted hover:bg-card-hover"
+              }`}>
+              <span>{v.icon}</span>
+              <span>{v.label}</span>
+              {count > 0 && (
+                <span className={`rounded-full px-1.5 min-w-[18px] text-center text-[9px] font-bold ${
+                  isActive2 ? "bg-accent text-white" :
+                  v.id === "overdue" ? "bg-red-500/20 text-red-400" :
+                  v.id === "new"     ? "bg-red-500/20 text-red-400" :
+                  v.id === "parts"   ? "bg-purple-500/20 text-purple-400" :
+                  "bg-muted/20 text-muted"
+                }`}>{count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── Search + Filter ── */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <input
-          placeholder="ค้นหา issue / ลูกค้า..."
+          placeholder="ค้นหา issue / ลูกค้า / SN..."
           value={search} onChange={(e) => setSearch(e.target.value)}
           className="flex-1 min-w-40 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"
         />
@@ -783,71 +866,124 @@ export default function ServicePage() {
       {loading ? (
         <p className="text-muted text-sm">Loading...</p>
       ) : filtered.length === 0 ? (
-        <p className="text-muted text-sm">ไม่พบงาน</p>
+        <div className="rounded-xl bg-card border border-border p-8 text-center">
+          <p className="text-muted text-sm">ไม่พบงานใน{activeView === "all" ? "ระบบ" : `หมวด "${VIEWS.find(v => v.id === activeView)?.label}"`}</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {filtered.map((t) => {
-            const overdue = t.service_date && t.service_date < today && isActive(t.status);
+            const cust      = custMap.get(t.customer_id || "");
+            const location  = (t as unknown as Record<string,string>).location || cust?.address || cust?.province || "";
+            const overdue   = t.service_date && t.service_date < today && isActive(t.status);
             const responseH = hoursBetween(t.opened_at, t.accepted_at ?? t.acknowledged_at);
+            const waitPartsH= hoursBetween(t.waiting_parts_at, t.resume_at);
             const workH     = hoursBetween(t.started_at ?? t.repair_start_at, t.resolved_at);
-            const totalH    = hoursBetween(t.opened_at, t.resolved_at);
+            const totalH    = hoursBetween(t.opened_at, t.resolved_at ?? (isActive(t.status) ? new Date().toISOString() : undefined));
             const slaResp   = t.sla_response_hours || 4;
-            const slaResolve = t.sla_resolve_hours || 48;
+            const slaResolve= t.sla_resolve_hours || 48;
             const pendingH  = t.status === "open" && t.opened_at ? (nowMs - (parseISO(t.opened_at) || nowMs)) / 3600000 : null;
+            const slaBreached = totalH !== null && totalH > slaResolve && isActive(t.status);
+            const quickActions = getQuickActions(t.status);
             return (
-              <div key={t.id} className="rounded-xl bg-card border border-border p-4 hover:bg-card-hover">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <p className="text-sm font-medium">{typeLabels[t.type]}</p>
-                      {t.priority && t.priority !== "medium" && (
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${priorityBadge[t.priority]}`}>{priorityLabel[t.priority]}</span>
-                      )}
-                      {t.assignment_mode && (
-                        <span className="text-[10px] text-muted" title={modeLabel[t.assignment_mode]}>{modeIcon[t.assignment_mode]}{t.assignment_mode === "by_skill" && t.target_skill ? ` ${t.target_skill}` : t.assignment_mode === "by_area" && t.target_area ? ` ${t.target_area}` : ""}</span>
-                      )}
-                      {overdue && <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-[10px] text-red-400">⚠ เลยกำหนด</span>}
-                    </div>
-                    <p className="text-sm text-muted">{t.issue}</p>
-                    <div className="flex items-center gap-2 flex-wrap mt-1">
-                      {t.km_number && t.asset_id && (<Link href={`/assets/${t.asset_id}`} className="rounded px-1.5 py-0.5 bg-cyan-900/50 text-cyan-400 text-[10px] font-mono hover:underline">🖥️ {t.km_number}</Link>)}
-                      {t.km_number && !t.asset_id && (<span className="rounded px-1.5 py-0.5 bg-cyan-900/30 text-cyan-400/70 text-[10px] font-mono">🖥️ {t.km_number}</span>)}
-                    </div>
-                    <p className="text-xs text-muted mt-1">
-                      {t.customer_name}{t.project_name && ` · ${t.project_name}`}
-                      {t.technician && ` · 🔧 ${t.technician}`}
-                      {t.service_date && <> · <span className={overdue ? "text-red-400" : ""}>📅 {t.service_date}</span></>}
-                      {t.reported_by && <> · 📞 {t.reported_by}{t.report_channel && ` (${channelLabel[t.report_channel]})`}</>}
-                    </p>
-                    {t.opened_at && (
-                      <div className="flex items-center gap-1 text-[10px] mt-1.5 flex-wrap">
-                        <span className="text-muted">⏱️</span>
-                        {responseH !== null ? (
-                          <span className={`rounded px-1.5 py-0.5 ${responseH > slaResp ? "bg-red-900/50 text-red-400" : "bg-blue-900/50 text-blue-400"}`}>รับใน {fmtHours(responseH)}</span>
-                        ) : pendingH !== null && (
-                          <span className={`rounded px-1.5 py-0.5 ${pendingH > slaResp ? "bg-red-900/50 text-red-400" : "bg-amber-900/50 text-amber-400"}`}>รอรับ {fmtHours(pendingH)}{pendingH > slaResp && " ⚠"}</span>
-                        )}
-                        {workH !== null && <span className="rounded px-1.5 py-0.5 bg-yellow-900/50 text-yellow-400">ทำ {fmtHours(workH)}</span>}
-                        {totalH !== null && <span className={`rounded px-1.5 py-0.5 ${totalH > slaResolve ? "bg-red-900/50 text-red-400" : "bg-green-900/50 text-green-400"}`}>รวม {fmtHours(totalH)}{totalH > slaResolve && " ⚠"}</span>}
-                        {t.accepted_by && t.accepted_by !== t.technician && <span className="text-muted">· รับโดย {t.accepted_by}</span>}
-                      </div>
+              <div key={t.id} className={`rounded-xl bg-card border p-4 hover:bg-card-hover transition-colors ${slaBreached ? "border-red-800/50" : overdue ? "border-amber-800/40" : "border-border"}`}>
+
+                {/* Row 1: Type + priority + flags | status badge */}
+                <div className="flex items-start justify-between gap-3 mb-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold">{typeLabels[t.type]}</span>
+                    {t.priority && t.priority !== "medium" && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${priorityBadge[t.priority]}`}>{priorityLabel[t.priority]}</span>
                     )}
-                    {(t.service_value || 0) > 0 && showRevenue && (
-                      <p className="text-xs mt-1">
-                        💎 รายได้ <span className="text-purple-400 font-semibold">{(t.service_value || 0).toLocaleString()}</span>
-                        {(t.service_cost || 0) > 0 && <> · ต้นทุน {(t.service_cost || 0).toLocaleString()}</>}
-                        <span className={`ml-1 font-semibold ${(t.gross_profit || 0) > 0 ? "text-green-400" : "text-red-400"}`}>
-                          · กำไร {(t.gross_profit || ((t.service_value || 0) - (t.service_cost || 0))).toLocaleString()}
-                          {(t.service_value || 0) > 0 && <> ({((t.gross_profit || ((t.service_value || 0) - (t.service_cost || 0))) / (t.service_value || 1) * 100).toFixed(1)}%)</>}
-                        </span>
-                      </p>
+                    {overdue && <span className="text-[10px] text-amber-400 rounded-full bg-amber-900/30 px-2 py-0.5">⚠ เลยกำหนด</span>}
+                    {slaBreached && <span className="text-[10px] text-red-400 rounded-full bg-red-900/30 px-2 py-0.5">🚨 เลย SLA</span>}
+                    {t.assignment_mode && t.assignment_mode !== "individual" && (
+                      <span className="text-[10px] text-muted">{modeIcon[t.assignment_mode]}</span>
                     )}
                   </div>
-                  <div className="flex flex-col gap-1.5 shrink-0 ml-3 items-end">
-                    <select value={t.status} onChange={(e) => changeStatus(t, e.target.value as ServiceStatus)}
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${statusColor[t.status] || "bg-gray-700 text-gray-300"}`}>
-                      {ALL_STATUSES.map(s => <option key={s} value={s}>{statusIcon[s]} {statusLabel[s]}</option>)}
-                    </select>
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium ${statusColor[t.status] || "bg-gray-700 text-gray-300"}`}>
+                    {statusIcon[t.status]} {statusLabel[t.status]}
+                  </span>
+                </div>
+
+                {/* Issue description */}
+                <p className="text-sm text-foreground mb-2 leading-snug">{t.issue}</p>
+
+                {/* Row 2: Customer · Location · Asset · Technician · Date */}
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted mb-2">
+                  <span>🏢 {t.customer_name}</span>
+                  {location && <span>📍 {location}</span>}
+                  {t.km_number && (
+                    t.asset_id
+                      ? <Link href={`/assets/${t.asset_id}`} className="text-cyan-400 hover:underline font-mono">🖥️ {t.km_number}</Link>
+                      : <span className="text-cyan-400/70 font-mono">🖥️ {t.km_number}</span>
+                  )}
+                  {t.technician && <span className="text-accent/80">🔧 {t.technician}</span>}
+                  {t.service_date && <span className={overdue ? "text-amber-400" : ""}> 📅 {t.service_date}</span>}
+                  {t.project_name && <span>📂 {t.project_name}</span>}
+                </div>
+
+                {/* Row 3: Time tracking pills */}
+                {t.opened_at && (
+                  <div className="flex items-center gap-1 text-[10px] mb-2.5 flex-wrap">
+                    <span className="text-muted shrink-0">⏱️ เวลา:</span>
+                    {responseH !== null ? (
+                      <span className={`rounded px-1.5 py-0.5 ${responseH > slaResp ? "bg-red-900/50 text-red-400" : "bg-blue-900/50 text-blue-400"}`}>ตอบรับ {fmtHours(responseH)}</span>
+                    ) : pendingH !== null ? (
+                      <span className={`rounded px-1.5 py-0.5 ${pendingH > slaResp ? "bg-red-900/50 text-red-400" : "bg-amber-900/50 text-amber-400"}`}>รอรับ {fmtHours(pendingH)}{pendingH > slaResp && " ⚠"}</span>
+                    ) : null}
+                    {workH !== null && <span className="rounded px-1.5 py-0.5 bg-yellow-900/50 text-yellow-400">ซ่อม {fmtHours(workH)}</span>}
+                    {waitPartsH !== null && waitPartsH > 0 && <span className="rounded px-1.5 py-0.5 bg-purple-900/50 text-purple-400">รออะไหล่ {fmtHours(waitPartsH)}</span>}
+                    {totalH !== null && <span className={`rounded px-1.5 py-0.5 font-medium ${totalH > slaResolve ? "bg-red-900/50 text-red-400" : "bg-green-900/50 text-green-400"}`}>รวม {fmtHours(totalH)}</span>}
+                    {t.accepted_by && t.accepted_by !== t.technician && <span className="text-muted">· รับโดย {t.accepted_by}</span>}
+                  </div>
+                )}
+
+                {/* SLA progress bar — only for active tickets */}
+                {isActive(t.status) && t.opened_at && (
+                  <div className="mb-3">
+                    <div className="flex justify-between text-[9px] text-muted mb-0.5">
+                      <span>SLA เป้า {slaResolve}h</span>
+                      <span className={slaBreached ? "text-red-400" : "text-muted"}>{fmtHours(totalH)} ผ่านแล้ว</span>
+                    </div>
+                    <div className="h-1 rounded-full bg-muted/20 overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${
+                        (totalH || 0) / slaResolve >= 1 ? "bg-red-500" :
+                        (totalH || 0) / slaResolve >= 0.75 ? "bg-amber-500" : "bg-green-500"
+                      }`} style={{ width: `${Math.min(((totalH || 0) / slaResolve) * 100, 100)}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Finance row — view_finance only */}
+                {canSeeFinance && showRevenue && (t.service_value || 0) > 0 && (
+                  <p className="text-xs mb-2 text-purple-400/80">
+                    💎 {(t.service_value || 0).toLocaleString()} ฿
+                    {(t.service_cost || 0) > 0 && <span className="text-muted"> · ต้นทุน {(t.service_cost || 0).toLocaleString()}</span>}
+                    <span className={`ml-1 font-semibold ${(t.gross_profit || 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      · กำไร {(t.gross_profit || ((t.service_value || 0) - (t.service_cost || 0))).toLocaleString()}
+                    </span>
+                  </p>
+                )}
+
+                {/* Action bar: Quick status buttons (Timer system) + Detail + Delete */}
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50">
+                  <div className="flex gap-1.5 flex-wrap">
+                    {quickActions.map(a => (
+                      <button key={a.status} onClick={() => changeStatus(t, a.status)}
+                        className={`text-[11px] rounded-lg px-2.5 py-1 transition-colors ${
+                          a.primary
+                            ? "bg-accent text-white hover:bg-accent-hover"
+                            : "bg-card-hover border border-border text-muted hover:text-foreground"
+                        }`}>{a.label}</button>
+                    ))}
+                    {quickActions.length === 0 && (
+                      <select value={t.status} onChange={(e) => changeStatus(t, e.target.value as ServiceStatus)}
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${statusColor[t.status]}`}>
+                        {ALL_STATUSES.map(s => <option key={s} value={s}>{statusIcon[s]} {statusLabel[s]}</option>)}
+                      </select>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
                     <button onClick={() => setSelectedTicket(t)} className="text-[10px] text-accent hover:underline">👁 Detail</button>
                     <button onClick={() => handleDelete(t.id!)} className="text-[10px] text-danger hover:underline">ลบ</button>
                   </div>
