@@ -72,6 +72,15 @@ function AppContent({ children }: { children: ReactNode }) {
     try {
       const theme = localStorage.getItem("kmit_theme") || "midnight";
       document.documentElement.setAttribute("data-theme", theme);
+      if (theme === "custom") {
+        const raw = localStorage.getItem("kmit_theme_custom");
+        if (raw) {
+          const colors = JSON.parse(raw) as Record<string, string>;
+          Object.entries(colors).forEach(([k, v]) => {
+            document.documentElement.style.setProperty(`--${k}`, v);
+          });
+        }
+      }
       const dm = localStorage.getItem("kmit_device_preview") as DeviceMode | null;
       if (dm && dm in DEVICE_META) setDeviceMode(dm);
     } catch {}

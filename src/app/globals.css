@@ -320,6 +320,21 @@ body {
   .hidden-narrow { display: none !important; }
 }
 
+/* Color picker swatch */
+.color-swatch {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0;
+  display: block;
+}
+.color-swatch::-webkit-color-swatch-wrapper { padding: 0; border-radius: 8px; }
+.color-swatch::-webkit-color-swatch { border: none; border-radius: 8px; }
+.color-swatch::-moz-color-swatch { border: none; border-radius: 8px; }
+
 /* Focus */
 *:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 

@@ -121,7 +121,7 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
                 const active = isActive(item.href);
                 return (
                   <Link key={item.href} href={item.href} title={item.thai}
-                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all ${active ? "bg-accent/20 text-accent font-semibold border border-accent/30" : "text-foreground hover:bg-sidebar-hover border border-transparent"}`}>
+                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all ${active ? "bg-accent/20 text-accent font-semibold border border-accent/30" : "text-sidebar-fg hover:bg-sidebar-hover border border-transparent"}`}>
                     <span className="text-sm">{item.icon}</span>
                     {item.label}
                   </Link>
