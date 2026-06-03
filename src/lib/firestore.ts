@@ -8,7 +8,7 @@ import { db } from "./firebase";
 // Import types for generic params
 import type {
   User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
-  ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
+  ServiceTicket, ServiceContract, ServiceCost, ServiceAttachment, ServiceCostPreset, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow,
   PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem, PresalePreset,
   ActivityLog, Asset, CompanySettings, Todo, PresaleApprovalSettings, QuotationDocument, InAppNotification,
@@ -18,7 +18,8 @@ import type {
 export type {
   User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
   BomItem, PresaleAttachment, InAppNotification,
-  ServiceTicket, ServiceContract, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, QuotationItem, SalesQuota,
+  ServiceTicket, ServiceContract, ServiceCost, ServiceAttachment, ServiceCostPreset, ServiceStatus, ServiceStatusHistory,
+  Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, QuotationItem, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow, NotifyChannelType, NotifyTrigger,
   PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem,
   PresaleToolType, PresaleToolStatus, PresaleProjectStatus, BOQCategory,
@@ -150,6 +151,9 @@ export const companySettings = svc<CompanySettings>("company_settings");
 export const todos = svc<Todo>("todos", "created_at");
 export const presaleApprovalSettings = svc<PresaleApprovalSettings>("presale_approval_settings");
 export const inAppNotifications = svc<InAppNotification>("notifications");
+export const serviceCosts = svc<ServiceCost>("service_costs");
+export const serviceAttachments = svc<ServiceAttachment>("service_attachments");
+export const serviceCostPresets = svc<ServiceCostPreset>("service_cost_presets");
 
 export async function logActivity(entry: Omit<ActivityLog, "id" | "tenant_id" | "created_at">) {
   try { await activityLogs.add(entry as Record<string, unknown>); } catch { /* non-blocking */ }

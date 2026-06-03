@@ -373,6 +373,78 @@ export interface PresaleApprovalSettings {
   substitute_approvers: string[];
 }
 
+// ============================================================
+// SERVICE MANAGEMENT — Extended Types
+// ============================================================
+
+export type ServiceStatus =
+  | "open"             // เปิดใหม่
+  | "acknowledged"     // รับทราบแล้ว
+  | "traveling"        // เดินทาง
+  | "on_site"          // ถึงสถานที่
+  | "repair_start"     // เริ่มซ่อม
+  | "in_progress"      // กำลังทำ (legacy)
+  | "waiting_parts"    // รอชิ้นส่วน
+  | "resume"           // กลับมาทำต่อ
+  | "resolved"         // แก้ไขแล้ว
+  | "closed"           // ปิดงาน
+  | "cancelled"        // ยกเลิก
+  | "waiting_approval"; // รออนุมัติ
+
+export interface ServiceStatusHistory {
+  status: ServiceStatus;
+  timestamp: string;   // ISO
+  by: string;
+  note?: string;
+}
+
+export interface ServiceCostPresetItem {
+  product_id?: string;
+  product_name: string;
+  qty: number;
+  unit?: string;
+  cost_price: number;
+  category?: string;
+}
+
+export interface ServiceCostPreset {
+  id?: string;
+  tenant_id: string;
+  name: string;
+  description?: string;
+  items: ServiceCostPresetItem[];
+  created_at?: unknown;
+}
+
+export interface ServiceCost {
+  id?: string;
+  tenant_id: string;
+  ticket_id: string;
+  category: "labor" | "travel" | "fuel" | "accommodation" | "allowance" | "parts" | "outsource" | "custom" | "percentage";
+  description: string;
+  amount: number;
+  date: string;        // YYYY-MM-DD
+  created_by: string;
+  created_at?: unknown;
+  vendor_name?: string;
+  receipt_url?: string;
+  percent?: number;
+  percent_of?: "revenue";
+  base_amount?: number;
+}
+
+export interface ServiceAttachment {
+  id?: string;
+  tenant_id: string;
+  ticket_id: string;
+  type: "photo" | "memo" | "document" | "link" | "onedrive" | "gdrive";
+  name: string;
+  url?: string;
+  notes?: string;
+  created_by: string;
+  created_at?: unknown;
+}
+
 export interface ServiceTicket {
   id?: string;
   tenant_id: string;
@@ -384,33 +456,43 @@ export interface ServiceTicket {
   issue: string;
   technician: string;
   service_date: string;
-  status: "open" | "in_progress" | "resolved" | "closed";
+  status: ServiceStatus;
+  priority?: "low" | "medium" | "high" | "critical";
+  status_history?: ServiceStatusHistory[];
   // Revenue / profit (จะกรอกเมื่อปิดงาน)
-  service_value?: number;     // รายได้ที่เรียกเก็บ (THB)
-  service_cost?: number;       // ต้นทุน (อะไหล่ + ค่าแรง + ค่าเดินทาง)
-  gross_profit?: number;       // คำนวณอัตโนมัติ
-  hours_spent?: number;        // ชั่วโมงทำงาน
+  service_value?: number;
+  service_cost?: number;
+  gross_profit?: number;
+  hours_spent?: number;
   // Reporter (admin info)
-  reported_by?: string;        // admin who opened the ticket
-  report_date?: string;        // วันที่ลูกค้าแจ้ง (could differ from opened_at)
+  reported_by?: string;
+  report_date?: string;
   report_channel?: "phone" | "line" | "email" | "walk_in" | "system";
   // Routing
   assignment_mode?: "individual" | "all" | "by_skill" | "by_area";
-  target_skill?: string;       // for by_skill
-  target_area?: string;        // for by_area
-  // Timeline (auto-recorded on status changes — ISO timestamps)
+  target_skill?: string;
+  target_area?: string;
+  // Timeline timestamps (auto-recorded on status changes — ISO)
   opened_at?: string;
   accepted_at?: string;
-  accepted_by?: string;        // who accepted (when broadcast/skill/area)
+  accepted_by?: string;
   started_at?: string;
   resolved_at?: string;
   closed_at?: string;
+  acknowledged_at?: string;
+  traveling_at?: string;
+  on_site_at?: string;
+  repair_start_at?: string;
+  waiting_parts_at?: string;
+  resume_at?: string;
+  cancelled_at?: string;
+  waiting_approval_at?: string;
   // SLA targets (in hours)
-  sla_response_hours?: number; // response time target (default 4)
-  sla_resolve_hours?: number;  // resolution time target (default 48)
+  sla_response_hours?: number;
+  sla_resolve_hours?: number;
   // Asset linking
   asset_id?: string;
-  km_number?: string;          // KM-YYYY-XXXX of linked asset
+  km_number?: string;
 }
 
 export interface Vendor {
