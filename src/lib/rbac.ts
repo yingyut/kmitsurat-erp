@@ -142,13 +142,13 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
     "view_contracts",     "manage_contracts",
     "view_all_customers",
     "view_finance",       "view_reports",
-    "view_products",      "view_assets",        "manage_assets",
+    "view_assets",        "manage_assets",
   ],
 
   "Service Technician": [
     "view_dashboard",
     "view_own_tickets",   "create_ticket",
-    "view_own_customers", "view_products",
+    "view_own_customers",
     "view_assets",        // ช่างต้องเห็น Asset / Serial Tracking
     "view_contracts",     // เช็คสัญญา / การรับประกัน MA
   ],
