@@ -162,7 +162,11 @@ export default function ServicePage() {
   const [showSlaDetail, setShowSlaDetail]   = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [activeView, setActiveView]         = useState<ServiceView>("all");
-  const [managerSection, setManagerSection] = useState<"tickets" | "team" | "assets" | "docs" | "costs" | "analytics">("tickets");
+  const [managerSection, setManagerSection] = useState<"tickets" | "team" | "assets" | "docs" | "costs" | "analytics" | "report">("tickets");
+  const [rptDateFrom, setRptDateFrom] = useState("");
+  const [rptDateTo,   setRptDateTo]   = useState("");
+  const [rptTech,     setRptTech]     = useState("");
+  const [rptStatus,   setRptStatus]   = useState("");
   const [openSect, setOpenSect] = useState<Record<string,boolean>>({});
   function toggleSect(k: string) { setOpenSect(v => ({ ...v, [k]: !v[k] })); }
   function sectOpen(k: string, def = true) { return k in openSect ? openSect[k] : def; }
@@ -446,6 +450,84 @@ export default function ServicePage() {
     a.download = `service_tickets_${today}.csv`; a.click(); URL.revokeObjectURL(url);
   }
 
+  // ── Report tab: filtered rows with duration fields ──────────────────────────
+  const reportRows = (() => {
+    let rows = baseTickets;
+    if (rptDateFrom) rows = rows.filter(t => (t.opened_at || t.service_date || "") >= rptDateFrom);
+    if (rptDateTo)   rows = rows.filter(t => (t.opened_at || t.service_date || "").slice(0,10) <= rptDateTo);
+    if (rptTech)     rows = rows.filter(t => t.technician === rptTech);
+    if (rptStatus)   rows = rows.filter(t => t.status === rptStatus);
+    return rows.map(t => {
+      const r = t as unknown as Record<string,unknown>;
+      const finishedAt = (r.resolved_at as string|undefined) || (r.closed_at as string|undefined) || "";
+      const dh = t.opened_at && finishedAt
+        ? Math.round((new Date(finishedAt).getTime() - new Date(t.opened_at).getTime()) / 3600000 * 10) / 10
+        : null;
+      const responseHours = hoursBetween(t.opened_at, r.accepted_at as string|undefined);
+      const slaRespOk = responseHours !== null && t.sla_response_hours
+        ? responseHours <= t.sla_response_hours ? "✅ ผ่าน" : "❌ เกิน" : "—";
+      const slaResOk  = dh !== null && t.sla_resolve_hours
+        ? dh <= t.sla_resolve_hours ? "✅ ผ่าน" : "❌ เกิน" : finishedAt ? "— (ไม่กำหนด)" : "🔄 ยังไม่จบ";
+      return { ...t, finishedAt, durationHours: dh, durationDays: dh !== null ? Math.round(dh/24*10)/10 : null, responseHours, slaRespOk, slaResOk };
+    });
+  })();
+
+  function exportReportCSV() {
+    const hdr = ["Customer","Type","Technician","Status","Priority","วันรับแจ้ง","Service Date","วันจบงาน","Response(ชม.)","ระยะเวลา(ชม.)","ระยะเวลา(วัน)","ชม.ทำงาน","Value(THB)","GP(THB)","SLA Response","SLA Resolve"];
+    const data = reportRows.map(t => [
+      t.customer_name||"", typeLabels[t.type]||t.type, t.technician||"",
+      statusLabel[t.status]||t.status, t.priority||"",
+      t.opened_at?.slice(0,16)||"", t.service_date||"", t.finishedAt?.slice(0,16)||"",
+      t.responseHours ?? "", t.durationHours ?? "", t.durationDays ?? "",
+      t.hours_spent||"", t.service_value||0, t.gross_profit||0,
+      t.slaRespOk, t.slaResOk,
+    ]);
+    const csv = [hdr,...data].map(r => r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.download=`service_team_report_${today}.csv`; a.click(); URL.revokeObjectURL(url);
+  }
+
+  async function exportReportExcel() {
+    const XLSX = await import("xlsx");
+    const hdr = ["Customer","Type","Technician","Status","Priority","วันรับแจ้ง","Service Date","วันจบงาน","Response(ชม.)","ระยะเวลา(ชม.)","ระยะเวลา(วัน)","ชม.ทำงาน","Value(THB)","GP(THB)","SLA Response","SLA Resolve"];
+    const data = reportRows.map(t => [
+      t.customer_name||"", typeLabels[t.type]||t.type, t.technician||"",
+      statusLabel[t.status]||t.status, t.priority||"",
+      t.opened_at?.slice(0,16)||"", t.service_date||"", t.finishedAt?.slice(0,16)||"",
+      t.responseHours ?? "", t.durationHours ?? "", t.durationDays ?? "",
+      t.hours_spent||"", t.service_value||0, t.gross_profit||0,
+      t.slaRespOk, t.slaResOk,
+    ]);
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([hdr,...data]);
+    ws["!cols"] = hdr.map(()=>({wch:18}));
+    XLSX.utils.book_append_sheet(wb, ws, "Service Report");
+    XLSX.writeFile(wb, `service_team_report_${today}.xlsx`);
+  }
+
+  function exportReportPDF() {
+    const hdr = ["Customer","Type","Tech","Status","รับแจ้ง","จบงาน","ระยะเวลา(ชม.)","ระยะเวลา(วัน)","SLA Resolve"];
+    const th = hdr.map(h=>`<th>${h}</th>`).join("");
+    const trs = reportRows.map(t=>`<tr>
+      <td>${t.customer_name||""}</td><td>${typeLabels[t.type]||t.type}</td><td>${t.technician||""}</td>
+      <td>${statusLabel[t.status]||t.status}</td>
+      <td>${t.opened_at?.slice(0,16)||"—"}</td><td>${t.finishedAt?.slice(0,16)||"—"}</td>
+      <td>${t.durationHours ?? "—"}</td><td>${t.durationDays ?? "—"}</td><td>${t.slaResOk}</td>
+    </tr>`).join("");
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Service Team Report</title>
+<style>body{font-family:"Segoe UI",sans-serif;font-size:10px;margin:20px}h2{font-size:14px}
+table{width:100%;border-collapse:collapse}thead th{background:#0e1e3c;color:#fff;padding:6px 8px;text-align:left;font-size:9px}
+td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(even) td{background:#f8fafc}
+@media print{body{margin:0}}</style></head>
+<body><h2>Service Team Report</h2>
+<p style="font-size:9px;color:#666">Export: ${new Date().toLocaleString("th-TH")} &nbsp;|&nbsp; ${reportRows.length} รายการ</p>
+<table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></body></html>`;
+    const w = window.open("","_blank");
+    if (!w){alert("กรุณาอนุญาต Pop-up");return;}
+    w.document.write(html); w.document.close(); w.print();
+  }
+
   // ── Handler functions (unchanged) ────────────────────────────────────────────
   function selectCust(id: string) { const c = custs.find((x) => x.id === id); setForm(f => ({ ...f, customer_id: id, customer_name: c?.company_name || "", asset_id: "", km_number: "" })); }
   function selectProj(id: string) { const p = projs.find((x) => x.id === id); setForm(f => ({ ...f, project_id: id, project_name: p?.name || "" })); }
@@ -673,6 +755,7 @@ export default function ServicePage() {
                 {id:"docs"      as const, icon:"📂", label:"Docs",      sub:"เอกสาร"},
                 {id:"costs"     as const, icon:"💰", label:"Costs",     sub:"ต้นทุน"},
                 {id:"analytics" as const, icon:"📈", label:"Analytics", sub:"วิเคราะห์"},
+                {id:"report"    as const, icon:"📊", label:"Report",     sub:"ดึงรายงาน"},
               ]).map(s => (
                 <button key={s.id} onClick={()=>setManagerSection(s.id)}
                   className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold border transition-all ${managerSection===s.id?"bg-accent/20 text-accent border-accent/40":"bg-card border-border text-muted hover:bg-card-hover"}`}>
@@ -1466,6 +1549,148 @@ export default function ServicePage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Report Panel ── */}
+      {!loading && !isTechView && managerSection === "report" && (
+        <div className="space-y-4 mb-4">
+          {/* Filter bar */}
+          <div className="rounded-xl bg-card border border-border p-4">
+            <p className="text-xs font-semibold text-muted uppercase tracking-widest mb-3">🔍 กรองข้อมูล</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label className="text-[10px] text-muted block mb-1">จากวันที่</label>
+                <input type="date" value={rptDateFrom} onChange={e=>setRptDateFrom(e.target.value)}
+                  className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted block mb-1">ถึงวันที่</label>
+                <input type="date" value={rptDateTo} onChange={e=>setRptDateTo(e.target.value)}
+                  className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted block mb-1">ช่างเทคนิค</label>
+                <select value={rptTech} onChange={e=>setRptTech(e.target.value)}
+                  className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                  <option value="">ทุกคน</option>
+                  {[...new Set(baseTickets.map(t=>t.technician).filter(Boolean))].sort().map(n=>(
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-muted block mb-1">สถานะ</label>
+                <select value={rptStatus} onChange={e=>setRptStatus(e.target.value)}
+                  className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                  <option value="">ทุกสถานะ</option>
+                  {ALL_STATUSES.map(s=><option key={s} value={s}>{statusLabel[s]||s}</option>)}
+                </select>
+              </div>
+            </div>
+            {(rptDateFrom||rptDateTo||rptTech||rptStatus) && (
+              <button onClick={()=>{setRptDateFrom("");setRptDateTo("");setRptTech("");setRptStatus("");}}
+                className="mt-2 text-[10px] text-accent hover:underline">✕ ล้างตัวกรอง</button>
+            )}
+          </div>
+
+          {/* Summary stats */}
+          {(() => {
+            const done = reportRows.filter(t=>["resolved","closed"].includes(t.status));
+            const durations = reportRows.filter(t=>t.durationHours!==null).map(t=>t.durationHours as number);
+            const avgDur = durations.length>0 ? avg(durations) : null;
+            const slaOk = reportRows.filter(t=>t.slaResOk==="✅ ผ่าน").length;
+            const slaTotal = reportRows.filter(t=>["✅ ผ่าน","❌ เกิน"].includes(t.slaResOk)).length;
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label:"Ticket ทั้งหมด",     n:reportRows.length,                                                               icon:"🎫", c:"text-accent"   },
+                  { label:"จบงานแล้ว",           n:done.length,                                                                     icon:"✅", c:"text-green-400"},
+                  { label:"Avg ระยะเวลาจบงาน",  n:avgDur!==null?`${avgDur.toFixed(1)}h`:"—",                                       icon:"⏱️", c:"text-blue-400" },
+                  { label:"SLA Comply",          n:slaTotal>0?`${Math.round(slaOk/slaTotal*100)}%`:"—",                            icon:"🎯", c:slaTotal>0&&slaOk/slaTotal>=0.85?"text-green-400":slaTotal>0&&slaOk/slaTotal>=0.7?"text-yellow-400":"text-red-400"},
+                ].map(k=>(
+                  <div key={k.label} className="rounded-xl bg-card border border-border p-4">
+                    <p className="text-[10px] text-muted mb-1">{k.icon} {k.label}</p>
+                    <p className={`text-2xl font-bold tabular-nums ${k.c}`}>{k.n}</p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Export buttons */}
+          <div className="rounded-xl bg-card border border-border p-4">
+            <p className="text-xs font-semibold text-muted uppercase tracking-widest mb-3">📥 Export ({reportRows.length} รายการ)</p>
+            <div className="flex flex-wrap gap-3">
+              <button onClick={exportReportCSV} disabled={reportRows.length===0}
+                className="rounded-lg border border-green-700/50 text-green-400 hover:bg-green-900/20 px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-40">
+                📥 CSV
+              </button>
+              <button onClick={exportReportExcel} disabled={reportRows.length===0}
+                className="rounded-lg border border-blue-700/50 text-blue-400 hover:bg-blue-900/20 px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-40">
+                📊 Excel
+              </button>
+              <button onClick={exportReportPDF} disabled={reportRows.length===0}
+                className="rounded-lg border border-orange-700/50 text-orange-400 hover:bg-orange-900/20 px-4 py-2 text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-40">
+                🖨️ PDF
+              </button>
+              <Link href="/reports" className="rounded-lg border border-border text-muted hover:bg-card-hover px-4 py-2 text-sm flex items-center gap-2 transition-colors">
+                🔗 หน้า Reports ทั้งหมด
+              </Link>
+            </div>
+          </div>
+
+          {/* Preview table */}
+          {reportRows.length > 0 && (
+            <div className="rounded-xl bg-card border border-border overflow-hidden">
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <p className="text-sm font-bold">ตัวอย่างข้อมูล (แสดง 20 แถวแรก)</p>
+                <p className="text-[10px] text-muted">รวม {reportRows.length} รายการ</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-background/50">
+                      {["Customer","Type","Technician","Status","วันรับแจ้ง","วันจบงาน","ระยะเวลา(ชม.)","ระยะเวลา(วัน)","SLA Resolve"].map(h=>(
+                        <th key={h} className="px-3 py-2.5 text-left text-[10px] text-muted font-medium whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportRows.slice(0,20).map((t,i)=>(
+                      <tr key={t.id||i} className="border-b border-border/50 last:border-0 hover:bg-card-hover">
+                        <td className="px-3 py-2 truncate max-w-[140px]">{t.customer_name||"—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{typeLabels[t.type]||t.type}</td>
+                        <td className="px-3 py-2">{t.technician||"—"}</td>
+                        <td className="px-3 py-2">
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusColor[t.status]||""}`}>
+                            {statusIcon[t.status]||""} {statusLabel[t.status]||t.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 tabular-nums whitespace-nowrap text-muted">{t.opened_at?.slice(0,16)||"—"}</td>
+                        <td className="px-3 py-2 tabular-nums whitespace-nowrap text-muted">{t.finishedAt?.slice(0,16)||"—"}</td>
+                        <td className="px-3 py-2 tabular-nums font-mono">{t.durationHours!=null?`${t.durationHours}h`:"—"}</td>
+                        <td className="px-3 py-2 tabular-nums font-mono">{t.durationDays!=null?`${t.durationDays}d`:"—"}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{t.slaResOk}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {reportRows.length>20 && (
+                <div className="px-4 py-2.5 border-t border-border text-center text-[10px] text-muted">
+                  แสดง 20 จาก {reportRows.length} รายการ — กด Export เพื่อดูข้อมูลครบทั้งหมด
+                </div>
+              )}
+            </div>
+          )}
+
+          {reportRows.length===0 && (
+            <div className="rounded-xl border border-dashed border-border p-10 text-center">
+              <p className="text-2xl mb-2">📊</p>
+              <p className="text-sm text-muted">ไม่พบข้อมูลตามเงื่อนไขที่กรอง</p>
+            </div>
+          )}
         </div>
       )}
 
