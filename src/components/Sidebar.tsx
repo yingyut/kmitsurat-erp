@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCurrentUser } from "@/lib/UserContext";
 import { useRouter } from "next/navigation";
@@ -81,13 +82,6 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
   }, [pathname]);
   const { currentUser, logout, hasAccess } = useCurrentUser();
 
-  useEffect(() => {
-    console.log("[Sidebar] currentUser:", currentUser?.name, "role:", currentUser?.role);
-    sections.forEach((s, i) => {
-      const vis = s.items.filter(item => hasAccess(item.href.split("?")[0]));
-      console.log(`[Sidebar] section[${i}] "${s.title ?? "(no title)"}" → visibleItems: ${vis.length}`);
-    });
-  }, [currentUser, hasAccess]);
 
   function isActive(href: string): boolean {
     const [hpath, hquery] = href.split("?");
@@ -126,12 +120,11 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
               {visibleItems.map((item) => {
                 const active = isActive(item.href);
                 return (
-                  <a key={item.href} href={item.href} title={item.thai}
-                    style={{color: active ? undefined : "var(--foreground)"}}
+                  <Link key={item.href} href={item.href} title={item.thai}
                     className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all ${active ? "bg-accent/20 text-accent font-semibold border border-accent/30" : "text-foreground hover:bg-sidebar-hover border border-transparent"}`}>
                     <span className="text-sm">{item.icon}</span>
                     {item.label}
-                  </a>
+                  </Link>
                 );
               })}
             </div>
