@@ -2,7 +2,7 @@
 import { useEffect, useState, Suspense, Fragment } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import type { Product, ProductCategory, Vendor, VendorPrice, PriceHistory } from "@/lib/types";
+import type { Product, ProductCategory, ProductGroupItem, Vendor, VendorPrice, PriceHistory } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import CsvImportExport from "@/components/CsvImportExport";
 
@@ -36,7 +36,12 @@ function ProductsContent() {
   const [vendorPrices, setVendorPrices] = useState<VendorPrice[]>([]);
   const [priceHistories, setPriceHistories] = useState<PriceHistory[]>([]);
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "product" | "service">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "product" | "service" | "group">("all");
+  // Group items state
+  const [groupItems, setGroupItems] = useState<ProductGroupItem[]>([]);
+  const [groupPickId, setGroupPickId] = useState("");
+  const [groupPickQty, setGroupPickQty] = useState(1);
+  const [autoCalcGroupPrice, setAutoCalcGroupPrice] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -185,7 +190,29 @@ function ProductsContent() {
   const allFilterCategories = [...new Set([...categories.map(c => c.name), ...usedCategories])].sort();
   const hasUncategorized = list.some(p => !p.category);
 
-  function openAdd() { setEditId(null); setForm(empty); setShowForm(true); }
+  // Group item helpers
+  const groupCostTotal = groupItems.reduce((s, i) => s + i.cost_price * i.qty, 0);
+  const groupSellTotal = groupItems.reduce((s, i) => s + ((i.selling_price || i.cost_price) * i.qty), 0);
+
+  function addGroupItem() {
+    const p = list.find(x => x.id === groupPickId);
+    if (!p) return;
+    const idx = groupItems.findIndex(i => i.product_id === p.id!);
+    if (idx >= 0) {
+      setGroupItems(prev => prev.map((it, i) => i === idx ? { ...it, qty: it.qty + groupPickQty } : it));
+    } else {
+      setGroupItems(prev => [...prev, { product_id: p.id!, product_name: p.name, product_code: p.code || "", qty: groupPickQty, unit: p.unit, cost_price: p.cost_price, selling_price: p.selling_price }]);
+    }
+    setGroupPickId(""); setGroupPickQty(1);
+  }
+  function updateGroupItemQty(i: number, qty: number) {
+    if (qty <= 0) { setGroupItems(prev => prev.filter((_, idx) => idx !== i)); return; }
+    setGroupItems(prev => prev.map((it, idx) => idx === i ? { ...it, qty } : it));
+  }
+
+  function openAdd() {
+    setEditId(null); setForm(empty); setGroupItems([]); setGroupPickId(""); setAutoCalcGroupPrice(true); setShowForm(true);
+  }
   function openEdit(p: Product) {
     setEditId(p.id!);
     setForm({
@@ -194,6 +221,8 @@ function ProductsContent() {
       price_member: p.price_member || 0, price_special: p.price_special || 0, default_discount: p.default_discount || 0,
       active: p.active !== false, type: p.type || "product",
     });
+    setGroupItems((p.group_items as ProductGroupItem[]) || []);
+    setGroupPickId(""); setAutoCalcGroupPrice(false);
     setShowForm(true);
   }
 
@@ -201,15 +230,21 @@ function ProductsContent() {
     if (!form.name.trim()) return;
     setSaving(true);
     const fs = await import("@/lib/firestore");
+    const finalCost = form.type === "group" && autoCalcGroupPrice ? groupCostTotal : form.cost_price;
+    const finalSell = form.type === "group" && autoCalcGroupPrice ? groupSellTotal : form.selling_price;
+    const saveData: Record<string, unknown> = {
+      ...form, cost_price: finalCost, selling_price: finalSell,
+      ...(form.type === "group" ? { group_items: groupItems } : {}),
+    };
     try {
       if (editId) {
-        await fs.products.update(editId, form as unknown as Record<string, unknown>);
+        await fs.products.update(editId, saveData);
         await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "products", action: "update", resource_id: editId, resource_name: form.name, details: `แก้ไข Product: ${form.name} (${form.code || "ไม่มีโค้ด"})` });
       } else {
-        const ref = await fs.products.add(form as unknown as Record<string, unknown>);
+        const ref = await fs.products.add(saveData);
         await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "products", action: "create", resource_id: (ref as { id?: string }).id, resource_name: form.name, details: `เพิ่ม Product: ${form.name} (${form.category || "ไม่มีหมวด"})` });
       }
-      setForm(empty); setShowForm(false); setEditId(null); await load();
+      setForm(empty); setGroupItems([]); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); } finally { setSaving(false); }
   }
   async function handleDelete(id: string) {
@@ -256,9 +291,10 @@ function ProductsContent() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
             <div>
               <label className="text-[10px] text-muted">ประเภท</label>
-              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as Product["type"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+              <select value={form.type} onChange={(e) => { setForm({ ...form, type: e.target.value as Product["type"] }); setGroupItems([]); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
                 <option value="product">📦 สินค้า (Product)</option>
                 <option value="service">🛠️ บริการ (Service)</option>
+                <option value="group">🗂️ กลุ่มสินค้า/บริการ (Group)</option>
               </select>
             </div>
             <div>
@@ -330,6 +366,75 @@ function ProductsContent() {
               <input type="number" placeholder="0 = ไม่มี" value={form.default_discount || ""} onChange={(e) => setForm({ ...form, default_discount: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
             </div>
           </div>
+          {/* ── Group Items Editor ── */}
+          {form.type === "group" && (
+            <div className="mt-4 pt-4 border-t border-border">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold">🗂️ รายการในกลุ่ม</p>
+                <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
+                  <input type="checkbox" checked={autoCalcGroupPrice} onChange={e => setAutoCalcGroupPrice(e.target.checked)} />
+                  คำนวณราคาอัตโนมัติจากรายการ
+                </label>
+              </div>
+              {/* Picker row */}
+              <div className="flex gap-2 mb-3">
+                <select value={groupPickId} onChange={e => setGroupPickId(e.target.value)}
+                  className="flex-1 rounded-lg bg-background border border-border px-2 py-2 text-sm focus:outline-none focus:border-accent">
+                  <option value="">เลือกสินค้า/บริการที่จะรวมกลุ่ม...</option>
+                  {list.filter(p => p.type !== "group" && p.active !== false).map(p => (
+                    <option key={p.id} value={p.id!}>[{p.type === "service" ? "บริการ" : "สินค้า"}] {p.name} — {(p.cost_price || 0).toLocaleString()}฿/{p.unit}</option>
+                  ))}
+                </select>
+                <input type="number" min="0.5" step="0.5" value={groupPickQty}
+                  onChange={e => setGroupPickQty(Number(e.target.value) || 1)}
+                  className="w-20 rounded-lg bg-background border border-border px-2 py-2 text-sm text-center focus:outline-none focus:border-accent" />
+                <button onClick={addGroupItem} disabled={!groupPickId}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm text-white disabled:opacity-40 hover:bg-accent-hover">+ เพิ่ม</button>
+              </div>
+              {/* Items list */}
+              {groupItems.length > 0 ? (
+                <div className="rounded-lg border border-border overflow-hidden mb-3">
+                  <div className="divide-y divide-border">
+                    {groupItems.map((item, i) => (
+                      <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm truncate">{item.product_name}</p>
+                          <p className="text-xs text-muted">{item.cost_price.toLocaleString()}฿ / {item.unit}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button onClick={() => updateGroupItemQty(i, item.qty - 0.5)} className="w-6 h-6 rounded bg-muted/20 hover:bg-muted/40 text-xs flex items-center justify-center font-bold">−</button>
+                          <input type="number" min="0.5" step="0.5" value={item.qty}
+                            onChange={e => updateGroupItemQty(i, Number(e.target.value) || 0.5)}
+                            className="w-14 rounded bg-background border border-border px-1 py-0.5 text-xs text-center focus:outline-none focus:border-accent" />
+                          <span className="text-xs text-muted">{item.unit}</span>
+                          <span className="text-xs font-bold w-20 text-right">{(item.cost_price * item.qty).toLocaleString()} ฿</span>
+                          <button onClick={() => setGroupItems(prev => prev.filter((_, idx) => idx !== i))} className="text-xs text-danger hover:underline">ลบ</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between px-3 py-2 bg-accent/5 border-t border-border">
+                    <p className="text-xs text-muted">{groupItems.length} รายการ</p>
+                    <div className="text-right">
+                      {autoCalcGroupPrice ? (
+                        <>
+                          <p className="text-xs font-bold text-accent">ทุน {groupCostTotal.toLocaleString()} ฿ (คำนวณอัตโนมัติ)</p>
+                          <p className="text-[10px] text-muted">ขาย {groupSellTotal.toLocaleString()} ฿</p>
+                        </>
+                      ) : (
+                        <p className="text-xs text-muted">ราคาจากช่อง "ราคาทุน" / "ราคาขาย" ด้านบน</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border px-4 py-4 text-center mb-3">
+                  <p className="text-xs text-muted">ยังไม่มีรายการ — เลือกสินค้า/บริการแล้วกด + เพิ่ม</p>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-2">
             <button onClick={handleSave} disabled={saving || !form.name.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : editId ? "บันทึก" : "เพิ่ม"}</button>
             <button onClick={() => { setShowForm(false); setEditId(null); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
@@ -340,10 +445,11 @@ function ProductsContent() {
       {/* Filters */}
       <div className="flex gap-2 mb-4 flex-wrap">
         <input placeholder="ค้นหาชื่อ / รหัส / ยี่ห้อ..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as "all" | "product" | "service")} title="กรองตามประเภท" className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as "all" | "product" | "service" | "group")} title="กรองตามประเภท" className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
           <option value="all">ทุกประเภท</option>
           <option value="product">📦 สินค้า</option>
           <option value="service">🛠️ บริการ</option>
+          <option value="group">🗂️ กลุ่ม</option>
         </select>
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} title="กรองตามหมวด" className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
           <option value="all">ทุกหมวด</option>
@@ -401,7 +507,7 @@ function ProductsContent() {
               return (
                 <Fragment key={p.id}>
                 <tr className={`border-b border-border last:border-0 hover:bg-card-hover ${isExpanded ? "bg-card-hover" : ""}`}>
-                  <td className="px-4 py-2.5" title={t === "service" ? "บริการ" : "สินค้า"}>{t === "service" ? "🛠️" : "📦"}</td>
+                  <td className="px-4 py-2.5" title={t === "service" ? "บริการ" : t === "group" ? "กลุ่ม" : "สินค้า"}>{t === "service" ? "🛠️" : t === "group" ? "🗂️" : "📦"}</td>
                   <td className="px-4 py-2.5 font-mono text-xs text-muted">{p.code || <span className="italic">—</span>}</td>
                   <td className="px-4 py-2.5 font-medium">{p.name}</td>
                   <td className="px-4 py-2.5 text-muted">{p.brand || "-"}</td>

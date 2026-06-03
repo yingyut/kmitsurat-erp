@@ -164,12 +164,12 @@ export function ServiceTicketDetail({ ticket, allTickets, currentUserName, onClo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticket.id]);
 
-  // Load service products on costs tab
+  // Load service products + groups on costs tab
   useEffect(() => {
     if (tab !== "costs" || svcProducts.length > 0) return;
     import("@/lib/firestore").then(({ products }) =>
       products.list().then(all =>
-        setSvcProducts(all.filter(p => p.type === "service" || p.category?.toLowerCase().includes("บริการ")).sort((a, b) => a.name.localeCompare(b.name, "th")))
+        setSvcProducts(all.filter(p => p.type === "service" || p.type === "group" || p.category?.toLowerCase().includes("บริการ")).sort((a, b) => a.name.localeCompare(b.name, "th")))
       )
     ).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -659,8 +659,10 @@ export function ServiceTicketDetail({ ticket, allTickets, currentUserName, onClo
                       {" "}ตั้งประเภทเป็น <span className="font-mono bg-muted/20 px-1 rounded">service</span>
                     </div>
                   ) : (() => {
-                    const grouped: Record<string, Product[]> = {};
-                    for (const p of svcProducts) {
+                    const groupProducts = svcProducts.filter(p => p.type === "group");
+                  const individualProducts = svcProducts.filter(p => p.type !== "group");
+                  const grouped: Record<string, Product[]> = {};
+                    for (const p of individualProducts) {
                       const cat = guessCategory(p.name);
                       if (!grouped[cat]) grouped[cat] = [];
                       grouped[cat].push(p);
@@ -668,6 +670,46 @@ export function ServiceTicketDetail({ ticket, allTickets, currentUserName, onClo
                     return (
                       <>
                         <div className="divide-y divide-border">
+                          {/* Group bundles section */}
+                          {groupProducts.length > 0 && (
+                            <div>
+                              <div className="px-4 py-1.5 bg-accent/5">
+                                <p className="text-[10px] font-bold text-accent uppercase tracking-wide">🗂️ กลุ่มสินค้า/บริการ (Bundle)</p>
+                              </div>
+                              {groupProducts.map(p => {
+                                const qty = batchQty[p.id!] || 0;
+                                const subtotal = qty > 0 ? Math.round(p.cost_price * qty) : null;
+                                const itemCount = p.group_items?.length || 0;
+                                return (
+                                  <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${qty > 0 ? "bg-accent/5" : ""}`}>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-semibold truncate">🗂️ {p.name}</p>
+                                      <p className="text-[10px] text-muted">{p.cost_price.toLocaleString()} ฿ / {p.unit || "ชุด"} · {itemCount} รายการในกลุ่ม</p>
+                                      {p.group_items && p.group_items.length > 0 && (
+                                        <p className="text-[10px] text-muted truncate">{p.group_items.slice(0,3).map(i => `${i.product_name}×${i.qty}`).join(", ")}{p.group_items.length > 3 ? ` +${p.group_items.length-3}` : ""}</p>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {subtotal !== null && (
+                                        <span className="text-xs font-semibold text-accent w-20 text-right">{subtotal.toLocaleString()} ฿</span>
+                                      )}
+                                      <div className="flex items-center gap-1">
+                                        <button onClick={() => setBatchQty(b => ({ ...b, [p.id!]: Math.max(0, (b[p.id!] || 0) - 1) }))}
+                                          className="w-6 h-6 rounded bg-muted/20 hover:bg-muted/40 text-xs font-bold flex items-center justify-center">−</button>
+                                        <input type="number" step="1" min="0" value={qty || ""} placeholder="0"
+                                          onChange={e => setBatchQty(b => ({ ...b, [p.id!]: Number(e.target.value) || 0 }))}
+                                          className="w-14 rounded-lg bg-background border border-border px-1.5 py-1 text-xs text-center focus:outline-none focus:border-accent" />
+                                        <button onClick={() => setBatchQty(b => ({ ...b, [p.id!]: (b[p.id!] || 0) + 1 }))}
+                                          className="w-6 h-6 rounded bg-muted/20 hover:bg-muted/40 text-xs font-bold flex items-center justify-center">+</button>
+                                      </div>
+                                      <span className="text-[10px] text-muted w-6">{p.unit || "ชุด"}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {/* Individual service items by category */}
                           {Object.entries(grouped).map(([cat, prods]) => (
                             <div key={cat}>
                               <div className="px-4 py-1.5 bg-muted/5">

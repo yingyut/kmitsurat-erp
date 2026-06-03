@@ -576,6 +576,16 @@ export interface PriceHistory {
   note: string;
 }
 
+export interface ProductGroupItem {
+  product_id: string;
+  product_name: string;
+  product_code?: string;
+  qty: number;
+  unit?: string;
+  cost_price: number;
+  selling_price?: number;
+}
+
 export interface Product {
   id?: string;
   tenant_id: string;
@@ -591,7 +601,8 @@ export interface Product {
   price_special?: number; // ราคาพิเศษ / VIP
   default_discount?: number; // ส่วนลดตั้งต้น (THB ต่อหน่วย)
   active: boolean;
-  type?: "product" | "service"; // default "product"
+  type?: "product" | "service" | "group"; // group = bundle of items
+  group_items?: ProductGroupItem[]; // populated when type="group"
 }
 
 export interface QuotationItem {
