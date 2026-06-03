@@ -250,25 +250,115 @@ const REPORTS: ReportDef[] = [
   {
     key: "service_tickets",
     name: "Service Tickets",
-    desc: "งานบริการพร้อม GP",
+    desc: "งานบริการพร้อม GP และระยะเวลา",
     icon: "🔧",
-    dateField: "service_date",
+    dateField: "opened_at",
     filterFields: [{ field: "technician", label: "ช่างเทคนิค" }, { field: "status", label: "สถานะ" }],
     cols: [
-      { key: "customer_name",  label: "Customer" },
-      { key: "project_name",   label: "Project" },
-      { key: "type",           label: "Type" },
-      { key: "issue",          label: "Issue" },
-      { key: "technician",     label: "Technician" },
-      { key: "service_date",   label: "Service Date" },
-      { key: "status",         label: "Status" },
-      { key: "service_value",  label: "Value (THB)" },
-      { key: "gross_profit",   label: "GP (THB)" },
-      { key: "hours_spent",    label: "Hours" },
+      { key: "customer_name",   label: "Customer" },
+      { key: "project_name",    label: "Project" },
+      { key: "type",            label: "Type" },
+      { key: "issue",           label: "Issue" },
+      { key: "technician",      label: "Technician" },
+      { key: "status",          label: "Status" },
+      { key: "opened_at",       label: "วันที่รับแจ้ง" },
+      { key: "service_date",    label: "Service Date" },
+      { key: "finished_at",     label: "วันที่จบงาน" },
+      { key: "duration_hours",  label: "ระยะเวลา (ชม.)" },
+      { key: "duration_days",   label: "ระยะเวลา (วัน)" },
+      { key: "hours_spent",     label: "ชม.ทำงานจริง" },
+      { key: "service_value",   label: "Value (THB)" },
+      { key: "gross_profit",    label: "GP (THB)" },
     ],
     fetch: async () => {
       const fs = await import("@/lib/firestore");
-      return (await fs.serviceTickets.list()) as unknown as Row[];
+      const tickets = await fs.serviceTickets.list();
+      return tickets.map(t => {
+        const raw2 = t as unknown as Record<string, unknown>;
+        const finishedAt = raw2.resolved_at as string | undefined
+          || raw2.closed_at as string | undefined;
+        const openedAt = raw2.opened_at as string | undefined;
+        let durationHours: number | null = null;
+        if (openedAt && finishedAt) {
+          const ms = new Date(finishedAt).getTime() - new Date(openedAt).getTime();
+          if (!isNaN(ms) && ms >= 0) durationHours = Math.round(ms / 3600000 * 10) / 10;
+        }
+        return {
+          ...t,
+          finished_at: finishedAt ?? "",
+          duration_hours: durationHours ?? "",
+          duration_days: durationHours !== null ? Math.round(durationHours / 24 * 10) / 10 : "",
+        };
+      }) as unknown as Row[];
+    },
+  },
+  {
+    key: "service_sla",
+    name: "Service SLA & Time",
+    desc: "ระยะเวลารับแจ้ง / จบงาน และ SLA compliance",
+    icon: "⏱️",
+    dateField: "opened_at",
+    filterFields: [{ field: "technician", label: "ช่างเทคนิค" }, { field: "sla_status", label: "SLA" }],
+    cols: [
+      { key: "customer_name",        label: "Customer" },
+      { key: "issue",                label: "Issue" },
+      { key: "technician",           label: "Technician" },
+      { key: "status",               label: "Status" },
+      { key: "opened_at",            label: "รับแจ้ง" },
+      { key: "accepted_at",          label: "รับงาน" },
+      { key: "started_at",           label: "เริ่มทำ" },
+      { key: "finished_at",          label: "จบงาน" },
+      { key: "response_hours",       label: "Response (ชม.)" },
+      { key: "resolve_hours",        label: "Resolve (ชม.)" },
+      { key: "resolve_days",         label: "Resolve (วัน)" },
+      { key: "sla_response_target",  label: "SLA Response Target" },
+      { key: "sla_resolve_target",   label: "SLA Resolve Target" },
+      { key: "response_sla_ok",      label: "Response SLA" },
+      { key: "sla_status",           label: "Resolve SLA" },
+      { key: "hours_spent",          label: "ชม.ทำงานจริง" },
+    ],
+    fetch: async () => {
+      const fs = await import("@/lib/firestore");
+      const tickets = await fs.serviceTickets.list();
+      return tickets.map(t => {
+        const raw = t as unknown as Record<string, unknown>;
+        const openedAt   = raw.opened_at   as string | undefined;
+        const acceptedAt = raw.accepted_at as string | undefined;
+        const startedAt  = raw.started_at  as string | undefined;
+        const finishedAt = (raw.resolved_at as string | undefined) || (raw.closed_at as string | undefined);
+        const slaResp    = raw.sla_response_hours as number | undefined;
+        const slaResolve = raw.sla_resolve_hours  as number | undefined;
+
+        function hoursBetween(a?: string, b?: string): number | null {
+          if (!a || !b) return null;
+          const ms = new Date(b).getTime() - new Date(a).getTime();
+          return isNaN(ms) || ms < 0 ? null : Math.round(ms / 3600000 * 10) / 10;
+        }
+
+        const responseHours = hoursBetween(openedAt, acceptedAt);
+        const resolveHours  = hoursBetween(openedAt, finishedAt);
+
+        const responseOk = responseHours !== null && slaResp
+          ? responseHours <= slaResp ? "✅ ผ่าน" : "❌ เกิน"
+          : "—";
+        const resolveOk  = resolveHours !== null && slaResolve
+          ? resolveHours <= slaResolve ? "✅ ผ่าน" : "❌ เกิน"
+          : finishedAt ? "— (ไม่กำหนด)" : "🔄 ยังไม่จบ";
+
+        return {
+          ...t,
+          accepted_at:         acceptedAt ?? "",
+          started_at:          startedAt  ?? "",
+          finished_at:         finishedAt ?? "",
+          response_hours:      responseHours ?? "",
+          resolve_hours:       resolveHours ?? "",
+          resolve_days:        resolveHours !== null ? Math.round(resolveHours / 24 * 10) / 10 : "",
+          sla_response_target: slaResp    ? `${slaResp} ชม.` : "—",
+          sla_resolve_target:  slaResolve ? `${slaResolve} ชม.` : "—",
+          response_sla_ok:     responseOk,
+          sla_status:          resolveOk,
+        };
+      }) as unknown as Row[];
     },
   },
   {
