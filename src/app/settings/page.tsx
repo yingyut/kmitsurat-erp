@@ -80,6 +80,13 @@ const settingsLinks = [
     desc: "ดู Audit Trail — Login, สร้าง, แก้ไข, ลบ — กรองตาม Module, Action, ผู้ใช้, และช่วงวันที่",
     icon: "📋",
   },
+  {
+    href: "/settings/system-update",
+    title: "System Update",
+    thai: "อัปเดต / ย้อนกลับ Version",
+    desc: "อัปเดตระบบจาก GitHub, ดู version history และย้อนกลับ (rollback) กรณีมีปัญหา — พร้อม deploy log แบบ real-time",
+    icon: "🔄",
+  },
 ];
 
 export default function SettingsPage() {
