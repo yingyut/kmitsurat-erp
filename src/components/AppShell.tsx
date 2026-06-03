@@ -29,6 +29,25 @@ function DevicePreviewBar({ mode, onChange }: { mode: DeviceMode; onChange: (m: 
   );
 }
 
+function ThemeSync() {
+  const { currentUser } = useCurrentUser();
+  useEffect(() => {
+    if (!currentUser?.theme) return;
+    try {
+      document.documentElement.setAttribute("data-theme", currentUser.theme);
+      localStorage.setItem("kmit_theme", currentUser.theme);
+      if (currentUser.theme === "custom" && currentUser.theme_custom) {
+        const el = document.documentElement;
+        Object.entries(currentUser.theme_custom).forEach(([k, v]) => {
+          el.style.setProperty(`--${k}`, v);
+        });
+        localStorage.setItem("kmit_theme_custom", JSON.stringify(currentUser.theme_custom));
+      }
+    } catch {}
+  }, [currentUser?.id, currentUser?.theme]);
+  return null;
+}
+
 function AuthGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isLoggedIn, loading } = useCurrentUser();
@@ -42,7 +61,7 @@ function AuthGate({ children }: { children: ReactNode }) {
   }, [loading, isLoggedIn, pathname]);
 
   if (loading || !checked) return <div className="min-h-screen flex items-center justify-center bg-background"><p className="text-muted">Loading...</p></div>;
-  return <>{children}</>;
+  return <><ThemeSync />{children}</>;
 }
 
 function MobileTopBar({ onMenuClick }: { onMenuClick: () => void }) {

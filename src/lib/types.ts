@@ -28,6 +28,8 @@ export interface User {
   password?: string;
   permissions_override?: string[];
   extra_roles?: string[];  // บทบาทเพิ่มเติม — รวม permissions จากทุก role
+  theme?: string;          // ธีมที่เลือก เช่น "midnight", "snow", "custom"
+  theme_custom?: Record<string, string>; // CSS vars สำหรับ custom theme
 }
 
 export interface ActivityLog {

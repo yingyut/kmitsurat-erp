@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useCurrentUser } from "@/lib/UserContext";
+import { users } from "@/lib/firestore";
 
 type CC = Record<string, string>;
 
@@ -133,6 +135,7 @@ function ThemePreview({ bg, card, sidebar, sidebarFg, accent, text }: {
 }
 
 export default function ThemePage() {
+  const { currentUser } = useCurrentUser();
   const [current, setCurrent] = useState("midnight");
   const [mounted, setMounted] = useState(false);
   const [cc, setCC] = useState<CC>(DFLT);
@@ -160,6 +163,11 @@ export default function ThemePage() {
     document.documentElement.setAttribute("data-theme", id);
     if (id === "custom") applyCustomVars(cc);
     try { localStorage.setItem("kmit_theme", id); } catch {}
+    if (currentUser?.id) {
+      const upd: { theme: string; theme_custom?: CC } = { theme: id };
+      if (id === "custom") upd.theme_custom = cc;
+      users.update(currentUser.id, upd).catch(() => {});
+    }
   }
 
   function handleColor(key: string, val: string) {
@@ -180,6 +188,9 @@ export default function ThemePage() {
   function saveCustom() {
     try { localStorage.setItem("kmit_theme_custom", JSON.stringify(cc)); } catch {}
     applyTheme("custom");
+    if (currentUser?.id) {
+      users.update(currentUser.id, { theme: "custom", theme_custom: cc }).catch(() => {});
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
