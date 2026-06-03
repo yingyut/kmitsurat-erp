@@ -140,6 +140,7 @@ export default function ServicePage() {
   const [showSlaDetail, setShowSlaDetail]   = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [activeView, setActiveView]         = useState<ServiceView>("all");
+  const [managerSection, setManagerSection] = useState<"tickets" | "team" | "costs" | "analytics">("tickets");
 
   async function load() {
     const fs = await import("@/lib/firestore");
@@ -300,6 +301,63 @@ export default function ServicePage() {
     survey:  list.filter(t => (t.type === "site_survey" || t.type === "technical_survey") && isActive(t.status)).length,
     after:   list.filter(t => t.type === "after_sales"       && isActive(t.status)).length,
   };
+
+  // ── Team Performance ────────────────────────────────────────────────────────
+  const teamPerf = svcUsers.map(u => {
+    const mine       = list.filter(t => t.technician === u.name);
+    const myActive   = mine.filter(t => isActive(t.status));
+    const withRes    = mine.filter(t => t.opened_at && t.resolved_at);
+    const onTime     = withRes.filter(t => { const h = hoursBetween(t.opened_at, t.resolved_at); return h !== null && h <= (t.sla_resolve_hours || 48); });
+    const closeHrs   = withRes.map(t => hoursBetween(t.opened_at, t.resolved_at) ?? 0);
+    return {
+      name:      u.name,
+      active:    myActive.length,
+      resolved:  mine.filter(t => ["resolved","closed"].includes(t.status)).length,
+      overdue:   myActive.filter(t => t.service_date && t.service_date < today).length,
+      waitParts: myActive.filter(t => t.status === "waiting_parts").length,
+      slaRate:   withRes.length > 0 ? Math.round(onTime.length / withRes.length * 100) : null,
+      avgClose:  closeHrs.length > 0 ? avg(closeHrs) : null,
+      repair:    mine.filter(t => t.type === "repair").length,
+    };
+  }).filter(u => u.active > 0 || u.resolved > 0).sort((a, b) => b.active - a.active);
+
+  // ── Cost Data ───────────────────────────────────────────────────────────────
+  const totalCost    = list.reduce((s, t) => s + (t.service_cost || 0), 0);
+  const monthCost    = list.filter(t => (t.service_date || "").startsWith(currentMonth)).reduce((s, t) => s + (t.service_cost || 0), 0);
+  const costPerTech  = svcUsers.map(u => {
+    const mine = list.filter(t => t.technician === u.name);
+    const cost = mine.reduce((s, t) => s + (t.service_cost || 0), 0);
+    return { name: u.name, cost, jobs: mine.length, avgCost: mine.length > 0 ? cost / mine.length : 0 };
+  }).filter(u => u.jobs > 0).sort((a, b) => b.cost - a.cost);
+
+  // ── Analytics ───────────────────────────────────────────────────────────────
+  const repeatCusts = Object.entries(
+    list.reduce((acc: Record<string, number>, t) => {
+      if (t.customer_name) acc[t.customer_name] = (acc[t.customer_name] || 0) + 1;
+      return acc;
+    }, {})
+  ).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  const slaBreachActive = list.filter(t => {
+    if (!isActive(t.status) || !t.opened_at) return false;
+    return (nowMs - (parseISO(t.opened_at) || nowMs)) / 3600000 > (t.sla_resolve_hours || 48);
+  }).sort((a, b) => (nowMs - (parseISO(b.opened_at)||nowMs)) - (nowMs - (parseISO(a.opened_at)||nowMs)));
+
+  const pendingApproval = list.filter(t => t.status === "waiting_approval");
+
+  function exportCSV() {
+    const rows = [
+      ["ID","Type","Customer","Technician","Status","Priority","Date","SLA(h)","Cost","Value"],
+      ...list.map(t => [t.id||"", typeLabels[t.type]||"", t.customer_name||"", t.technician||"",
+        statusLabel[t.status]||"", t.priority||"", t.service_date||"",
+        String(t.sla_resolve_hours||48), String(t.service_cost||0), String(t.service_value||0)])
+    ];
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a"); a.href = url;
+    a.download = `service_tickets_${today}.csv`; a.click(); URL.revokeObjectURL(url);
+  }
 
   // ── Handler functions (unchanged) ────────────────────────────────────────────
   function selectCust(id: string) { const c = custs.find((x) => x.id === id); setForm(f => ({ ...f, customer_id: id, customer_name: c?.company_name || "", asset_id: "", km_number: "" })); }
@@ -738,8 +796,329 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── Advanced Stats Toggles (manager only) ── */}
-      {!loading && !isTechView && list.length > 0 && (
+      {/* ── Manager Panel Tabs ── */}
+      {!isTechView && (
+        <div className="flex items-center gap-2 mb-4 mt-1 flex-wrap border-t border-border pt-4">
+          <div className="flex gap-1 flex-1 flex-wrap">
+            {([
+              { id: "tickets",   icon: "🎫", label: "Tickets",  sub: "รายการงาน" },
+              { id: "team",      icon: "👥", label: "Team",     sub: "ประสิทธิภาพ" },
+              { id: "costs",     icon: "💰", label: "Costs",    sub: "ต้นทุน" },
+              { id: "analytics", icon: "📈", label: "Analytics",sub: "วิเคราะห์" },
+            ] as const).map(s => (
+              <button key={s.id} onClick={() => setManagerSection(s.id)}
+                className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold border transition-all ${managerSection === s.id ? "bg-accent/20 text-accent border-accent/40" : "bg-card border-border text-muted hover:bg-card-hover"}`}>
+                {s.icon} {s.label}
+                <span className="text-[9px] text-muted/60 hidden sm:inline">· {s.sub}</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={exportCSV}
+            className="text-xs text-muted border border-border rounded-xl px-3 py-2 hover:bg-card-hover flex items-center gap-1.5 shrink-0">
+            📥 Export CSV
+          </button>
+        </div>
+      )}
+
+      {/* ── Team Performance Panel ── */}
+      {!loading && !isTechView && managerSection === "team" && (
+        <div className="space-y-4 mb-4">
+          {/* Performance table */}
+          <div className="rounded-xl bg-card border border-border p-4">
+            <div className="mb-4">
+              <h2 className="text-sm font-bold">👥 Team Performance</h2>
+              <p className="text-[10px] text-muted">Active · SLA% · เวลาปิดงานเฉลี่ย · ค้าง · รออะไหล่ · Repair jobs</p>
+            </div>
+            {teamPerf.length === 0 ? (
+              <p className="text-sm text-muted text-center py-8">ยังไม่มีข้อมูลช่าง</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-muted">
+                      <th className="text-left pb-2 font-medium">ช่าง</th>
+                      <th className="text-center pb-2 font-medium">Active</th>
+                      <th className="text-center pb-2 font-medium">ปิดแล้ว</th>
+                      <th className="text-center pb-2 font-medium">SLA%</th>
+                      <th className="text-center pb-2 font-medium">ปิดเฉลี่ย</th>
+                      <th className="text-center pb-2 font-medium">ค้าง⚠</th>
+                      <th className="text-center pb-2 font-medium">รออะไหล่📦</th>
+                      <th className="text-center pb-2 font-medium">Repair</th>
+                      <th className="text-right pb-2 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {teamPerf.map(u => (
+                      <tr key={u.name} className="hover:bg-card-hover">
+                        <td className="py-2.5 font-semibold">{u.name}</td>
+                        <td className="py-2.5 text-center">
+                          <span className={`font-bold ${u.active > 0 ? "text-accent" : "text-muted"}`}>{u.active}</span>
+                        </td>
+                        <td className="py-2.5 text-center text-muted">{u.resolved}</td>
+                        <td className="py-2.5 text-center">
+                          {u.slaRate !== null
+                            ? <span className={`font-bold ${u.slaRate >= 85 ? "text-green-400" : u.slaRate >= 70 ? "text-yellow-400" : "text-red-400"}`}>{u.slaRate}%</span>
+                            : <span className="text-muted">—</span>}
+                        </td>
+                        <td className="py-2.5 text-center text-muted">{fmtHours(u.avgClose)}</td>
+                        <td className="py-2.5 text-center">
+                          {u.overdue > 0 ? <span className="font-bold text-red-400">{u.overdue}</span> : <span className="text-muted">—</span>}
+                        </td>
+                        <td className="py-2.5 text-center">
+                          {u.waitParts > 0 ? <span className="font-bold text-purple-400">{u.waitParts}</span> : <span className="text-muted">—</span>}
+                        </td>
+                        <td className="py-2.5 text-center text-muted">{u.repair}</td>
+                        <td className="py-2.5 text-right">
+                          <button onClick={() => { setManagerSection("tickets"); setShowForm(true); setForm(f => ({ ...f, technician: u.name })); }}
+                            className="text-[10px] text-accent hover:underline">+ Assign</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Assign — unassigned tickets */}
+          {unassigned.length > 0 && (
+            <div className="rounded-xl bg-card border border-orange-800/40 p-4">
+              <h3 className="text-xs font-semibold text-orange-400 mb-3">📋 งานยังไม่มอบหมาย ({unassigned.length})</h3>
+              <div className="space-y-2">
+                {unassigned.map(t => (
+                  <div key={t.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{typeLabels[t.type]} — {t.customer_name}</p>
+                      <p className="text-[10px] text-muted">{t.issue.slice(0, 60)}{t.issue.length > 60 ? "…" : ""}</p>
+                    </div>
+                    <select defaultValue="" onChange={async e => {
+                      if (!e.target.value) return;
+                      const { serviceTickets } = await import("@/lib/firestore");
+                      await serviceTickets.update(t.id!, { technician: e.target.value });
+                      await load();
+                    }} className="rounded-lg bg-background border border-border px-2 py-1 text-xs focus:outline-none focus:border-accent">
+                      <option value="">มอบหมาย…</option>
+                      {svcUsers.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pending Approval */}
+          {pendingApproval.length > 0 && (
+            <div className="rounded-xl bg-card border border-rose-800/40 p-4">
+              <h3 className="text-xs font-semibold text-rose-400 mb-3">⏳ รออนุมัติ ({pendingApproval.length})</h3>
+              <div className="space-y-2">
+                {pendingApproval.map(t => (
+                  <div key={t.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{typeLabels[t.type]} — {t.customer_name}</p>
+                      <p className="text-[10px] text-muted">👤 {t.technician || "ไม่ระบุ"} · 📅 {t.service_date || "—"}</p>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      <button onClick={async () => { const { serviceTickets } = await import("@/lib/firestore"); await serviceTickets.update(t.id!, { status: "closed" }); await load(); }}
+                        className="text-[10px] bg-green-800/50 text-green-400 rounded-lg px-2.5 py-1 hover:bg-green-800">✓ Approve</button>
+                      <button onClick={() => setSelectedTicket(t)}
+                        className="text-[10px] text-accent border border-border rounded-lg px-2.5 py-1 hover:bg-card-hover">👁 Detail</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Cost Tracking Panel ── */}
+      {!loading && !isTechView && managerSection === "costs" && (
+        <div className="space-y-4 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-xl bg-card border border-border p-4">
+              <p className="text-[10px] text-muted mb-1">ต้นทุนเดือนนี้</p>
+              <p className="text-2xl font-bold text-amber-400">{(monthCost/1000).toLocaleString(undefined,{maximumFractionDigits:1})}K</p>
+              <p className="text-[10px] text-muted">{list.filter(t=>(t.service_date||"").startsWith(currentMonth)).length} งาน</p>
+            </div>
+            <div className="rounded-xl bg-card border border-border p-4">
+              <p className="text-[10px] text-muted mb-1">ต้นทุนสะสม</p>
+              <p className="text-2xl font-bold">{(totalCost/1000).toLocaleString(undefined,{maximumFractionDigits:1})}K</p>
+              <p className="text-[10px] text-muted">{list.length} งานทั้งหมด</p>
+            </div>
+            <div className="rounded-xl bg-card border border-border p-4">
+              <p className="text-[10px] text-muted mb-1">เฉลี่ยต่องาน</p>
+              <p className="text-2xl font-bold text-blue-400">{list.length > 0 ? Math.round(totalCost/list.length).toLocaleString() : 0}</p>
+              <p className="text-[10px] text-muted">บาท/งาน</p>
+            </div>
+            <div className="rounded-xl bg-card border border-border p-4">
+              <p className="text-[10px] text-muted mb-1">รออนุมัติ</p>
+              <p className={`text-2xl font-bold ${pendingApproval.length > 0 ? "text-rose-400" : "text-muted"}`}>{pendingApproval.length}</p>
+              <p className="text-[10px] text-muted">งาน</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-xl bg-card border border-border p-4">
+              <h2 className="text-sm font-bold mb-3">👤 ต้นทุนต่อช่าง</h2>
+              {costPerTech.length === 0 ? (
+                <p className="text-sm text-muted text-center py-4">ยังไม่มีข้อมูลต้นทุน</p>
+              ) : (
+                <div className="space-y-3">
+                  {costPerTech.map(u => {
+                    const maxC = Math.max(...costPerTech.map(x => x.cost), 1);
+                    return (
+                      <div key={u.name}>
+                        <div className="flex items-center gap-2 mb-1 text-xs">
+                          <span className="font-medium flex-1 truncate">{u.name}</span>
+                          <span className="text-muted">{u.jobs} งาน</span>
+                          <span className="font-bold w-20 text-right">{u.cost.toLocaleString()} ฿</span>
+                          <span className="text-muted w-16 text-right">~{Math.round(u.avgCost).toLocaleString()}/งาน</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted/20 overflow-hidden">
+                          <div className="h-full rounded-full bg-amber-400" style={{ width: `${(u.cost/maxC)*100}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl bg-card border border-border p-4">
+              <h2 className="text-sm font-bold mb-3">📊 ต้นทุนต่อประเภทงาน</h2>
+              <div className="space-y-3">
+                {svcTypes.map(tt => {
+                  const mine = list.filter(t => t.type === tt);
+                  const cost = mine.reduce((s, t) => s + (t.service_cost || 0), 0);
+                  const maxT = Math.max(...svcTypes.map(x => list.filter(t=>t.type===x).reduce((s,t)=>s+(t.service_cost||0),0)), 1);
+                  if (mine.length === 0) return null;
+                  return (
+                    <div key={tt}>
+                      <div className="flex items-center gap-2 mb-1 text-xs">
+                        <span className="flex-1">{typeLabels[tt]}</span>
+                        <span className="text-muted">{mine.length} งาน</span>
+                        <span className="font-bold w-20 text-right">{cost.toLocaleString()} ฿</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted/20 overflow-hidden">
+                        <div className="h-full rounded-full bg-blue-400" style={{ width: `${(cost/maxT)*100}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-blue-900/10 border border-blue-800/30 p-4">
+            <p className="text-xs font-semibold text-blue-400 mb-1">📌 บันทึกต้นทุนละเอียด</p>
+            <p className="text-xs text-muted">ค่าเดินทาง · ค่า OT · ค่าอะไหล่ · ค่า Outsource บันทึกแยกรายการได้ใน <strong className="text-foreground">👁 Detail → 💰 ต้นทุน</strong> ของแต่ละ Ticket ค่าที่แสดงนี้มาจากช่อง service_cost รวม</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Analytics Panel ── */}
+      {!loading && !isTechView && managerSection === "analytics" && (
+        <div className="space-y-4 mb-4">
+          {/* Job type breakdown */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {[
+              { label: "Repair (CM)",    n: typeActive.repair,  tot: list.filter(t=>t.type==="repair").length,           color: "text-red-400",    bg: "border-red-800/40 bg-red-900/10",       icon: "🔧" },
+              { label: "PM Service",     n: typeActive.pm,      tot: list.filter(t=>t.type==="pm_service").length,        color: "text-blue-400",   bg: "border-blue-800/40 bg-blue-900/10",     icon: "📅" },
+              { label: "After-Sales/MA", n: typeActive.after,   tot: list.filter(t=>t.type==="after_sales").length,       color: "text-purple-400", bg: "border-purple-800/40 bg-purple-900/10", icon: "🛡️" },
+              { label: "Installation",   n: typeActive.install, tot: list.filter(t=>t.type==="installation").length,      color: "text-green-400",  bg: "border-green-800/40 bg-green-900/10",   icon: "🔌" },
+              { label: "Survey",         n: typeActive.survey,  tot: list.filter(t=>t.type==="site_survey"||t.type==="technical_survey").length, color: "text-yellow-400", bg: "border-yellow-800/40 bg-yellow-900/10", icon: "📍" },
+              { label: "SLA Breach",     n: slaBreachActive.length, tot: list.length, color: "text-rose-400", bg: "border-rose-800/40 bg-rose-900/10", icon: "🚨" },
+            ].map(r => (
+              <div key={r.label} className={`rounded-xl border p-4 ${r.n > 0 ? r.bg : "border-border bg-card"}`}>
+                <div className="flex items-center gap-2 mb-1"><span className="text-base">{r.icon}</span>
+                  <p className={`text-2xl font-bold tabular-nums ${r.n > 0 ? r.color : "text-muted"}`}>{r.n}</p>
+                </div>
+                <p className="text-[10px] font-medium text-muted">{r.label}</p>
+                <p className="text-[9px] text-muted/60">ทั้งหมด {r.tot} งาน</p>
+              </div>
+            ))}
+          </div>
+
+          {/* SLA Breach list */}
+          {slaBreachActive.length > 0 && (
+            <div className="rounded-xl bg-card border border-rose-800/40 p-4">
+              <h2 className="text-sm font-bold text-rose-400 mb-3">🚨 งานเกิน SLA ({slaBreachActive.length})</h2>
+              <div className="space-y-1">
+                {slaBreachActive.slice(0, 10).map(t => {
+                  const elapsed = (nowMs - (parseISO(t.opened_at)||nowMs)) / 3600000;
+                  const sla = t.sla_resolve_hours || 48;
+                  return (
+                    <div key={t.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{typeLabels[t.type]} — {t.customer_name}</p>
+                        <p className="text-[10px] text-muted">👤 {t.technician || "ไม่ระบุ"} · SLA เป้า {sla}h</p>
+                      </div>
+                      <span className="text-rose-400 font-bold text-xs shrink-0">+{fmtHours(elapsed - sla)} เกิน</span>
+                      <button onClick={() => { setSelectedTicket(t); setManagerSection("tickets"); }}
+                        className="text-[10px] text-accent hover:underline shrink-0">👁 Detail</button>
+                    </div>
+                  );
+                })}
+                {slaBreachActive.length > 10 && <p className="text-[10px] text-muted pt-1">+{slaBreachActive.length - 10} รายการ</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Repeat customers */}
+          {repeatCusts.length > 0 && (
+            <div className="rounded-xl bg-card border border-border p-4">
+              <h2 className="text-sm font-bold mb-3">🔄 ลูกค้าแจ้งซ้ำบ่อย</h2>
+              <div className="space-y-1.5">
+                {repeatCusts.map(([name, count]) => (
+                  <div key={name} className="flex items-center gap-3 py-1.5 border-b border-border last:border-0">
+                    <span className="text-xs font-medium flex-1 truncate">{name}</span>
+                    <div className="flex-1 h-1.5 rounded-full bg-muted/20 overflow-hidden mx-2">
+                      <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min((count / (repeatCusts[0][1] || 1)) * 100, 100)}%` }} />
+                    </div>
+                    <span className={`text-xs font-bold w-12 text-right ${count >= 5 ? "text-red-400" : count >= 3 ? "text-amber-400" : "text-muted"}`}>{count} ครั้ง</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* SLA Trend — 6 months */}
+          <div className="rounded-xl bg-card border border-border p-4">
+            <h2 className="text-sm font-bold mb-3">📊 SLA Trend (6 เดือนล่าสุด)</h2>
+            {(() => {
+              const months: string[] = [];
+              for (let i = 5; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); months.push(d.toISOString().slice(0, 7)); }
+              const trend = months.map(m => {
+                const res = list.filter(t => ["resolved","closed"].includes(t.status) && (t.service_date||"").startsWith(m) && t.opened_at && t.resolved_at);
+                const ok  = res.filter(t => { const h = hoursBetween(t.opened_at, t.resolved_at); return h !== null && h <= (t.sla_resolve_hours||48); });
+                return { month: m.slice(5), total: res.length, rate: res.length > 0 ? Math.round(ok.length / res.length * 100) : null };
+              });
+              const maxT = Math.max(...trend.map(t => t.total), 1);
+              return (
+                <div className="space-y-2.5">
+                  {trend.map(t => (
+                    <div key={t.month} className="flex items-center gap-3">
+                      <span className="text-[10px] text-muted w-12 shrink-0">เดือน {t.month}</span>
+                      <div className="flex-1 h-5 rounded bg-muted/10 overflow-hidden relative">
+                        <div className={`h-full rounded transition-all ${t.rate !== null && t.rate >= 85 ? "bg-green-400" : t.rate !== null && t.rate >= 70 ? "bg-yellow-400" : t.total > 0 ? "bg-red-400" : "bg-muted/20"}`}
+                          style={{ width: `${(t.total/maxT)*100}%` }} />
+                        {t.total > 0 && <span className="absolute inset-0 flex items-center px-2 text-[9px] font-bold text-white/90">{t.total} งาน</span>}
+                      </div>
+                      <span className={`text-[10px] font-bold w-10 text-right shrink-0 ${t.rate !== null && t.rate >= 85 ? "text-green-400" : t.rate !== null && t.rate >= 70 ? "text-yellow-400" : t.total > 0 ? "text-red-400" : "text-muted"}`}>
+                        {t.rate !== null ? `${t.rate}%` : "—"}
+                      </span>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted pt-1">≥85% เขียว · ≥70% เหลือง · ต่ำกว่า แดง · นับจากงาน resolved/closed เดือนนั้น</p>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── Advanced Stats Toggles (manager only — Tickets tab only) ── */}
+      {!loading && !isTechView && managerSection === "tickets" && list.length > 0 && (
         <div className="flex flex-wrap gap-3 mb-3">
           {/* Revenue toggle — ซ่อนสำหรับ technician / ไม่มีสิทธิ์การเงิน */}
           {canSeeFinance && <button onClick={() => setShowRevenue(v => !v)}
@@ -761,7 +1140,7 @@ export default function ServicePage() {
       )}
 
       {/* ── Revenue / Profit Section (manager only — HIDDEN BY DEFAULT) ── */}
-      {!loading && !isTechView && list.length > 0 && showRevenue && (
+      {!loading && !isTechView && managerSection === "tickets" && list.length > 0 && showRevenue && (
         <div className="rounded-xl bg-purple-900/10 border border-purple-800/40 p-3 mb-4">
           <div className="flex items-center justify-between mb-2">
             <div>
@@ -796,7 +1175,7 @@ export default function ServicePage() {
       )}
 
       {/* ── SLA Analysis Detail Section (manager only — HIDDEN BY DEFAULT) ── */}
-      {!loading && !isTechView && list.length > 0 && showSlaDetail && (
+      {!loading && !isTechView && managerSection === "tickets" && list.length > 0 && showSlaDetail && (
         <div className="rounded-xl bg-rose-900/10 border border-rose-800/40 p-3 mb-4">
           <p className="text-xs font-semibold text-rose-300 mb-3">⏱️ Delay Analysis รายละเอียด (ความล่าช้า + SLA) — ใช้ทำแผนพัฒนา</p>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-3">
@@ -888,7 +1267,9 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── View Tabs (งานใหม่ / กำลังทำ / รออะไหล่ / เลย SLA / วันนี้ / PM) ── */}
+      {/* ── View Tabs + Ticket List (tickets tab only) ── */}
+      {(isTechView || managerSection === "tickets") && (<>
+      {/* ── View Tabs ── */}
       <div className="flex flex-wrap gap-1 mb-3">
         {VIEWS.map(v => {
           const count = (() => {
@@ -1091,6 +1472,7 @@ export default function ServicePage() {
           })}
         </div>
       )}
+      </>)}
     </div>
   );
 }
