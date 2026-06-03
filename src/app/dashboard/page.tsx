@@ -306,11 +306,13 @@ export default function DashboardPage() {
     quotas:   seeAll ? quotas   : quotas.filter(q => !q.user_name || isOwnRecord({ user_name: q.user_name }, currentUser)),
     quots:    seeAll ? quots    : quots.filter(q => !q.created_by  || isOwnRecord({ created_by: q.created_by }, currentUser)),
     presale:  seeAll ? presale  : filterOwned(presale,  currentUser, "assigned_to"),
-    service:  seeAll ? service  : service.filter(t => !t.technician || isOwnRecord({ technician: t.technician }, currentUser)),
+    service:  (seeAll || hasPermission("view_all_tickets"))
+      ? service
+      : service.filter(t => !t.technician || isOwnRecord({ technician: t.technician }, currentUser)),
   };
   // ใช้ seeAll แทน seeAllSales/seeAllService/seeAllPresale ทั้งหมด
   const seeAllSales    = seeAll;
-  const seeAllService  = seeAll;
+  const seeAllService  = seeAll || hasPermission("view_all_tickets");
   const seeAllPresale  = seeAll;
 
   // ── Filtered slices ───────────────────────────────────────────────────────────
