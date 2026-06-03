@@ -344,6 +344,14 @@ export default function ServicePage() {
   }).sort((a, b) => (nowMs - (parseISO(b.opened_at)||nowMs)) - (nowMs - (parseISO(a.opened_at)||nowMs)));
 
   const pendingApproval = list.filter(t => t.status === "waiting_approval");
+  const waitingCust     = list.filter(t => t.status === "waiting_approval" && isActive(t.status));
+  const pmMaActive      = list.filter(t => (t.type === "pm_service" || t.type === "after_sales") && isActive(t.status));
+  const reworkList      = list.filter(t => {
+    if (t.type !== "repair" || !isActive(t.status)) return false;
+    const cutoff = new Date(nowMs - 30 * 24 * 3600_000).toISOString();
+    return list.some(p => p.id !== t.id && p.customer_id === t.customer_id &&
+      ["resolved","closed"].includes(p.status) && (p.resolved_at || "") > cutoff);
+  });
 
   function exportCSV() {
     const rows = [
@@ -539,19 +547,66 @@ export default function ServicePage() {
           })()}
         </div>
       ) : (
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h1 className="text-xl font-bold">🎛️ Service Control Center</h1>
-            <p className="text-xs text-muted">ภาพรวมงานทีม Service — ติดตั้ง · ซ่อม · PM · บริการหลังการขาย</p>
+        <div className="mb-4">
+          {/* Manager header row */}
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h1 className="text-xl font-bold">🎛️ Service Command Center</h1>
+              <p className="text-xs text-muted">สวัสดี {currentUser?.nickname || currentUser?.name} · {new Date().toLocaleDateString("th-TH",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
+            </div>
+            <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover shrink-0">
+              {showForm ? "Cancel" : "+ New Ticket"}
+            </button>
           </div>
-          <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">
-            {showForm ? "Cancel" : "+ New Ticket"}
-          </button>
+
+          {/* 6-card quick overview — always visible */}
+          {!loading && (
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4">
+              {[
+                { label:"งานเปิด",     n:list.filter(t=>isActive(t.status)).length,                  icon:"📋", c:"text-accent",   bg:"border-accent/30 bg-accent/5",                       onClick:()=>{setManagerSection("tickets");setActiveView("all");setStatusFilter("all");} },
+                { label:"เกิน SLA",   n:slaBreachActive.length,                                     icon:"🚨", c:"text-rose-400", bg:slaBreachActive.length>0?"border-rose-800/50 bg-rose-900/10":"border-border bg-card",   onClick:()=>{setManagerSection("tickets");setActiveView("sla");} },
+                { label:"รออะไหล่",  n:list.filter(t=>t.status==="waiting_parts").length,           icon:"📦", c:"text-purple-400",bg:list.filter(t=>t.status==="waiting_parts").length>0?"border-purple-800/40 bg-purple-900/10":"border-border bg-card", onClick:()=>{setManagerSection("tickets");setActiveView("parts");} },
+                { label:"รอลูกค้า",  n:waitingCust.length,                                          icon:"⏳", c:"text-rose-300", bg:waitingCust.length>0?"border-rose-800/30 bg-rose-900/5":"border-border bg-card",         onClick:()=>{setManagerSection("tickets");setActiveView("all");setStatusFilter("waiting_approval" as ServiceStatus);} },
+                { label:"PM / MA",   n:pmMaActive.length,                                           icon:"🔵", c:"text-blue-400", bg:"border-blue-800/30 bg-blue-900/5",                   onClick:()=>{setManagerSection("tickets");setActiveView("pm");} },
+                { label:"งานย้อนซ่อม",n:reworkList.length,                                         icon:"🔄", c:"text-amber-400",bg:reworkList.length>0?"border-amber-800/40 bg-amber-900/10":"border-border bg-card",      onClick:()=>{setManagerSection("tickets");setActiveView("all");setTypeFilter("repair");setStatusFilter("all");} },
+              ].map(k => (
+                <button key={k.label} onClick={k.onClick}
+                  className={`rounded-xl border p-3 text-left transition-all hover:scale-[1.02] active:scale-100 ${k.bg}`}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm leading-none">{k.icon}</span>
+                    <p className={`text-2xl font-bold tabular-nums ${k.c}`}>{k.n}</p>
+                  </div>
+                  <p className="text-[10px] text-muted leading-tight">{k.label}</p>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Tab bar + Export */}
+          <div className="flex items-center gap-2 border-t border-border pt-3 flex-wrap">
+            <div className="flex gap-1 flex-1 flex-wrap">
+              {([
+                {id:"tickets"   as const, icon:"🎫", label:"Tickets",   sub:"รายการงาน"},
+                {id:"team"      as const, icon:"👥", label:"Team",      sub:"ทีมช่าง"},
+                {id:"costs"     as const, icon:"💰", label:"Costs",     sub:"ต้นทุน"},
+                {id:"analytics" as const, icon:"📈", label:"Analytics", sub:"วิเคราะห์"},
+              ]).map(s => (
+                <button key={s.id} onClick={()=>setManagerSection(s.id)}
+                  className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold border transition-all ${managerSection===s.id?"bg-accent/20 text-accent border-accent/40":"bg-card border-border text-muted hover:bg-card-hover"}`}>
+                  {s.icon} {s.label}
+                  <span className="text-[9px] text-muted/60 hidden sm:inline">· {s.sub}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={exportCSV} className="text-xs text-muted border border-border rounded-xl px-3 py-2 hover:bg-card-hover flex items-center gap-1.5 shrink-0">
+              📥 Export CSV
+            </button>
+          </div>
         </div>
       )}
 
-      {/* ── Alert Bar (manager only) ── */}
-      {!loading && !isTechView && (overdueAccept.length > 0 || overdueList.length > 0 || unassigned.length > 0 || stats.pendingReqs > 0) && (
+      {/* ── Alert Bar (manager · Tickets tab) ── */}
+      {!loading && !isTechView && managerSection === "tickets" && (overdueAccept.length > 0 || overdueList.length > 0 || unassigned.length > 0 || stats.pendingReqs > 0) && (
         <div className="rounded-xl border border-red-800/50 bg-red-900/10 px-4 py-3 mb-4 flex flex-wrap items-center gap-x-5 gap-y-2">
           <span className="text-xs font-bold text-red-400 shrink-0">⚡ ต้องดูแลทันที</span>
           {overdueAccept.length > 0 && (
@@ -566,8 +621,8 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── KPI Grid (manager only) ── */}
-      {!loading && !isTechView && (
+      {/* ── KPI Grid (manager · Tickets tab) ── */}
+      {!loading && !isTechView && managerSection === "tickets" && (
         <div className="grid grid-cols-4 gap-2 mb-4">
           {/* Row 1: Status filters (clickable) */}
           {([
@@ -603,8 +658,8 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── Main 3-column Grid (manager only) ── */}
-      {!loading && !isTechView && (
+      {/* ── Main 3-column Grid (manager · Tickets tab) ── */}
+      {!loading && !isTechView && managerSection === "tickets" && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
 
           {/* Col 1: ภาระงานต่อช่าง */}
@@ -715,8 +770,8 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── Urgent & Schedule Details (manager only) ── */}
-      {!loading && !isTechView && (overdueList.length > 0 || overdueAccept.length > 0 || todayList.length > 0 || pmUpcoming.length > 0) && (
+      {/* ── Urgent & Schedule Details (manager · Tickets tab) ── */}
+      {!loading && !isTechView && managerSection === "tickets" && (overdueList.length > 0 || overdueAccept.length > 0 || todayList.length > 0 || pmUpcoming.length > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
 
           {/* Left: งานค้าง / เลยกำหนด */}
@@ -793,30 +848,6 @@ export default function ServicePage() {
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* ── Manager Panel Tabs ── */}
-      {!isTechView && (
-        <div className="flex items-center gap-2 mb-4 mt-1 flex-wrap border-t border-border pt-4">
-          <div className="flex gap-1 flex-1 flex-wrap">
-            {([
-              { id: "tickets",   icon: "🎫", label: "Tickets",  sub: "รายการงาน" },
-              { id: "team",      icon: "👥", label: "Team",     sub: "ประสิทธิภาพ" },
-              { id: "costs",     icon: "💰", label: "Costs",    sub: "ต้นทุน" },
-              { id: "analytics", icon: "📈", label: "Analytics",sub: "วิเคราะห์" },
-            ] as const).map(s => (
-              <button key={s.id} onClick={() => setManagerSection(s.id)}
-                className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold border transition-all ${managerSection === s.id ? "bg-accent/20 text-accent border-accent/40" : "bg-card border-border text-muted hover:bg-card-hover"}`}>
-                {s.icon} {s.label}
-                <span className="text-[9px] text-muted/60 hidden sm:inline">· {s.sub}</span>
-              </button>
-            ))}
-          </div>
-          <button onClick={exportCSV}
-            className="text-xs text-muted border border-border rounded-xl px-3 py-2 hover:bg-card-hover flex items-center gap-1.5 shrink-0">
-            📥 Export CSV
-          </button>
         </div>
       )}
 
