@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { isNewRole } from "@/lib/rbac";
+import { users } from "@/lib/firestore";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -267,6 +268,58 @@ function SidebarSection({
   );
 }
 
+// ─── Theme switcher ───────────────────────────────────────────────────────────
+
+const SIDEBAR_THEMES = [
+  { id: "midnight",  color: "#6366f1", label: "Midnight"  },
+  { id: "obsidian",  color: "#f59e0b", label: "Obsidian"  },
+  { id: "snow",      color: "#2563eb", label: "Snow"       },
+  { id: "cyberpunk", color: "#06b6d4", label: "Cyberpunk" },
+  { id: "corporate", color: "#1b3a6b", label: "Corporate" },
+];
+
+function ThemeSwitcher({ userId }: { userId?: string }) {
+  const [current, setCurrent] = useState("midnight");
+
+  useEffect(() => {
+    try { setCurrent(localStorage.getItem("kmit_theme") || "midnight"); } catch {}
+  }, []);
+
+  function switchTheme(id: string) {
+    const el = document.documentElement;
+    Array.from(el.style).filter(p => p.startsWith("--")).forEach(p => el.style.removeProperty(p));
+    el.setAttribute("data-theme", id);
+    try { localStorage.setItem("kmit_theme", id); } catch {}
+    setCurrent(id);
+    if (userId) users.update(userId, { theme: id }).catch(() => {});
+  }
+
+  return (
+    <div className="px-3 py-2 border-t border-sidebar-hover/40 flex items-center gap-1.5">
+      <span className="text-[9px] font-bold uppercase tracking-widest text-sidebar-muted flex-1">Theme</span>
+      {SIDEBAR_THEMES.map(t => (
+        <button
+          key={t.id}
+          onClick={() => switchTheme(t.id)}
+          title={t.label}
+          className="w-[14px] h-[14px] rounded-full transition-transform hover:scale-110"
+          style={{
+            background: t.color,
+            boxShadow: current === t.id
+              ? `0 0 0 2px var(--sidebar), 0 0 0 3.5px ${t.color}`
+              : undefined,
+            transform: current === t.id ? "scale(1.2)" : undefined,
+          }}
+        />
+      ))}
+      <Link href="/settings/theme" title="Custom / เพิ่มเติม"
+        className="text-[11px] text-sidebar-muted/60 hover:text-sidebar-fg leading-none ml-0.5 transition-colors">
+        ✏
+      </Link>
+    </div>
+  );
+}
+
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -337,8 +390,11 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
           ))}
         </nav>
 
+        {/* Theme switcher */}
+        <ThemeSwitcher userId={currentUser?.id} />
+
         {/* User footer */}
-        <div className="border-t border-sidebar-hover/60 px-3 py-2.5">
+        <div className="px-3 py-2.5">
           {currentUser && (
             <button
               onClick={() => router.push("/profile")}
