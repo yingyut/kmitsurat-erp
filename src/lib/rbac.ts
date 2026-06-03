@@ -148,8 +148,7 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
   "Service Technician": [
     "view_dashboard",
     "view_own_tickets",   "create_ticket",
-    "view_own_customers", "view_products",      "view_contracts",
-    "view_assets",
+    "view_own_customers", "view_products",
   ],
 
   "Operations Coordinator": [

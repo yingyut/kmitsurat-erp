@@ -11,7 +11,14 @@ import { db } from "@/lib/firebase";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type NavItem    = { href: string; label: string; thai: string; icon: string; badgeKey?: string };
-type SectionDef = { id: string; title?: string; subtitle?: string; dot?: string; items: NavItem[] };
+type SectionDef = {
+  id: string;
+  title?: string;
+  subtitle?: string;
+  dot?: string;
+  items: NavItem[];
+  roleTitle?: Record<string, { title: string; subtitle?: string }>;
+};
 
 // ─── Menu structure ───────────────────────────────────────────────────────────
 
@@ -45,6 +52,10 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: "service", title: "เซอร์วิส", subtitle: "SERVICE", dot: "bg-rose-500",
+    roleTitle: {
+      "service":            { title: "งานของฉัน", subtitle: "MY WORK" },
+      "Service Technician": { title: "งานของฉัน", subtitle: "MY WORK" },
+    },
     items: [
       { href: "/service",            label: "Service Tickets", thai: "งานบริการ / ติดตั้ง / ซ่อม", icon: "🔧", badgeKey: "tickets" },
       { href: "/contracts",          label: "Contracts",       thai: "สัญญา / รับประกัน / MA",      icon: "🛡️" },
@@ -135,12 +146,13 @@ function NavLink({ item, active, badge }: { item: NavItem; active: boolean; badg
 // ─── SidebarSection ───────────────────────────────────────────────────────────
 
 function SidebarSection({
-  section, isActive, hasAccess, badges,
+  section, isActive, hasAccess, badges, role,
 }: {
   section: SectionDef;
   isActive: (href: string) => boolean;
   hasAccess: (path: string) => boolean;
   badges: Record<string, number>;
+  role: string;
 }) {
   const storageKey = `kmit_sidebar_sec_${section.id}`;
   const [open, setOpen] = useState<boolean>(() => {
@@ -154,6 +166,10 @@ function SidebarSection({
   const visibleItems = section.items.filter(item => hasAccess(item.href.split("?")[0]));
   if (visibleItems.length === 0) return null;
 
+  const roleOverride = section.roleTitle?.[role];
+  const displayTitle    = roleOverride?.title    ?? section.title;
+  const displaySubtitle = roleOverride?.subtitle ?? section.subtitle;
+
   function toggle() {
     setOpen(v => {
       const next = !v;
@@ -162,7 +178,7 @@ function SidebarSection({
     });
   }
 
-  if (!section.title) {
+  if (!displayTitle) {
     return (
       <div className="pb-1">
         {visibleItems.map(item => (
@@ -183,9 +199,9 @@ function SidebarSection({
       >
         {section.dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${section.dot}`} />}
         <span className="flex-1 text-left text-[10px] font-bold tracking-widest text-sidebar-muted uppercase leading-none">
-          {section.title}
-          {section.subtitle && (
-            <span className="ml-1.5 font-normal tracking-normal normal-case text-sidebar-muted/60">· {section.subtitle}</span>
+          {displayTitle}
+          {displaySubtitle && (
+            <span className="ml-1.5 font-normal tracking-normal normal-case text-sidebar-muted/60">· {displaySubtitle}</span>
           )}
         </span>
         {!open && sectionBadge > 0 && (
@@ -271,6 +287,7 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
               isActive={isActive}
               hasAccess={hasAccess}
               badges={badges}
+              role={currentUser?.role ?? ""}
             />
           ))}
         </nav>

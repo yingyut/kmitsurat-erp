@@ -10,7 +10,7 @@ export const defaultPermissions: Record<string, string[]> = {
   sale:    ["dashboard","projects","sales","quotations","sales-workflow","customers","help"],
   avenger: ["dashboard","projects","sales","quotations","sales-workflow","sales-plan","customers","help"],
   presale: ["dashboard","presale","products","customers","quotations","help"],
-  service: ["dashboard","service","contracts","customers","assets","help"],
+  service: ["dashboard","service","customers","help"],
 };
 
 // Check module-level access (used by Sidebar and hasAccess)
