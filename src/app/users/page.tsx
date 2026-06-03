@@ -384,118 +384,6 @@ export default function UsersPage() {
             <button onClick={openAddUser} title="เพิ่มผู้ใช้ใหม่" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover shrink-0">+ เพิ่มผู้ใช้</button>
           </div>
 
-          {/* User Form (Add/Edit) */}
-          {showUserForm && (() => {
-            const previewName = computeDisplayName(userForm);
-            return (
-              <div className="rounded-xl bg-card border border-border p-5 mb-4">
-                <h2 className="text-base font-semibold mb-3">{editingUserId ? "แก้ไขผู้ใช้" : "เพิ่มผู้ใช้ใหม่"}</h2>
-
-                {/* Names section */}
-                <p className="text-xs text-muted uppercase mb-2">ชื่อ</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
-                  <div>
-                    <label className="text-[10px] text-muted">ชื่อจริง</label>
-                    <input placeholder="เช่น สมชาย" value={userForm.first_name} onChange={(e) => setUserForm({ ...userForm, first_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted">นามสกุล</label>
-                    <input placeholder="เช่น ใจดี" value={userForm.last_name} onChange={(e) => setUserForm({ ...userForm, last_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted">ชื่อเล่น (รวมคำนำหน้าได้ เช่น "พี่จอร์ด" / "น้องก้อย")</label>
-                    <input placeholder="เช่น พี่จอร์ด" value={userForm.nickname} onChange={(e) => setUserForm({ ...userForm, nickname: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
-                  </div>
-                </div>
-
-                {/* Display preference */}
-                <div className="mb-3">
-                  <label className="text-[10px] text-muted">ใช้ชื่อใดแสดงในระบบ?</label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
-                    {(Object.keys(displayPrefLabel) as DisplayPref[]).map(p => (
-                      <button key={p} onClick={() => setUserForm({ ...userForm, display_preference: p })} className={`rounded-lg border p-2 text-left text-xs transition-colors ${userForm.display_preference === p ? "border-accent bg-accent/10" : "border-border bg-background hover:bg-card-hover"}`}>
-                        <p className="font-medium">{displayPrefLabel[p]}</p>
-                        <p className="text-[10px] text-muted truncate">{computeDisplayName({ ...userForm, display_preference: p }) || "(ว่าง)"}</p>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-[11px] mt-2">
-                    <span className="text-muted">ชื่อที่จะแสดง: </span>
-                    <b className="text-accent">{previewName || "(กรุณากรอกชื่ออย่างน้อย 1 ช่อง)"}</b>
-                  </p>
-                </div>
-
-                {/* Other info */}
-                <p className="text-xs text-muted uppercase mb-2 mt-3">ข้อมูลทั่วไป</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-                  <div>
-                    <label className="text-[10px] text-muted">Role หลัก</label>
-                    <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value as User["role"], extra_roles: userForm.extra_roles.filter(r => r !== e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
-                      {roles.map((r) => <option key={r} value={r}>{r} - {roleLabels[r]}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-span-full">
-                    <label className="text-[10px] text-muted">บทบาทเพิ่มเติม (เลือกได้หลายอัน)</label>
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      {roles.filter(r => r !== userForm.role).map(r => {
-                        const checked = userForm.extra_roles.includes(r);
-                        return (
-                          <label key={r} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border cursor-pointer text-xs transition-colors ${checked ? "border-accent bg-accent/20 text-accent" : "border-border text-muted hover:border-accent/50"}`}>
-                            <input type="checkbox" className="sr-only" checked={checked} onChange={e => {
-                              const next = e.target.checked ? [...userForm.extra_roles, r] : userForm.extra_roles.filter(x => x !== r);
-                              setUserForm({ ...userForm, extra_roles: next });
-                            }} />
-                            {roleLabels[r] || r}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted">ตำแหน่ง</label>
-                    <input placeholder="เช่น CEO / Manager / Sales" value={userForm.position} onChange={(e) => setUserForm({ ...userForm, position: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted">แผนก</label>
-                    <input placeholder="แผนก" value={userForm.department} onChange={(e) => setUserForm({ ...userForm, department: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted">อีเมล</label>
-                    <input placeholder="email@example.com" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted">เบอร์โทร</label>
-                    <input placeholder="08x-xxx-xxxx" value={userForm.phone} onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted">Login Username (ภาษาอังกฤษ)</label>
-                    <input placeholder="เช่น yingyut, suppaluck" value={userForm.login_username} onChange={(e) => setUserForm({ ...userForm, login_username: e.target.value.toLowerCase().replace(/[^a-z0-9._]/g, "") })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent lowercase font-mono mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted">รหัสเซลล์ (3-5 ตัว)</label>
-                    <input placeholder="เช่น OY, NN, EVE" maxLength={5} value={userForm.sales_code} onChange={(e) => setUserForm({ ...userForm, sales_code: e.target.value.toUpperCase() })} title="ใช้ใน Document Numbering" className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent uppercase font-mono mt-1" />
-                  </div>
-                  <textarea placeholder="รายละเอียด / Bio" value={userForm.bio} onChange={(e) => setUserForm({ ...userForm, bio: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
-                  <div>
-                    <label className="text-[10px] text-muted">สถานะการทำงาน</label>
-                    <select value={userForm.employment_status} onChange={e => setUserForm({ ...userForm, employment_status: e.target.value as EmploymentStatus })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
-                      {EMPLOYMENT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                    {(userForm.employment_status === "resigned" || userForm.employment_status === "terminated") && (
-                      <input type="date" value={userForm.resigned_at} onChange={e => setUserForm({ ...userForm, resigned_at: e.target.value })} placeholder="วันที่ออก" className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
-                    )}
-                    {(userForm.employment_status === "resigned" || userForm.employment_status === "terminated") && (
-                      <p className="text-[10px] text-orange-400 mt-1">⚠ บัญชีนี้จะถูกซ่อนจาก Dashboard และ dropdown ทั้งหมด แต่ข้อมูลเก่ายังคงอยู่</p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={saveUser} disabled={saving || !previewName} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : editingUserId ? "บันทึกการแก้ไข" : "บันทึก"}</button>
-                  <button onClick={() => { setShowUserForm(false); setEditingUserId(null); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
-                </div>
-              </div>
-            );
-          })()}
 
           {/* User Detail Panel */}
           {selectedUser && (
@@ -653,6 +541,125 @@ export default function UsersPage() {
         </>)}
 
       </>)}
+
+      {/* ========== USER FORM MODAL (Add/Edit) ========== */}
+      {showUserForm && (() => {
+        const previewName = computeDisplayName(userForm);
+        return (
+          <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
+            <div className="w-full max-w-2xl rounded-2xl bg-card border border-border shadow-2xl my-8">
+              <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+                <h2 className="text-base font-bold">{editingUserId ? "แก้ไขผู้ใช้" : "เพิ่มผู้ใช้ใหม่"}</h2>
+                <button onClick={() => { setShowUserForm(false); setEditingUserId(null); }} className="text-muted hover:text-foreground text-lg">✕</button>
+              </div>
+              <div className="p-5">
+                {/* Names section */}
+                <p className="text-xs text-muted uppercase mb-2">ชื่อ</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
+                  <div>
+                    <label className="text-[10px] text-muted">ชื่อจริง</label>
+                    <input placeholder="เช่น สมชาย" value={userForm.first_name} onChange={(e) => setUserForm({ ...userForm, first_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">นามสกุล</label>
+                    <input placeholder="เช่น ใจดี" value={userForm.last_name} onChange={(e) => setUserForm({ ...userForm, last_name: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">ชื่อเล่น (รวมคำนำหน้าได้ เช่น "พี่จอร์ด" / "น้องก้อย")</label>
+                    <input placeholder="เช่น พี่จอร์ด" value={userForm.nickname} onChange={(e) => setUserForm({ ...userForm, nickname: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                </div>
+
+                {/* Display preference */}
+                <div className="mb-3">
+                  <label className="text-[10px] text-muted">ใช้ชื่อใดแสดงในระบบ?</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
+                    {(Object.keys(displayPrefLabel) as DisplayPref[]).map(p => (
+                      <button key={p} onClick={() => setUserForm({ ...userForm, display_preference: p })} className={`rounded-lg border p-2 text-left text-xs transition-colors ${userForm.display_preference === p ? "border-accent bg-accent/10" : "border-border bg-background hover:bg-card-hover"}`}>
+                        <p className="font-medium">{displayPrefLabel[p]}</p>
+                        <p className="text-[10px] text-muted truncate">{computeDisplayName({ ...userForm, display_preference: p }) || "(ว่าง)"}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] mt-2">
+                    <span className="text-muted">ชื่อที่จะแสดง: </span>
+                    <b className="text-accent">{previewName || "(กรุณากรอกชื่ออย่างน้อย 1 ช่อง)"}</b>
+                  </p>
+                </div>
+
+                {/* Other info */}
+                <p className="text-xs text-muted uppercase mb-2 mt-3">ข้อมูลทั่วไป</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="text-[10px] text-muted">Role หลัก</label>
+                    <select value={userForm.role} onChange={(e) => setUserForm({ ...userForm, role: e.target.value as User["role"], extra_roles: userForm.extra_roles.filter(r => r !== e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                      {roles.map((r) => <option key={r} value={r}>{r} - {roleLabels[r]}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-full">
+                    <label className="text-[10px] text-muted">บทบาทเพิ่มเติม (เลือกได้หลายอัน)</label>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {roles.filter(r => r !== userForm.role).map(r => {
+                        const checked = userForm.extra_roles.includes(r);
+                        return (
+                          <label key={r} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border cursor-pointer text-xs transition-colors ${checked ? "border-accent bg-accent/20 text-accent" : "border-border text-muted hover:border-accent/50"}`}>
+                            <input type="checkbox" className="sr-only" checked={checked} onChange={e => {
+                              const next = e.target.checked ? [...userForm.extra_roles, r] : userForm.extra_roles.filter(x => x !== r);
+                              setUserForm({ ...userForm, extra_roles: next });
+                            }} />
+                            {roleLabels[r] || r}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">ตำแหน่ง</label>
+                    <input placeholder="เช่น CEO / Manager / Sales" value={userForm.position} onChange={(e) => setUserForm({ ...userForm, position: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">แผนก</label>
+                    <input placeholder="แผนก" value={userForm.department} onChange={(e) => setUserForm({ ...userForm, department: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">อีเมล</label>
+                    <input placeholder="email@example.com" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">เบอร์โทร</label>
+                    <input placeholder="08x-xxx-xxxx" value={userForm.phone} onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">Login Username (ภาษาอังกฤษ)</label>
+                    <input placeholder="เช่น yingyut, suppaluck" value={userForm.login_username} onChange={(e) => setUserForm({ ...userForm, login_username: e.target.value.toLowerCase().replace(/[^a-z0-9._]/g, "") })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent lowercase font-mono mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">รหัสเซลล์ (3-5 ตัว)</label>
+                    <input placeholder="เช่น OY, NN, EVE" maxLength={5} value={userForm.sales_code} onChange={(e) => setUserForm({ ...userForm, sales_code: e.target.value.toUpperCase() })} title="ใช้ใน Document Numbering" className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent uppercase font-mono mt-1" />
+                  </div>
+                  <textarea placeholder="รายละเอียด / Bio" value={userForm.bio} onChange={(e) => setUserForm({ ...userForm, bio: e.target.value })} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
+                  <div>
+                    <label className="text-[10px] text-muted">สถานะการทำงาน</label>
+                    <select value={userForm.employment_status} onChange={e => setUserForm({ ...userForm, employment_status: e.target.value as EmploymentStatus })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                      {EMPLOYMENT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                    {(userForm.employment_status === "resigned" || userForm.employment_status === "terminated") && (
+                      <input type="date" value={userForm.resigned_at} onChange={e => setUserForm({ ...userForm, resigned_at: e.target.value })} placeholder="วันที่ออก" className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                    )}
+                    {(userForm.employment_status === "resigned" || userForm.employment_status === "terminated") && (
+                      <p className="text-[10px] text-orange-400 mt-1">⚠ บัญชีนี้จะถูกซ่อนจาก Dashboard และ dropdown ทั้งหมด แต่ข้อมูลเก่ายังคงอยู่</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={saveUser} disabled={saving || !previewName} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "กำลังบันทึก..." : editingUserId ? "บันทึกการแก้ไข" : "บันทึก"}</button>
+                  <button onClick={() => { setShowUserForm(false); setEditingUserId(null); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ========== TOAST ========== */}
       {toast && (
