@@ -20,6 +20,7 @@ type SectionDef = {
   dot?: string;
   items: NavItem[];
   roleTitle?: Record<string, { title: string; subtitle?: string }>;
+  labelOnly?: boolean;
 };
 
 // ─── Menu structure ───────────────────────────────────────────────────────────
@@ -51,6 +52,9 @@ const SECTIONS: SectionDef[] = [
       { href: "/presale/tools",      label: "Tool Launcher",     thai: "เครื่องมือออกแบบ BOQ",                icon: "🧰" },
       { href: "/project-management", label: "Project Execution", thai: "ดำเนินโปรเจค / Action Plan",         icon: "🗂️" },
     ],
+  },
+  {
+    id: "service-label", labelOnly: true, title: "เซอร์วิส", subtitle: "SERVICE", dot: "bg-rose-500", items: [],
   },
   {
     id: "service-work", title: "งานของฉัน", subtitle: "MY WORK", dot: "bg-rose-500",
@@ -217,6 +221,19 @@ function SidebarSection({
       return s === null ? true : s === "1";
     } catch { return true; }
   });
+
+  if (section.labelOnly) {
+    return (
+      <div className="mt-3 mb-0.5 flex items-center gap-2 px-2 py-0.5">
+        {section.dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${section.dot}`} />}
+        <span className="text-[10px] font-bold tracking-widest text-sidebar-muted uppercase leading-none">
+          {section.title}
+          {section.subtitle && <span className="ml-1.5 font-normal tracking-normal normal-case text-sidebar-muted/60">· {section.subtitle}</span>}
+        </span>
+        <div className="flex-1 border-t border-sidebar-hover/40" />
+      </div>
+    );
+  }
 
   const visibleItems = section.items.filter(item => hasAccess(item.href.split("?")[0]));
   if (visibleItems.length === 0) return null;
