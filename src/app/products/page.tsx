@@ -332,6 +332,10 @@ function ProductsContent() {
               {showNewCatInput ? (
                 <div className="mt-1 space-y-1.5">
                   <div className="flex gap-1.5">
+                    <button type="button" onClick={() => setNewCatIcon(prev => prev)}
+                      className="w-12 h-10 rounded-lg bg-background border border-border text-xl flex items-center justify-center shrink-0">
+                      {newCatIcon || "📁"}
+                    </button>
                     <input value={newCatIcon} onChange={e => setNewCatIcon(e.target.value)} maxLength={2}
                       className="w-12 rounded-lg bg-background border border-border px-2 py-2 text-sm text-center focus:outline-none focus:border-accent" placeholder="📁" />
                     <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
