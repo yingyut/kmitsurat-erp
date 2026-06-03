@@ -54,10 +54,7 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
-    id: "service-label", labelOnly: true, title: "เซอร์วิส", subtitle: "SERVICE", dot: "bg-rose-500", items: [],
-  },
-  {
-    id: "service-work", title: "งานของฉัน", subtitle: "MY WORK", dot: "bg-rose-500",
+    id: "service-work", title: "เซอร์วิส", subtitle: "SERVICE", dot: "bg-rose-500",
     items: [
       { href: "/service",             label: "Service Tickets", thai: "งานบริการ / ติดตั้ง / ซ่อม", icon: "🔧", badgeKey: "tickets" },
       { href: "/service?tab=today",   label: "Today Jobs",      thai: "งานวันนี้",                   icon: "📅" },
