@@ -576,6 +576,8 @@ export interface PriceHistory {
   note: string;
 }
 
+export type PackageItemType = "product" | "labor" | "travel" | "config" | "pm" | "ma" | "other";
+
 export interface ProductGroupItem {
   product_id: string;
   product_name: string;
@@ -584,6 +586,7 @@ export interface ProductGroupItem {
   unit?: string;
   cost_price: number;
   selling_price?: number;
+  item_type?: PackageItemType;
 }
 
 export interface Product {
@@ -605,6 +608,21 @@ export interface Product {
   group_items?: ProductGroupItem[]; // populated when type="group"
 }
 
+export interface QuotationPackageItem {
+  product_id?: string;
+  product_code?: string;
+  product_name: string;
+  item_type: PackageItemType;
+  qty: number;
+  unit?: string;
+  cost_price: number;
+  selling_price: number;
+  discount: number;
+  total_cost: number;
+  total_selling: number;
+  show_in_quote: boolean;
+}
+
 export interface QuotationItem {
   product_id: string;
   product_code: string;
@@ -617,8 +635,11 @@ export interface QuotationItem {
   total_cost: number;
   total_selling: number;
   margin_percent: number;
-  price_tier?: "general" | "member" | "special" | "custom"; // which tier price was used
+  price_tier?: "general" | "member" | "special" | "custom";
   ref_url?: string;
+  is_package?: boolean;
+  package_display?: "bundle" | "itemized" | "itemized_no_price";
+  package_items?: QuotationPackageItem[];
 }
 
 export interface SalesQuota {

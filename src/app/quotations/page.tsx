@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import Link from "next/link";
-import type { Quotation, QuotationItem, Customer, Project, Product, User, QuotationDocument, QuotationDocType, QuotationDocOwner } from "@/lib/types";
+import type { Quotation, QuotationItem, QuotationPackageItem, Customer, Project, Product, User, QuotationDocument, QuotationDocType, QuotationDocOwner } from "@/lib/types";
 import { generateNumber } from "@/lib/numbering";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
@@ -29,6 +29,10 @@ const vatModeLabel: Record<string, string> = { none: "ไม่มี VAT", excl
 
 const tierIcon: Record<string, string> = { general: "👤", member: "⭐", special: "💎", custom: "✏️" };
 const tierLabel: Record<string, string> = { general: "ทั่วไป", member: "สมาชิก", special: "พิเศษ", custom: "Custom" };
+
+const ITEM_TYPE_ICON: Record<string, string> = { product: "📦", labor: "👷", travel: "🚗", config: "⚙️", pm: "🔧", ma: "🛡️", other: "📋" };
+const ITEM_TYPE_LABEL: Record<string, string> = { product: "สินค้า", labor: "ค่าแรง", travel: "ค่าเดินทาง", config: "ค่า Config", pm: "PM", ma: "MA", other: "อื่นๆ" };
+
 function priceForTier(p: Product, tier: "general" | "member" | "special"): number {
   if (tier === "member") return p.price_member || p.selling_price || 0;
   if (tier === "special") return p.price_special || p.selling_price || 0;
@@ -120,6 +124,44 @@ export default function QuotationsPage() {
   };
 
   function selectProduct(idx: number, p: Product, tier: "general" | "member" | "special" = "general") {
+    if (p.type === "group") {
+      const packageItems: QuotationPackageItem[] = (p.group_items || []).map(gi => ({
+        product_id: gi.product_id,
+        product_code: gi.product_code,
+        product_name: gi.product_name,
+        item_type: gi.item_type || "product",
+        qty: gi.qty,
+        unit: gi.unit,
+        cost_price: gi.cost_price,
+        selling_price: gi.selling_price || gi.cost_price,
+        discount: 0,
+        total_cost: gi.cost_price * gi.qty,
+        total_selling: (gi.selling_price || gi.cost_price) * gi.qty,
+        show_in_quote: true,
+      }));
+      const pkgCost = packageItems.reduce((s, i) => s + i.total_cost, 0);
+      const pkgSell = packageItems.reduce((s, i) => s + i.total_selling, 0);
+      const qty = items[idx].qty || 1;
+      setItems(items.map((it, i) => i === idx ? {
+        ...it,
+        product_id: p.id || "",
+        product_code: p.code || "",
+        product_name: p.name,
+        unit: p.unit || "ชุด",
+        cost_price: pkgCost,
+        selling_price: pkgSell,
+        discount: 0,
+        total_cost: pkgCost * qty,
+        total_selling: pkgSell * qty,
+        margin_percent: pkgSell > 0 ? ((pkgSell - pkgCost) / pkgSell * 100) : 0,
+        price_tier: "general",
+        is_package: true,
+        package_display: "bundle",
+        package_items: packageItems,
+      } : it));
+      setPickerOpen(null);
+      return;
+    }
     const sell = priceForTier(p, tier);
     const disc = p.default_discount || 0;
     setItems(items.map((it, i) => i === idx ? {
@@ -135,8 +177,42 @@ export default function QuotationsPage() {
       total_selling: (sell - disc) * it.qty,
       margin_percent: sell > 0 ? ((sell - (p.cost_price || 0)) / sell * 100) : 0,
       price_tier: tier,
+      is_package: undefined,
+      package_display: undefined,
+      package_items: undefined,
     } : it));
     setPickerOpen(null);
+  }
+
+  function updatePackageDisplay(itemIdx: number, mode: "bundle" | "itemized" | "itemized_no_price") {
+    setItems(items.map((it, i) => i === itemIdx ? { ...it, package_display: mode } : it));
+  }
+
+  function updatePackageSubItemQty(itemIdx: number, subIdx: number, qty: number) {
+    if (qty <= 0) return;
+    setItems(items.map((it, i) => {
+      if (i !== itemIdx || !it.is_package) return it;
+      const newSubs = (it.package_items || []).map((si, j) =>
+        j === subIdx ? { ...si, qty, total_cost: si.cost_price * qty, total_selling: si.selling_price * qty } : si
+      );
+      const pkgCost = newSubs.reduce((s, si) => s + si.total_cost, 0);
+      const pkgSell = newSubs.reduce((s, si) => s + si.total_selling, 0);
+      return {
+        ...it, package_items: newSubs,
+        cost_price: pkgCost, selling_price: pkgSell,
+        total_cost: pkgCost * it.qty,
+        total_selling: (pkgSell - it.discount) * it.qty,
+        margin_percent: pkgSell > 0 ? ((pkgSell - pkgCost) / pkgSell * 100) : 0,
+      };
+    }));
+  }
+
+  function togglePackageSubItem(itemIdx: number, subIdx: number) {
+    setItems(items.map((it, i) => {
+      if (i !== itemIdx || !it.is_package) return it;
+      const newSubs = (it.package_items || []).map((si, j) => j === subIdx ? { ...si, show_in_quote: !si.show_in_quote } : si);
+      return { ...it, package_items: newSubs };
+    }));
   }
 
   function changeTier(idx: number, tier: "general" | "member" | "special") {
@@ -518,7 +594,8 @@ export default function QuotationsPage() {
                 <th className="px-2 py-1 w-8"></th>
               </tr></thead>
               <tbody>{items.map((item, idx) => (
-                <tr key={idx} className="align-top">
+                <Fragment key={idx}>
+                <tr className="align-top">
                   <td className="px-2 py-1 relative">
                     <input
                       value={item.product_name}
@@ -539,40 +616,61 @@ export default function QuotationsPage() {
                         ) : filterProducts(item.product_name).map(p => (
                           <div key={p.id} className="border-b border-border last:border-0 hover:bg-card-hover">
                             <div className="px-3 pt-2 pb-1 flex items-center gap-2 text-xs">
-                              <span className="shrink-0">{p.type === "service" ? "🛠️" : "📦"}</span>
+                              <span className="shrink-0">{p.type === "group" ? "🗂️" : p.type === "service" ? "🛠️" : "📦"}</span>
                               <span className="font-mono text-muted w-20 shrink-0 truncate">{p.code || "—"}</span>
                               <span className="flex-1 truncate font-medium">{p.name}</span>
                               <span className="text-muted shrink-0">{p.unit}</span>
+                              {p.type === "group" && (
+                                <span className="text-[10px] text-accent shrink-0">{(p.group_items || []).length} รายการ</span>
+                              )}
                             </div>
                             <div className="px-3 pb-2 flex items-center gap-1.5 flex-wrap">
-                              <button
-                                onClick={() => selectProduct(idx, p, "general")}
-                                className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-accent hover:text-white hover:border-accent"
-                                title="ราคาบุคคลทั่วไป"
-                              >
-                                👤 {(p.selling_price || 0).toLocaleString()}
-                              </button>
-                              {p.price_member ? (
-                                <button
-                                  onClick={() => selectProduct(idx, p, "member")}
-                                  className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-accent hover:text-white hover:border-accent"
-                                  title="ราคาสมาชิก"
-                                >
-                                  ⭐ {p.price_member.toLocaleString()}
-                                </button>
-                              ) : null}
-                              {p.price_special ? (
-                                <button
-                                  onClick={() => selectProduct(idx, p, "special")}
-                                  className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-accent hover:text-white hover:border-accent"
-                                  title="ราคาพิเศษ / VIP"
-                                >
-                                  💎 {p.price_special.toLocaleString()}
-                                </button>
-                              ) : null}
-                              {p.default_discount ? (
-                                <span className="text-[10px] text-amber-400 ml-1" title="ส่วนลดตั้งต้นจะถูกใส่อัตโนมัติ">🎁 -{p.default_discount.toLocaleString()}</span>
-                              ) : null}
+                              {p.type === "group" ? (
+                                <>
+                                  <button
+                                    onClick={() => selectProduct(idx, p, "general")}
+                                    className="rounded border border-accent px-2 py-0.5 text-[11px] text-accent hover:bg-accent hover:text-white"
+                                    title={`เพิ่มเป็น Package — ${(p.group_items || []).length} รายการ`}
+                                  >
+                                    🗂️ เพิ่มเป็น Package — {(p.selling_price || 0).toLocaleString()} ฿
+                                  </button>
+                                  <span className="text-[10px] text-muted">
+                                    ทุน {(p.cost_price || 0).toLocaleString()} ฿
+                                    {p.selling_price > 0 && ` · GP ${(((p.selling_price - p.cost_price) / p.selling_price) * 100).toFixed(1)}%`}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => selectProduct(idx, p, "general")}
+                                    className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-accent hover:text-white hover:border-accent"
+                                    title="ราคาบุคคลทั่วไป"
+                                  >
+                                    👤 {(p.selling_price || 0).toLocaleString()}
+                                  </button>
+                                  {p.price_member ? (
+                                    <button
+                                      onClick={() => selectProduct(idx, p, "member")}
+                                      className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-accent hover:text-white hover:border-accent"
+                                      title="ราคาสมาชิก"
+                                    >
+                                      ⭐ {p.price_member.toLocaleString()}
+                                    </button>
+                                  ) : null}
+                                  {p.price_special ? (
+                                    <button
+                                      onClick={() => selectProduct(idx, p, "special")}
+                                      className="rounded border border-border px-2 py-0.5 text-[11px] hover:bg-accent hover:text-white hover:border-accent"
+                                      title="ราคาพิเศษ / VIP"
+                                    >
+                                      💎 {p.price_special.toLocaleString()}
+                                    </button>
+                                  ) : null}
+                                  {p.default_discount ? (
+                                    <span className="text-[10px] text-amber-400 ml-1" title="ส่วนลดตั้งต้นจะถูกใส่อัตโนมัติ">🎁 -{p.default_discount.toLocaleString()}</span>
+                                  ) : null}
+                                </>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -594,8 +692,21 @@ export default function QuotationsPage() {
                         </div>
                       </div>
                     )}
-                    {/* Tier selector (when item is linked to a product) */}
-                    {item.product_id && pickerOpen !== idx && (() => {
+                    {/* Package display mode selector */}
+                    {item.is_package && pickerOpen !== idx && (
+                      <div className="flex items-center gap-1 mt-1 flex-wrap">
+                        <span className="text-[10px] text-accent mr-1">🗂️ Package</span>
+                        {(["bundle", "itemized", "itemized_no_price"] as const).map(mode => (
+                          <button key={mode} onClick={() => updatePackageDisplay(idx, mode)}
+                            className={`text-[10px] rounded px-1.5 py-0.5 border ${item.package_display === mode ? "border-accent bg-accent/10 text-accent" : "border-border text-muted hover:bg-card-hover"}`}>
+                            {mode === "bundle" ? "📦 รวมก้อน" : mode === "itemized" ? "📋 แสดงรายการ" : "🔒 ซ่อนราคาย่อย"}
+                          </button>
+                        ))}
+                        <span className="text-[10px] text-muted ml-1">{(item.package_items || []).length} รายการ</span>
+                      </div>
+                    )}
+                    {/* Tier selector (non-package items linked to a product) */}
+                    {item.product_id && !item.is_package && pickerOpen !== idx && (() => {
                       const p = prods.find(x => x.id === item.product_id);
                       if (!p) return <p className="text-[9px] text-amber-400 mt-0.5">⚠ สินค้าถูกลบแล้ว — ใช้เป็น Custom</p>;
                       const tiers: Array<{ key: "general" | "member" | "special"; price: number | undefined }> = [
@@ -634,7 +745,43 @@ export default function QuotationsPage() {
                   <td className="px-2 py-0.5 text-right font-mono">{fmtMoney(item.total_selling)}</td>
                   <td className={`px-2 py-0.5 text-right ${item.margin_percent >= 20 ? "text-green-400" : item.margin_percent >= 0 ? "text-yellow-400" : "text-red-400"}`}>{item.margin_percent.toFixed(1)}%</td>
                   <td className="px-2 py-0.5">{items.length > 1 && <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-danger" title="ลบรายการ">✕</button>}</td>
-                </tr>))}</tbody>
+                </tr>
+                {/* Package sub-item rows */}
+                {item.is_package && item.package_display !== "bundle" && (item.package_items || []).map((si, j) => (
+                  <tr key={j} className={`border-b border-border/20 ${si.show_in_quote ? "bg-background/20" : "bg-background/10 opacity-50"}`}>
+                    <td className="pl-10 pr-2 py-1">
+                      <span className="text-[10px] text-muted">{ITEM_TYPE_ICON[si.item_type] || "•"} {si.product_name}</span>
+                      {!si.show_in_quote && <span className="ml-1 text-[9px] text-muted/40 italic">(ซ่อน)</span>}
+                    </td>
+                    <td className="px-2 py-1 text-[10px] font-mono text-muted">{si.product_code || "—"}</td>
+                    <td className="px-2 py-1 text-[10px] text-muted">{si.unit || "—"}</td>
+                    <td className="px-2 py-1">
+                      <input type="number" min="0.5" step="0.5" value={si.qty}
+                        onChange={e => updatePackageSubItemQty(idx, j, Number(e.target.value) || 0.5)}
+                        className="w-full rounded bg-background border border-border/50 px-1 py-0.5 text-[10px] text-center" />
+                    </td>
+                    <td className="px-2 py-1 text-[10px] text-right font-mono text-muted">{si.cost_price.toLocaleString()}</td>
+                    {item.package_display === "itemized_no_price" ? (
+                      <td className="px-2 py-1 text-[10px] text-muted/40 italic text-center" colSpan={3}>ซ่อนราคา</td>
+                    ) : (
+                      <>
+                        <td className="px-2 py-1 text-[10px] text-right font-mono text-muted">{si.selling_price.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-[10px] text-muted text-center">—</td>
+                        <td className="px-2 py-1 text-[10px] text-right font-mono text-muted">{si.total_selling.toLocaleString()}</td>
+                      </>
+                    )}
+                    <td className="px-2 py-1 text-[10px] text-muted text-right">—</td>
+                    <td className="px-2 py-1">
+                      <button onClick={() => togglePackageSubItem(idx, j)}
+                        className={`text-[10px] ${si.show_in_quote ? "text-muted hover:text-danger" : "text-muted/30 hover:text-muted"}`}
+                        title={si.show_in_quote ? "ซ่อนจากใบเสนอราคา" : "แสดงในใบเสนอราคา"}>
+                        {si.show_in_quote ? "👁" : "🙈"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                </Fragment>
+              ))}</tbody>
             </table>
           </div>
           <button onClick={() => setItems([...items, { ...emptyItem }])} className="text-xs text-accent hover:underline mb-4 block">+ เพิ่มรายการ</button>
@@ -877,18 +1024,47 @@ export default function QuotationsPage() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {(selectedQ.items || []).map((it, i) => (
-                      <tr key={i} className="hover:bg-card-hover">
-                        <td className="py-2 text-muted/60">{i + 1}</td>
-                        <td className="py-2">
-                          <p className="font-medium leading-snug">{it.product_name}</p>
-                          {it.product_code && <p className="text-[10px] text-muted">{it.product_code}</p>}
-                          {it.discount > 0 && <p className="text-[10px] text-amber-400">ส่วนลด -{it.discount.toLocaleString()}</p>}
-                        </td>
-                        <td className="py-2 text-right text-muted">{it.qty} {it.unit}</td>
-                        <td className="py-2 text-right">{it.selling_price.toLocaleString()}</td>
-                        <td className="py-2 text-right font-semibold">{it.total_selling.toLocaleString()}</td>
-                        <td className="py-2 text-right text-green-400">{it.margin_percent.toFixed(0)}%</td>
-                      </tr>
+                      <Fragment key={i}>
+                        <tr className="hover:bg-card-hover">
+                          <td className="py-2 text-muted/60">{i + 1}</td>
+                          <td className="py-2">
+                            <p className="font-medium leading-snug">
+                              {it.is_package && <span className="text-accent mr-1">🗂️</span>}
+                              {it.product_name}
+                            </p>
+                            {it.product_code && <p className="text-[10px] text-muted">{it.product_code}</p>}
+                            {it.discount > 0 && <p className="text-[10px] text-amber-400">ส่วนลด -{it.discount.toLocaleString()}</p>}
+                            {it.is_package && (
+                              <p className="text-[10px] text-muted/60">
+                                {it.package_display === "bundle" ? "📦 รวมก้อน" : it.package_display === "itemized" ? "📋 แสดงรายการ" : "🔒 ซ่อนราคาย่อย"}
+                                {" · "}{(it.package_items || []).length} รายการ
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-2 text-right text-muted">{it.qty} {it.unit}</td>
+                          <td className="py-2 text-right">{it.selling_price.toLocaleString()}</td>
+                          <td className="py-2 text-right font-semibold">{it.total_selling.toLocaleString()}</td>
+                          <td className="py-2 text-right text-green-400">{it.margin_percent.toFixed(0)}%</td>
+                        </tr>
+                        {it.is_package && it.package_display !== "bundle" && (it.package_items || []).filter(si => si.show_in_quote).map((si, j) => (
+                          <tr key={`${i}-${j}`} className="bg-background/30">
+                            <td className="py-1" />
+                            <td className="py-1 pl-5">
+                              <span className="text-[10px] text-muted">{ITEM_TYPE_ICON[si.item_type] || "•"} {si.product_name}</span>
+                            </td>
+                            <td className="py-1 text-right text-[10px] text-muted">{si.qty} {si.unit}</td>
+                            {it.package_display === "itemized_no_price" ? (
+                              <td className="py-1 text-[10px] text-muted/40 italic text-center" colSpan={3}>—</td>
+                            ) : (
+                              <>
+                                <td className="py-1 text-right text-[10px] text-muted">{si.selling_price.toLocaleString()}</td>
+                                <td className="py-1 text-right text-[10px] text-muted">{si.total_selling.toLocaleString()}</td>
+                                <td className="py-1 text-right text-[10px] text-muted">—</td>
+                              </>
+                            )}
+                          </tr>
+                        ))}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
