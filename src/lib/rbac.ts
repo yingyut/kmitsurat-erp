@@ -149,6 +149,8 @@ export const ROLE_PERMISSIONS: Record<NewRoleName, Permission[]> = {
     "view_dashboard",
     "view_own_tickets",   "create_ticket",
     "view_own_customers", "view_products",
+    "view_assets",        // ช่างต้องเห็น Asset / Serial Tracking
+    "view_contracts",     // เช็คสัญญา / การรับประกัน MA
   ],
 
   "Operations Coordinator": [

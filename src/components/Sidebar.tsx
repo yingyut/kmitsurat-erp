@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { isNewRole } from "@/lib/rbac";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,46 @@ const SECTIONS: SectionDef[] = [
   },
 ];
 
+// ─── Tech (Service Technician) sidebar sections ───────────────────────────────
+
+const TECH_SECTIONS: SectionDef[] = [
+  {
+    id: "tech-work",
+    title: "งานของฉัน",
+    subtitle: "MY WORK",
+    dot: "bg-rose-500",
+    items: [
+      { href: "/service",             label: "My Tickets",    thai: "งาน Service ทั้งหมด",    icon: "🔧", badgeKey: "tickets" },
+      { href: "/service?tab=today",   label: "Today Jobs",   thai: "งานวันนี้",                icon: "📅" },
+      { href: "/assets/pm-schedule",  label: "PM Schedule",  thai: "ตารางงาน PM",             icon: "🔩" },
+      { href: "/service?tab=parts",   label: "Waiting Parts",thai: "รออะไหล่",                 icon: "📦" },
+    ],
+  },
+  {
+    id: "tech-tools",
+    title: "เครื่องมือช่าง",
+    subtitle: "TOOLS",
+    dot: "bg-blue-500",
+    items: [
+      { href: "/service/manuals",   label: "Manuals",        thai: "คู่มือการใช้งาน",   icon: "📖" },
+      { href: "/service/checklist", label: "Checklist",      thai: "Service Checklist", icon: "✅" },
+      { href: "/service/remote",    label: "Remote Support", thai: "Remote Access",     icon: "🖥️" },
+      { href: "/service/backup",    label: "Config Backup",  thai: "บันทึก Config",     icon: "💾" },
+    ],
+  },
+  {
+    id: "tech-history",
+    title: "ประวัติ",
+    subtitle: "HISTORY",
+    dot: "bg-emerald-500",
+    items: [
+      { href: "/service?tab=history", label: "Service History",thai: "ประวัติงาน",           icon: "📁" },
+      { href: "/contracts",           label: "Warranty Check", thai: "สัญญา / การรับประกัน", icon: "🛡️" },
+      { href: "/assets",              label: "Search SN",      thai: "ค้นหา Serial Number",  icon: "🔍" },
+    ],
+  },
+];
+
 // ─── Badge hook ───────────────────────────────────────────────────────────────
 
 const MANAGER_ROLES = new Set([
@@ -105,7 +146,7 @@ function useBadges(userName: string | undefined, role: string | undefined): Reco
               where("status", "in", openStatuses))
           : query(collection(db, "service_tickets"),
               where("tenant_id", "==", "kmitsurat"),
-              where("assigned_to", "==", userName),
+              where("technician", "==", userName),
               where("status", "in", openStatuses));
 
         const snap = await getDocs(q);
@@ -241,6 +282,10 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
   const { currentUser, logout, hasAccess } = useCurrentUser();
   const badges = useBadges(currentUser?.name, currentUser?.role);
 
+  const role = currentUser?.role ?? "";
+  const isTechSidebar = role === "Service Technician" || role === "service";
+  const sections = isTechSidebar ? TECH_SECTIONS : SECTIONS;
+
   useEffect(() => {
     setActiveTab(new URLSearchParams(window.location.search).get("tab") || "");
   }, [pathname]);
@@ -269,9 +314,9 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
         ${alwaysMobile ? "" : "sm:translate-x-0"}
       `}>
         {/* Header */}
-        <div className="px-4 py-3 relative border-b border-sidebar-hover/40" title="ระบบบริหารงาน KMITSURAT">
+        <div className="px-4 py-3 relative border-b border-sidebar-hover/40" title={isTechSidebar ? "ระบบช่าง Service KMITSURAT" : "ระบบบริหารงาน KMITSURAT"}>
           <h1 className="text-base font-bold tracking-tight text-gradient">KMITSURAT</h1>
-          <p className="text-[10px] text-sidebar-muted/70">Work Portal v1.7</p>
+          <p className="text-[10px] text-sidebar-muted/70">{isTechSidebar ? "🔧 Tech Portal" : "Work Portal v1.7"}</p>
           <button
             onClick={onClose}
             className={`absolute right-3 top-3 w-7 h-7 flex items-center justify-center rounded-md text-sidebar-muted hover:text-sidebar-fg hover:bg-sidebar-hover transition-colors text-sm ${alwaysMobile ? "" : "sm:hidden"}`}
@@ -280,7 +325,7 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
 
         {/* Navigation */}
         <nav className="flex flex-1 flex-col px-2 py-2 overflow-y-auto">
-          {SECTIONS.map(section => (
+          {sections.map(section => (
             <SidebarSection
               key={section.id}
               section={section}

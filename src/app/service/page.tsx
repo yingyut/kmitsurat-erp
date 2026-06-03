@@ -88,16 +88,19 @@ const ALL_STATUSES: ServiceStatus[] = [
 
 // ─── Service view tabs ────────────────────────────────────────────────────────
 
-type ServiceView = "all" | "new" | "doing" | "parts" | "overdue" | "today" | "pm";
+type ServiceView = "all" | "new" | "doing" | "parts" | "overdue" | "today" | "pm" | "sla" | "waiting" | "history";
 
 const VIEWS: Array<{ id: ServiceView; label: string; icon: string }> = [
   { id: "all",     label: "ทั้งหมด",   icon: "📋" },
   { id: "new",     label: "งานใหม่",   icon: "🆕" },
   { id: "doing",   label: "กำลังทำ",  icon: "⚙️" },
-  { id: "parts",   label: "รออะไหล่", icon: "📦" },
-  { id: "overdue", label: "เลย SLA",  icon: "⚠️" },
+  { id: "overdue", label: "งานค้าง",  icon: "⚠️" },
+  { id: "sla",     label: "เกิน SLA",  icon: "🚨" },
   { id: "today",   label: "วันนี้",    icon: "📅" },
-  { id: "pm",      label: "PM",        icon: "🔵" },
+  { id: "pm",      label: "PM วันนี้", icon: "🔵" },
+  { id: "parts",   label: "รออะไหล่", icon: "📦" },
+  { id: "waiting", label: "รอนัด",    icon: "📆" },
+  { id: "history", label: "ย้อนหลัง", icon: "📁" },
 ];
 
 // Quick action buttons per status (Timer system: เปิดงาน→รับงาน→เริ่มงาน→หยุดรอ→ปิดงาน)
@@ -147,12 +150,23 @@ export default function ServicePage() {
       setSvcUsers(u.filter(x => x.active && (x.role === "service" || x.role === "Service Technician" || x.role === "Service Manager")));
     } catch (e) { console.error(e); } finally { setLoading(false); }
   }
-  useEffect(() => { setMounted(true); load(); }, []);
+  useEffect(() => {
+    setMounted(true);
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab") as ServiceView | null;
+    if (tab && VIEWS.some(v => v.id === tab)) setActiveView(tab);
+    load();
+  }, []);
 
   const ownTicketsOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_tickets");
+  const isTechView = ownTicketsOnly;
   const baseTickets = ownTicketsOnly ? list.filter(t => t.technician === currentUser?.name) : list;
   const canSeeFinance = hasPermission("view_finance");
   const custMap = new Map(custs.map(c => [c.id, c]));
+
+  const today  = todayStr();
+  const nowMs  = Date.now();
+  const isActive = (st: ServiceStatus) => !["resolved","closed","cancelled"].includes(st);
 
   const viewBase = (() => {
     switch (activeView) {
@@ -161,8 +175,14 @@ export default function ServicePage() {
       case "parts":   return baseTickets.filter(t => t.status === "waiting_parts");
       case "overdue": return baseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date < today);
       case "today":   return baseTickets.filter(t => t.service_date === today && isActive(t.status));
-      case "pm":      return baseTickets.filter(t => t.type === "pm_service" && isActive(t.status));
-      default:        return baseTickets;
+      case "pm":      return baseTickets.filter(t => t.type === "pm_service" && t.service_date === today);
+      case "sla":     return baseTickets.filter(t => {
+        if (!isActive(t.status) || !t.opened_at) return false;
+        return (nowMs - (parseISO(t.opened_at) || nowMs)) / 3600000 > (t.sla_resolve_hours || 48);
+      });
+      case "waiting": return baseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date > today);
+      case "history": return baseTickets.filter(t => ["resolved","closed"].includes(t.status));
+      default:        return baseTickets.filter(t => isActive(t.status));
     }
   })();
 
@@ -176,8 +196,6 @@ export default function ServicePage() {
   });
 
   // ── Dashboard stats ─────────────────────────────────────────────────────────
-  const today  = todayStr();
-  const isActive = (st: ServiceStatus) => !["resolved","closed","cancelled"].includes(st);
   const overdueList = list.filter(t => t.service_date && t.service_date < today && isActive(t.status));
   const todayList   = list.filter(t => t.service_date === today && isActive(t.status));
   const stats = {
@@ -230,7 +248,6 @@ export default function ServicePage() {
   const ticketsWithResolve = list.filter(t => t.opened_at && t.resolved_at);
   const resolveHours       = ticketsWithResolve.map(t => hoursBetween(t.opened_at, t.resolved_at) ?? 0);
   const avgResolve         = resolveHours.length > 0 ? avg(resolveHours) : null;
-  const nowMs = Date.now();
   const overdueAccept = list.filter(t => {
     if (t.status !== "open" || !t.opened_at) return false;
     const sla = t.sla_response_hours || 4;
@@ -359,8 +376,8 @@ export default function ServicePage() {
   return (
     <div className="p-6">
 
-      {/* ── Job Requests from Sales (unchanged) ── */}
-      {incomingReqs.filter(r => r.status === "pending").length > 0 && (
+      {/* ── Job Requests from Sales (manager only) ── */}
+      {!isTechView && incomingReqs.filter(r => r.status === "pending").length > 0 && (
         <div className="rounded-xl bg-rose-900/10 border border-rose-800/50 p-4 mb-4">
           <h3 className="text-sm font-semibold text-rose-400 mb-2">📥 Job Requests จากทีม Sales ({incomingReqs.filter(r => r.status === "pending").length} รายการรออนุมัติ)</h3>
           <div className="space-y-2">
@@ -387,19 +404,96 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-xl font-bold">🎛️ Service Control Center</h1>
-          <p className="text-xs text-muted">ภาพรวมงานทีม Service — ติดตั้ง · ซ่อม · PM · บริการหลังการขาย</p>
-        </div>
-        <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">
-          {showForm ? "Cancel" : "+ New Ticket"}
-        </button>
-      </div>
+      {/* ── Header — role-aware ── */}
+      {isTechView ? (
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h1 className="text-xl font-bold">🔧 งานของฉัน</h1>
+              <p className="text-xs text-muted">สวัสดี {currentUser?.nickname || currentUser?.name} · งาน Service ที่รับผิดชอบ</p>
+            </div>
+            <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">
+              {showForm ? "Cancel" : "+ New Ticket"}
+            </button>
+          </div>
+          {!loading && (() => {
+            const myActive  = baseTickets.filter(t => isActive(t.status));
+            const myNew     = baseTickets.filter(t => ["open","acknowledged"].includes(t.status));
+            const myDoing   = baseTickets.filter(t => ["traveling","on_site","repair_start","in_progress","resume"].includes(t.status));
+            const myParts   = baseTickets.filter(t => t.status === "waiting_parts");
+            const myToday   = baseTickets.filter(t => t.service_date === today && isActive(t.status));
+            const myOverdue = baseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date < today);
+            const myPm      = baseTickets.filter(t => t.type === "pm_service" && t.service_date === today);
+            const mySla     = baseTickets.filter(t => {
+              if (!isActive(t.status) || !t.opened_at) return false;
+              return (nowMs - (parseISO(t.opened_at) || nowMs)) / 3600000 > (t.sla_resolve_hours || 48);
+            });
+            const myUrgent  = baseTickets.filter(t => isActive(t.status) && (t.priority === "critical" || t.priority === "high"));
+            return (
+              <>
+                {/* Row 1 — Priority actions (ต้องทำทันที) */}
+                <p className="text-[10px] font-semibold text-sidebar-muted uppercase tracking-widest mb-1.5">⚡ ต้องทำทันที</p>
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {([
+                    { id: "today"   as ServiceView, icon: "📅", label: "วันนี้",    v: myToday.length,   cls: "text-amber-400",  bg: "border-amber-800/40 bg-amber-900/10"  },
+                    { id: "overdue" as ServiceView, icon: "⚠️", label: "งานค้าง", v: myOverdue.length, cls: "text-red-400",    bg: "border-red-800/50 bg-red-900/10"      },
+                    { id: "sla"     as ServiceView, icon: "🚨", label: "SLA หลุด", v: mySla.length,    cls: "text-rose-400",   bg: "border-rose-800/50 bg-rose-900/10"    },
+                    { id: "pm"      as ServiceView, icon: "🔵", label: "PM วันนี้", v: myPm.length,    cls: "text-blue-400",   bg: "border-blue-800/40 bg-blue-900/10"    },
+                  ]).map(k => (
+                    <button key={k.id} onClick={() => setActiveView(k.id)}
+                      className={`rounded-xl border p-3 text-left transition-all hover:scale-[1.01] active:scale-100 ${k.v > 0 ? k.bg : "border-border bg-card"} ${activeView === k.id ? "ring-1 ring-accent/60" : ""}`}>
+                      <div className="flex items-center gap-1 mb-0.5">
+                        <span className="text-base leading-none">{k.icon}</span>
+                        <p className={`text-xl font-bold tabular-nums ${k.v > 0 ? k.cls : "text-muted"}`}>{k.v}</p>
+                      </div>
+                      <p className="text-[10px] text-muted">{k.label}</p>
+                    </button>
+                  ))}
+                </div>
 
-      {/* ── Alert Bar — แสดงเมื่อมีงานต้องดูแลด่วน ── */}
-      {!loading && (overdueAccept.length > 0 || overdueList.length > 0 || unassigned.length > 0 || stats.pendingReqs > 0) && (
+                {/* Row 2 — Status overview (informational) */}
+                <p className="text-[10px] font-semibold text-sidebar-muted uppercase tracking-widest mb-1.5">สถานะงานทั้งหมด</p>
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  {([
+                    { icon: "🔧", label: "Active",    v: myActive.length,  cls: "text-accent",     bg: "border-accent/30 bg-accent/5"       },
+                    { icon: "🆕", label: "งานใหม่",  v: myNew.length,     cls: "text-red-400",    bg: "border-red-800/30 bg-red-900/5"     },
+                    { icon: "⚙️", label: "กำลังทำ", v: myDoing.length,   cls: "text-yellow-400", bg: "border-yellow-800/30 bg-yellow-900/5" },
+                    { icon: "📦", label: "รออะไหล่", v: myParts.length,   cls: "text-purple-400", bg: "border-purple-800/30 bg-purple-900/5" },
+                  ]).map(k => (
+                    <div key={k.label} className={`rounded-xl border p-2.5 ${k.v > 0 ? k.bg : "border-border bg-card"}`}>
+                      <p className={`text-lg font-bold tabular-nums ${k.v > 0 ? k.cls : "text-muted"}`}>{k.v}</p>
+                      <p className="text-[10px] text-muted mt-0.5">{k.icon} {k.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Alert strip for urgent + SLA breach */}
+                {(myUrgent.length > 0 || mySla.length > 0 || myOverdue.length > 0) && (
+                  <div className="rounded-xl border border-red-800/50 bg-red-900/10 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                    <span className="text-xs font-bold text-red-400 shrink-0">⚡ ด่วน</span>
+                    {myUrgent.length > 0 && <span className="text-xs font-semibold text-red-300">🔴 {myUrgent.length} งานด่วน/วิกฤต</span>}
+                    {mySla.length > 0 && <span className="text-xs font-semibold text-rose-400">🚨 {mySla.length} เกิน SLA</span>}
+                    {myOverdue.length > 0 && <span className="text-xs font-semibold text-amber-400">⚠ {myOverdue.length} เลยกำหนด</span>}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      ) : (
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h1 className="text-xl font-bold">🎛️ Service Control Center</h1>
+            <p className="text-xs text-muted">ภาพรวมงานทีม Service — ติดตั้ง · ซ่อม · PM · บริการหลังการขาย</p>
+          </div>
+          <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">
+            {showForm ? "Cancel" : "+ New Ticket"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Alert Bar (manager only) ── */}
+      {!loading && !isTechView && (overdueAccept.length > 0 || overdueList.length > 0 || unassigned.length > 0 || stats.pendingReqs > 0) && (
         <div className="rounded-xl border border-red-800/50 bg-red-900/10 px-4 py-3 mb-4 flex flex-wrap items-center gap-x-5 gap-y-2">
           <span className="text-xs font-bold text-red-400 shrink-0">⚡ ต้องดูแลทันที</span>
           {overdueAccept.length > 0 && (
@@ -414,8 +508,8 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── KPI Grid (8 tiles: 2 rows × 4) ── */}
-      {!loading && (
+      {/* ── KPI Grid (manager only) ── */}
+      {!loading && !isTechView && (
         <div className="grid grid-cols-4 gap-2 mb-4">
           {/* Row 1: Status filters (clickable) */}
           {([
@@ -451,8 +545,8 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── Main 3-column Grid ── */}
-      {!loading && (
+      {/* ── Main 3-column Grid (manager only) ── */}
+      {!loading && !isTechView && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
 
           {/* Col 1: ภาระงานต่อช่าง */}
@@ -563,8 +657,8 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── Urgent & Schedule Details (2 columns) ── */}
-      {!loading && (overdueList.length > 0 || overdueAccept.length > 0 || todayList.length > 0 || pmUpcoming.length > 0) && (
+      {/* ── Urgent & Schedule Details (manager only) ── */}
+      {!loading && !isTechView && (overdueList.length > 0 || overdueAccept.length > 0 || todayList.length > 0 || pmUpcoming.length > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
 
           {/* Left: งานค้าง / เลยกำหนด */}
@@ -644,8 +738,8 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── Advanced Stats Toggles — Revenue gated behind view_finance permission ── */}
-      {!loading && list.length > 0 && (
+      {/* ── Advanced Stats Toggles (manager only) ── */}
+      {!loading && !isTechView && list.length > 0 && (
         <div className="flex flex-wrap gap-3 mb-3">
           {/* Revenue toggle — ซ่อนสำหรับ technician / ไม่มีสิทธิ์การเงิน */}
           {canSeeFinance && <button onClick={() => setShowRevenue(v => !v)}
@@ -666,8 +760,8 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── Revenue / Profit Section (HIDDEN BY DEFAULT — ห้ามลบโค้ด) ── */}
-      {!loading && list.length > 0 && showRevenue && (
+      {/* ── Revenue / Profit Section (manager only — HIDDEN BY DEFAULT) ── */}
+      {!loading && !isTechView && list.length > 0 && showRevenue && (
         <div className="rounded-xl bg-purple-900/10 border border-purple-800/40 p-3 mb-4">
           <div className="flex items-center justify-between mb-2">
             <div>
@@ -701,8 +795,8 @@ export default function ServicePage() {
         </div>
       )}
 
-      {/* ── SLA Analysis Detail Section (HIDDEN BY DEFAULT — ห้ามลบโค้ด) ── */}
-      {!loading && list.length > 0 && showSlaDetail && (
+      {/* ── SLA Analysis Detail Section (manager only — HIDDEN BY DEFAULT) ── */}
+      {!loading && !isTechView && list.length > 0 && showSlaDetail && (
         <div className="rounded-xl bg-rose-900/10 border border-rose-800/40 p-3 mb-4">
           <p className="text-xs font-semibold text-rose-300 mb-3">⏱️ Delay Analysis รายละเอียด (ความล่าช้า + SLA) — ใช้ทำแผนพัฒนา</p>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-3">
@@ -799,13 +893,16 @@ export default function ServicePage() {
         {VIEWS.map(v => {
           const count = (() => {
             switch (v.id) {
-              case "all":     return baseTickets.length;
+              case "all":     return baseTickets.filter(t => isActive(t.status)).length;
               case "new":     return baseTickets.filter(t => ["open","acknowledged"].includes(t.status)).length;
               case "doing":   return baseTickets.filter(t => ["traveling","on_site","repair_start","in_progress","resume"].includes(t.status)).length;
               case "parts":   return baseTickets.filter(t => t.status === "waiting_parts").length;
               case "overdue": return baseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date < today).length;
+              case "sla":     return baseTickets.filter(t => { if (!isActive(t.status) || !t.opened_at) return false; return (nowMs - (parseISO(t.opened_at) || nowMs)) / 3600000 > (t.sla_resolve_hours || 48); }).length;
               case "today":   return baseTickets.filter(t => t.service_date === today && isActive(t.status)).length;
-              case "pm":      return baseTickets.filter(t => t.type === "pm_service" && isActive(t.status)).length;
+              case "pm":      return baseTickets.filter(t => t.type === "pm_service" && t.service_date === today).length;
+              case "waiting": return baseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date > today).length;
+              case "history": return baseTickets.filter(t => ["resolved","closed"].includes(t.status)).length;
               default:        return 0;
             }
           })();
@@ -822,6 +919,7 @@ export default function ServicePage() {
                   isActive2 ? "bg-accent text-white" :
                   v.id === "overdue" ? "bg-red-500/20 text-red-400" :
                   v.id === "new"     ? "bg-red-500/20 text-red-400" :
+                  v.id === "sla"     ? "bg-red-500/20 text-red-400" :
                   v.id === "parts"   ? "bg-purple-500/20 text-purple-400" :
                   "bg-muted/20 text-muted"
                 }`}>{count}</span>

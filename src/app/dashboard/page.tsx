@@ -198,6 +198,7 @@ function SortableWidget({ id, span, editMode, onToggleVisible, onToggleSpan, lab
 export default function DashboardPage() {
   const { currentUser, hasPermission } = useCurrentUser();
   const isAdmin = ["admin", "Administrator"].includes(currentUser?.role ?? "");
+  const canSeeFinanceDash = hasPermission("view_finance");
 
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -411,7 +412,7 @@ export default function DashboardPage() {
   const myRole = currentUser?.role ?? "";
   const isSalesRole = ["sale","avenger","Sales Executive","Sales Manager","Branch Manager"].includes(myRole) && !seeAll;
   const isPresaleRole = ["presale","Presales Manager","Presales"].includes(myRole) && !seeAll;
-  const isServiceRole = ["service","Service Engineer","Service Manager"].includes(myRole) && !seeAll;
+  const isServiceRole = ["service","Service Engineer","Service Manager","Service Technician"].includes(myRole) && !seeAll;
   // Sales alerts — always shown (sc.sales is already user-scoped)
   if (salesOverdue.length > 0) alerts.push({ id:"so", msg:`Sales overdue ${salesOverdue.length} รายการ — ติดตามลูกค้าด่วน`, level:"red", href:"/sales" });
   // Presale alerts — only for presale/admin roles
@@ -432,9 +433,9 @@ export default function DashboardPage() {
     const pmDue = assets.filter(a => { const d = dayDiff(a.pm_next_date); return d !== null && d < 0; });
     if (pmDue.length > 0) alerts.push({ id:"pmd", msg:`${pmDue.length} อุปกรณ์ PM เลยกำหนดแล้ว — สร้าง PM Ticket`, level:"red", href:"/assets/pm-schedule" });
   }
-  // Quotation draft — always shown (sc.quots is already user-scoped)
+  // Quotation draft — hide for service roles (they can't access /quotations)
   const draftQ = sc.quots.filter(q => q.status === "draft").length;
-  if (draftQ > 0) alerts.push({ id:"dq", msg:`${draftQ} ใบเสนอราคา Draft รอส่ง`, level:"green", href:"/quotations" });
+  if (!isServiceRole && draftQ > 0) alerts.push({ id:"dq", msg:`${draftQ} ใบเสนอราคา Draft รอส่ง`, level:"green", href:"/quotations" });
 
   // ── Quarterly comparison ──────────────────────────────────────────────────────
   function getQuarterOf(monthStr: string): 1|2|3|4 {
@@ -1588,6 +1589,218 @@ export default function DashboardPage() {
       );
     }
 
+    // ── SERVICE TEAM OVERVIEW ─────────────────────────────────────────────────
+    if (id === "svc-team-overview") {
+      const viewAll = hasPermission("view_all_tickets");
+      const allTix = viewAll ? service : sc.service;
+      const techNames = [...new Set(allTix.filter(t => t.technician).map(t => t.technician!))] as string[];
+      const teamRows = techNames.map(techName => {
+        const mine = allTix.filter(t => t.technician === techName);
+        const done = mine.filter(t => ["resolved","closed"].includes(t.status));
+        const active = mine.filter(t => !["resolved","closed","cancelled"].includes(t.status));
+        const overdueT = mine.filter(t => !["resolved","closed","cancelled"].includes(t.status) && t.service_date && t.service_date < today);
+        const closedWithTime = done.filter(t => t.opened_at && (t.resolved_at || t.closed_at));
+        const avgCloseMs = closedWithTime.length > 0
+          ? closedWithTime.reduce((sum, t) => sum + Math.max(0, new Date((t.resolved_at || t.closed_at)!).getTime() - new Date(t.opened_at!).getTime()), 0) / closedWithTime.length
+          : 0;
+        const avgCloseDays = avgCloseMs > 0 ? (avgCloseMs / 86400000).toFixed(1) : "—";
+        const custCount: Record<string, number> = {};
+        mine.forEach(t => { const k = t.customer_name || t.customer_id; custCount[k] = (custCount[k] || 0) + 1; });
+        const rework = Object.values(custCount).filter(c => c > 1).length;
+        const slaOk = mine.length > 0 ? Math.round(done.length / mine.length * 100) : 100;
+        return { techName, shortName: techName.split(" ")[0], total: mine.length, active: active.length, done: done.length, overdue: overdueT.length, slaOk, avgCloseDays, rework };
+      }).sort((a, b) => b.active - a.active);
+
+      return (
+        <Section title="👥 ภาพรวมทีม Service (รายช่าง)" action={<Link href="/service" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>}>
+          {teamRows.length === 0 ? <p className="text-xs text-muted py-4">ยังไม่มีข้อมูลช่าง</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[480px]">
+                <thead>
+                  <tr className="text-left text-[10px] text-muted border-b border-border uppercase tracking-wide">
+                    <th className="pb-2 font-medium">ช่าง</th>
+                    <th className="pb-2 font-medium text-center">Active</th>
+                    <th className="pb-2 font-medium text-center">เสร็จ</th>
+                    <th className="pb-2 font-medium text-center">ค้างกำหนด</th>
+                    <th className="pb-2 font-medium text-center">SLA%</th>
+                    <th className="pb-2 font-medium text-center">เฉลี่ย (วัน)</th>
+                    <th className="pb-2 font-medium text-center">Rework</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {teamRows.map(r => (
+                    <tr key={r.techName} className="hover:bg-card-hover transition-colors">
+                      <td className="py-2.5 font-medium">{r.shortName}</td>
+                      <td className="py-2.5 text-center">
+                        <span className={`font-bold ${r.active > 4 ? "text-red-500" : r.active > 2 ? "text-amber-500" : r.active > 0 ? "text-blue-500" : "text-muted"}`}>{r.active}</span>
+                      </td>
+                      <td className="py-2.5 text-center text-green-500 font-medium">{r.done}</td>
+                      <td className="py-2.5 text-center">
+                        <span className={r.overdue > 0 ? "text-red-500 font-bold" : "text-muted"}>{r.overdue || "—"}</span>
+                      </td>
+                      <td className="py-2.5 text-center">
+                        <span className={r.slaOk >= 80 ? "text-green-500" : r.slaOk >= 60 ? "text-amber-500" : "text-red-500"}>{r.slaOk}%</span>
+                      </td>
+                      <td className="py-2.5 text-center text-muted">{r.avgCloseDays}</td>
+                      <td className="py-2.5 text-center">
+                        {r.rework > 0
+                          ? <span className="text-amber-500 font-medium">{r.rework}</span>
+                          : <span className="text-muted">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="flex gap-4 text-[10px] text-muted mt-2 px-1">
+                <span>Active = งานที่ยังไม่ปิด</span>
+                <span>·</span>
+                <span>Rework = ลูกค้าที่เปิด ticket ซ้ำ</span>
+              </div>
+            </div>
+          )}
+        </Section>
+      );
+    }
+
+    if (id === "svc-time-analysis") {
+      const durMs = (start?: string, end?: string): number | null => {
+        if (!start || !end) return null;
+        const ms = new Date(end).getTime() - new Date(start).getTime();
+        return ms > 0 ? ms : null;
+      };
+      const avgMs = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const toH = (ms: number) => (ms / 3600000).toFixed(1);
+
+      const closedTix = service.filter(t => ["resolved","closed"].includes(t.status));
+      const responseMsList = closedTix.map(t => durMs(t.opened_at || t.service_date, t.accepted_at || t.acknowledged_at)).filter((ms): ms is number => ms !== null);
+      const travelMsList   = closedTix.map(t => durMs(t.traveling_at || t.accepted_at, t.on_site_at)).filter((ms): ms is number => ms !== null);
+      const repairMsList   = closedTix.map(t => {
+        const start = t.repair_start_at || t.on_site_at || t.started_at;
+        const end = t.resolved_at || t.closed_at;
+        const total = durMs(start, end);
+        if (!total) return null;
+        const partsWait = durMs(t.waiting_parts_at, t.resume_at);
+        return total - (partsWait || 0);
+      }).filter((ms): ms is number => ms !== null && ms > 0);
+      const partsMsList    = closedTix.map(t => durMs(t.waiting_parts_at, t.resume_at || t.resolved_at)).filter((ms): ms is number => ms !== null);
+
+      const avgResponseMs = avgMs(responseMsList);
+      const avgTravelMs   = avgMs(travelMsList);
+      const avgRepairMs   = avgMs(repairMsList);
+      const avgPartsMs    = avgMs(partsMsList);
+      const totalAvgMs    = avgResponseMs + avgTravelMs + avgRepairMs + avgPartsMs;
+
+      const phases = [
+        { label:"ตอบรับ",   sub:"opened→accepted",  ms:avgResponseMs, color:"bg-blue-500"   },
+        { label:"เดินทาง",  sub:"travel→on site",   ms:avgTravelMs,   color:"bg-violet-500" },
+        { label:"ซ่อมงาน", sub:"start→resolved",   ms:avgRepairMs,   color:"bg-amber-500"  },
+        { label:"รออะไหล่", sub:"wait→resume",      ms:avgPartsMs,    color:"bg-rose-500"   },
+      ].filter(p => p.ms > 0);
+      const maxMs = Math.max(...phases.map(p => p.ms), 1);
+
+      const activeTix = service.filter(t => !["resolved","closed","cancelled"].includes(t.status));
+      const aging = { d1:0, d3:0, d7:0, dLong:0 };
+      activeTix.forEach(t => {
+        const d = Math.max(0, Math.floor((Date.now() - new Date(t.opened_at || t.service_date).getTime()) / 86400000));
+        if (d <= 1) aging.d1++; else if (d <= 3) aging.d3++; else if (d <= 7) aging.d7++; else aging.dLong++;
+      });
+
+      return (
+        <Section title="⏱️ วิเคราะห์เวลาการทำงาน" action={<span className="text-[10px] text-muted">{closedTix.length} tickets ปิดแล้ว</span>}>
+          <div className="space-y-2 mb-4">
+            {phases.length === 0
+              ? <p className="text-xs text-muted">ยังไม่มีข้อมูล timestamp — บันทึกสถานะในใบงานเพื่อเริ่มเก็บข้อมูล</p>
+              : phases.map(p => (
+                <div key={p.label} className="flex items-center gap-3">
+                  <div className="w-16 shrink-0">
+                    <p className="text-xs font-medium">{p.label}</p>
+                    <p className="text-[9px] text-muted">{p.sub}</p>
+                  </div>
+                  <div className="flex-1 h-5 bg-background rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${p.color} opacity-80 flex items-center px-2`}
+                      style={{ width:`${Math.max(p.ms / maxMs * 100, 8)}%` }}
+                    >
+                      <span className="text-[10px] text-white font-medium whitespace-nowrap">{toH(p.ms)}h</span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+          {totalAvgMs > 0 && (
+            <div className="rounded-xl bg-background border border-border/50 p-3 text-center mb-4">
+              <p className="text-[10px] text-muted">เวลาปิดงานเฉลี่ยรวม</p>
+              <p className="text-2xl font-bold mt-0.5">{toH(totalAvgMs)} ชม.</p>
+            </div>
+          )}
+          <div className="border-t border-border pt-3">
+            <p className="text-[11px] text-muted uppercase tracking-widest mb-2">อายุ Ticket ที่ยังค้างอยู่</p>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label:"≤1 วัน",  v:aging.d1,    c:"text-green-500", bg:"bg-green-500/10 border-green-500/25" },
+                { label:"2-3 วัน", v:aging.d3,    c:"text-blue-500",  bg:"bg-blue-500/10 border-blue-500/25"  },
+                { label:"4-7 วัน", v:aging.d7,    c:"text-amber-500", bg:"bg-amber-500/10 border-amber-500/25"},
+                { label:">7 วัน",  v:aging.dLong, c:"text-red-500",   bg:"bg-red-500/10 border-red-500/25"   },
+              ].map(b => (
+                <div key={b.label} className={`rounded-xl border p-2 text-center ${b.bg}`}>
+                  <p className={`text-xl font-bold ${b.c}`}>{b.v}</p>
+                  <p className="text-[10px] text-muted">{b.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Section>
+      );
+    }
+
+    if (id === "svc-cost-dashboard") {
+      if (!canSeeFinanceDash) return (
+        <Section title="💰 รายรับ / ต้นทุน Service">
+          <p className="text-xs text-muted py-6 text-center">ต้องการสิทธิ์ finance เพื่อดูข้อมูล</p>
+        </Section>
+      );
+      const closedFin = service.filter(t => ["resolved","closed"].includes(t.status) && (t.service_value || t.service_cost || t.gross_profit));
+      const totalValue = closedFin.reduce((s, t) => s + (t.service_value || 0), 0);
+      const totalCost  = closedFin.reduce((s, t) => s + (t.service_cost  || 0), 0);
+      const totalGP    = closedFin.reduce((s, t) => s + (t.gross_profit  || 0), 0);
+      const totalHours = service.filter(t => t.hours_spent).reduce((s, t) => s + (t.hours_spent || 0), 0);
+      const avgGP      = closedFin.length > 0 ? totalGP / closedFin.length : 0;
+      const gpPctSvc   = totalValue > 0 ? (totalGP / totalValue * 100) : 0;
+      const hoursJobs  = service.filter(t => t.hours_spent).length;
+      const avgHours   = hoursJobs > 0 ? totalHours / hoursJobs : 0;
+      return (
+        <Section title="💰 รายรับ / ต้นทุน Service" action={<span className="text-[10px] text-muted">{closedFin.length} งานมีข้อมูล</span>}>
+          {closedFin.length === 0 ? (
+            <p className="text-xs text-muted py-4">ยังไม่มีข้อมูล — กรอกรายรับ/ต้นทุนในใบงานเมื่อปิดงาน</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <KpiCard size="sm" label="รายรับ Service" value={totalValue>0?`${(totalValue/1000).toFixed(0)}K`:"—"} sub="THB" color="green" />
+                <KpiCard size="sm" label="ต้นทุนรวม" value={totalCost>0?`${(totalCost/1000).toFixed(0)}K`:"—"} sub="THB" color={totalCost>totalValue?"red":"amber"} />
+                <KpiCard size="sm" label="กำไร GP" value={totalGP>0?`${(totalGP/1000).toFixed(0)}K`:"—"} sub={`GP ${gpPctSvc.toFixed(1)}%`} color={gpPctSvc>=20?"green":gpPctSvc>=10?"amber":totalGP>0?"red":"muted"} pct={gpPctSvc} />
+                <KpiCard size="sm" label="เฉลี่ย/Job" value={avgGP>0?`${(avgGP).toFixed(0)}`:"—"} sub="GP ต่อใบงาน" color="cyan" />
+              </div>
+              {totalHours > 0 && (
+                <div className="rounded-xl bg-background border border-border/50 p-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] text-muted">ชั่วโมงทำงานรวม</p>
+                    <p className="text-lg font-bold">{totalHours.toFixed(1)} ชม.</p>
+                  </div>
+                  {avgHours > 0 && (
+                    <div className="text-right">
+                      <p className="text-[10px] text-muted">เฉลี่ย/Job</p>
+                      <p className="text-lg font-bold">{avgHours.toFixed(1)} ชม.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </Section>
+      );
+    }
+
     return null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1598,8 +1811,8 @@ export default function DashboardPage() {
     qtDraft, qtSent, qtApproved, qtRejected, approvedGP, approvedTotal,
     prTotal, prPending, prInProg, prDone, pmOverdue, pmDue30, filtPresale, filtSales, filtService,
     fyYear, fyEndYear, activeContracts.length, wonCount, totalDeals, convRate,
-    topExpiring, service.length, svcOpen, svcInProg, svcDone,
-    jobRequests, contracts,
+    topExpiring, service, svcOpen, svcInProg, svcDone,
+    jobRequests, contracts, canSeeFinanceDash, hasPermission, sc.service,
   ]);
 
   if (!mounted) return <div className="p-6 text-muted text-sm">Loading...</div>;
@@ -1734,8 +1947,8 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── HERO KPI STRIP — ซ่อนสำหรับ sales view ส่วนตัว (person card ครอบคลุมแล้ว) ── */}
-        {showHeroKpiStrip && !(view === "sales" && !seeAll) && (
+        {/* ── HERO KPI STRIP — ซ่อนสำหรับ sales view ส่วนตัว และ service roles ── */}
+        {showHeroKpiStrip && !(view === "sales" && !seeAll) && !isServiceRole && (
           <div className="grid grid-cols-4 gap-2">
             <KpiCard size="sm" label="ยอดขาย" value={`${(actual/1e6).toFixed(1)}M`} sub={`THB`} color="green" href="/sales" pct={targetPct} />
             <KpiCard size="sm" label="Achievement" value={`${targetPct.toFixed(0)}%`} sub={`${(actual/1000).toFixed(0)}K/${(target/1000).toFixed(0)}K`} color={targetPct>=80?"green":targetPct>=50?"amber":"red"} pct={targetPct} href="/reports" />
