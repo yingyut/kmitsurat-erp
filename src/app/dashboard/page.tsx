@@ -88,24 +88,36 @@ function AlertRow({ level, msg, href }: { level: "red" | "orange" | "green"; msg
 function Section({ title, action, children, defaultOpen = true }: {
   title: string; action?: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const storageKey = `dash_col_${title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 50)}`;
+  const [open, setOpen] = useState(() => {
+    try { const s = localStorage.getItem(storageKey); return s === null ? defaultOpen : s === "1"; }
+    catch { return defaultOpen; }
+  });
+  function toggle() {
+    setOpen(v => {
+      const next = !v;
+      try { localStorage.setItem(storageKey, next ? "1" : "0"); } catch {}
+      return next;
+    });
+  }
   const onHide = useContext(HideCtx);
   return (
     <div className="rounded-xl bg-card border border-border/70 overflow-hidden h-full">
       <div className="flex items-center px-4 py-3 border-b border-border/40 gap-2">
-        <button onClick={() => setOpen(v => !v)} className="flex-1 text-left min-w-0">
+        <button onClick={toggle} className="flex-1 text-left min-w-0">
           <span className="text-sm font-semibold text-foreground/90">{title}</span>
         </button>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {action}
           {onHide && (
             <button
               onClick={e => { e.stopPropagation(); onHide(); }}
-              title="ซ่อน"
-              className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[11px] text-muted hover:text-orange-400 hover:bg-orange-950/30 transition-all"
+              title="ซ่อนออกจาก Dashboard (ไปที่ ⚙️ Edit เพื่อเปิดคืน)"
+              className="w-5 h-5 rounded flex items-center justify-center text-[11px] text-muted/40 hover:text-orange-400 hover:bg-orange-950/30 transition-all"
             >✕</button>
           )}
-          <button onClick={() => setOpen(v => !v)} className="text-muted/50 text-[10px] w-5 h-5 flex items-center justify-center hover:text-foreground transition-colors">
+          <button onClick={toggle} title={open ? "ย่อ" : "ขยาย"}
+            className="text-muted/40 text-[10px] w-5 h-5 flex items-center justify-center hover:text-foreground transition-colors">
             {open ? "▲" : "▼"}
           </button>
         </div>
@@ -124,7 +136,7 @@ function KpiCardWidget({ children }: { children: React.ReactNode }) {
         <button
           onClick={e => { e.stopPropagation(); onHide(); }}
           title="ซ่อน"
-          className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-[11px] text-muted hover:text-orange-400 hover:bg-orange-950/30 bg-card/80 transition-all"
+          className="absolute top-2 right-2 z-10 w-5 h-5 rounded flex items-center justify-center text-[11px] text-muted/40 hover:text-orange-400 hover:bg-orange-950/30 bg-card/80 transition-all"
         >✕</button>
       )}
       {children}
