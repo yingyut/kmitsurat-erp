@@ -364,7 +364,12 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
 
   const role = currentUser?.role ?? "";
   const isTechSidebar = role === "Service Technician" || role === "service";
-  const sections = isTechSidebar ? TECH_SECTIONS : SECTIONS;
+  const isServiceOnlyRole = role === "Service Manager";
+  const SERVICE_HIDDEN_IDS = new Set(["sales", "presale", "admin"]);
+  const baseSections = isTechSidebar ? TECH_SECTIONS : SECTIONS;
+  const sections = isServiceOnlyRole
+    ? baseSections.filter(s => !SERVICE_HIDDEN_IDS.has(s.id))
+    : baseSections;
 
   useEffect(() => {
     setActiveTab(new URLSearchParams(window.location.search).get("tab") || "");
