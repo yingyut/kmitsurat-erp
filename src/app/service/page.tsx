@@ -119,6 +119,153 @@ function getQuickActions(status: ServiceStatus): Array<{ status: ServiceStatus; 
   }
 }
 
+// ─── Status Update Modal ─────────────────────────────────────────────────────
+
+type PendingFile = { name: string; dataUrl: string; fileType: "photo" | "document" };
+
+async function compressImage(file: File): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1200;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.72));
+    };
+    img.src = url;
+  });
+}
+
+function StatusUpdateModal({
+  ticket, newStatus, onConfirm, onCancel,
+}: {
+  ticket: ServiceTicket;
+  newStatus: ServiceStatus;
+  onConfirm: (note: string, files: PendingFile[]) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [note, setNote] = useState("");
+  const [files, setFiles] = useState<PendingFile[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  async function addFiles(e: React.ChangeEvent<HTMLInputElement>, kind: "photo" | "document") {
+    const list = Array.from(e.target.files ?? []);
+    const added: PendingFile[] = [];
+    for (const f of list) {
+      const isImg = f.type.startsWith("image/");
+      let dataUrl: string;
+      if (isImg) {
+        dataUrl = await compressImage(f);
+      } else {
+        dataUrl = await new Promise(res => {
+          const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(f);
+        });
+      }
+      added.push({ name: f.name, dataUrl, fileType: isImg ? "photo" : kind });
+    }
+    setFiles(prev => [...prev, ...added]);
+    e.target.value = "";
+  }
+
+  async function confirm() {
+    setSaving(true);
+    await onConfirm(note, files);
+    setSaving(false);
+  }
+
+  const label = statusLabel[newStatus] || newStatus;
+  const icon  = statusIcon[newStatus]  || "⚙️";
+  const color = statusColor[newStatus] || "bg-card text-muted";
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl my-4">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div>
+            <p className="text-[11px] text-muted mb-1">อัปเดตสถานะ — {ticket.customer_name}</p>
+            <span className={`rounded-full px-3 py-1 text-xs font-bold ${color}`}>{icon} {label}</span>
+          </div>
+          <button onClick={onCancel} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-card-hover text-muted hover:text-foreground transition-colors">✕</button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Memo */}
+          <div>
+            <label className="text-[10px] font-semibold text-muted uppercase tracking-widest block mb-1.5">📝 บันทึก / Memo</label>
+            <textarea value={note} onChange={e => setNote(e.target.value)}
+              placeholder="ระบุสิ่งที่พบ, ขั้นตอนที่ทำ, หรือหมายเหตุ..."
+              rows={3}
+              className="w-full rounded-xl bg-background border border-border px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none" />
+          </div>
+
+          {/* Upload buttons */}
+          <div>
+            <label className="text-[10px] font-semibold text-muted uppercase tracking-widest block mb-1.5">📎 แนบไฟล์ / รูปภาพ</label>
+            <div className="flex gap-2">
+              <label className="flex-1 cursor-pointer rounded-xl border border-dashed border-border hover:border-accent/60 px-3 py-3 text-xs text-muted text-center transition-colors hover:bg-accent/5 flex flex-col items-center gap-1">
+                <span className="text-xl">📷</span>
+                <span>ถ่าย / เลือกรูป</span>
+                <input type="file" accept="image/*" capture="environment" multiple className="hidden"
+                  onChange={e => addFiles(e, "photo")} />
+              </label>
+              <label className="flex-1 cursor-pointer rounded-xl border border-dashed border-border hover:border-accent/60 px-3 py-3 text-xs text-muted text-center transition-colors hover:bg-accent/5 flex flex-col items-center gap-1">
+                <span className="text-xl">📄</span>
+                <span>แนบไฟล์เอกสาร</span>
+                <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip" multiple className="hidden"
+                  onChange={e => addFiles(e, "document")} />
+              </label>
+            </div>
+          </div>
+
+          {/* Previews */}
+          {files.length > 0 && (
+            <div>
+              <p className="text-[10px] text-muted mb-1.5">ไฟล์ที่จะแนบ ({files.length})</p>
+              <div className="flex flex-wrap gap-2">
+                {files.map((f, i) => (
+                  <div key={i} className="relative group">
+                    {f.fileType === "photo"
+                      ? <img src={f.dataUrl} alt={f.name} className="w-16 h-16 object-cover rounded-lg border border-border" />
+                      : <div className="w-16 h-16 rounded-lg border border-border bg-background flex flex-col items-center justify-center gap-0.5 p-1">
+                          <span className="text-xl">📄</span>
+                          <span className="text-[8px] text-muted truncate w-full text-center leading-tight">{f.name}</span>
+                        </div>
+                    }
+                    <button onClick={() => setFiles(p => p.filter((_, j) => j !== i))}
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] hidden group-hover:flex items-center justify-center shadow">✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 px-5 pb-5">
+          <button onClick={onCancel} disabled={saving}
+            className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm text-muted hover:bg-card-hover transition-colors disabled:opacity-50">
+            ยกเลิก
+          </button>
+          <button onClick={confirm} disabled={saving}
+            className="flex-[2] rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
+            {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+            {saving ? "กำลังบันทึก..." : "✓ ยืนยันอัปเดต"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DocLinkAdder({ onAdd }: { onAdd: (link: { label: string; url: string }) => void }) {
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
@@ -167,6 +314,7 @@ export default function ServicePage() {
   const [rptDateTo,   setRptDateTo]   = useState("");
   const [rptTech,     setRptTech]     = useState("");
   const [rptStatus,   setRptStatus]   = useState("");
+  const [pendingChange, setPendingChange] = useState<{ ticket: ServiceTicket; newStatus: ServiceStatus } | null>(null);
   const [openSect, setOpenSect] = useState<Record<string,boolean>>({});
   function toggleSect(k: string) { setOpenSect(v => ({ ...v, [k]: !v[k] })); }
   function sectOpen(k: string, def = true) { return k in openSect ? openSect[k] : def; }
@@ -529,6 +677,26 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
   }
 
   // ── Handler functions (unchanged) ────────────────────────────────────────────
+  async function confirmStatusChange(note: string, files: PendingFile[]) {
+    if (!pendingChange) return;
+    const { ticket, newStatus } = pendingChange;
+    await changeStatus(ticket, newStatus, undefined, note || undefined);
+    if (files.length > 0) {
+      const { serviceAttachments } = await import("@/lib/firestore");
+      await Promise.all(files.map(f =>
+        serviceAttachments.add({
+          ticket_id: ticket.id!,
+          type: f.fileType === "photo" ? "photo" : "document",
+          name: f.name,
+          url: f.dataUrl,
+          notes: note.trim(),
+          created_by: currentUser?.name || "",
+        })
+      ));
+    }
+    setPendingChange(null);
+  }
+
   function selectCust(id: string) { const c = custs.find((x) => x.id === id); setForm(f => ({ ...f, customer_id: id, customer_name: c?.company_name || "", asset_id: "", km_number: "" })); }
   function selectProj(id: string) { const p = projs.find((x) => x.id === id); setForm(f => ({ ...f, project_id: id, project_name: p?.name || "" })); }
   function selectAsset(id: string) {
@@ -1908,13 +2076,22 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
       </div>
 
       {/* ── Ticket Detail Drawer ── */}
+      {pendingChange && (
+        <StatusUpdateModal
+          ticket={pendingChange.ticket}
+          newStatus={pendingChange.newStatus}
+          onConfirm={confirmStatusChange}
+          onCancel={() => setPendingChange(null)}
+        />
+      )}
+
       {selectedTicket && (
         <ServiceTicketDetail
           ticket={selectedTicket}
           allTickets={list}
           currentUserName={currentUser?.name || ""}
           onClose={() => setSelectedTicket(null)}
-          onStatusChange={(t, s) => changeStatus(t, s)}
+          onStatusChange={(t, s) => setPendingChange({ ticket: t, newStatus: s })}
         />
       )}
 
@@ -2025,7 +2202,7 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50">
                   <div className="flex gap-1.5 flex-wrap">
                     {quickActions.map(a => (
-                      <button key={a.status} onClick={() => changeStatus(t, a.status)}
+                      <button key={a.status} onClick={() => setPendingChange({ ticket: t, newStatus: a.status })}
                         className={`text-[11px] rounded-lg px-2.5 py-1 transition-colors ${
                           a.primary
                             ? "bg-accent text-white hover:bg-accent-hover"
@@ -2033,7 +2210,7 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                         }`}>{a.label}</button>
                     ))}
                     {quickActions.length === 0 && (
-                      <select value={t.status} onChange={(e) => changeStatus(t, e.target.value as ServiceStatus)}
+                      <select value={t.status} onChange={(e) => setPendingChange({ ticket: t, newStatus: e.target.value as ServiceStatus })}
                         className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${statusColor[t.status]}`}>
                         {ALL_STATUSES.map(s => <option key={s} value={s}>{statusIcon[s]} {statusLabel[s]}</option>)}
                       </select>
