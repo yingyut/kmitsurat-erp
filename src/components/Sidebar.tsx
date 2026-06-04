@@ -306,10 +306,10 @@ const SIDEBAR_THEMES = [
 ];
 
 function ThemeSwitcher({ userId }: { userId?: string }) {
-  const [current, setCurrent] = useState("midnight");
+  const [current, setCurrent] = useState("snow");
 
   useEffect(() => {
-    try { setCurrent(localStorage.getItem("kmit_theme") || "midnight"); } catch {}
+    try { setCurrent(localStorage.getItem("kmit_theme") || "snow"); } catch {}
   }, []);
 
   function switchTheme(id: string) {

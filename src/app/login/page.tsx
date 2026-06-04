@@ -14,7 +14,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     setMounted(true);
-    try { const theme = localStorage.getItem("kmit_theme") || "midnight"; document.documentElement.setAttribute("data-theme", theme); } catch {}
+    try { const theme = localStorage.getItem("kmit_theme") || "snow"; document.documentElement.setAttribute("data-theme", theme); } catch {}
   }, []);
 
   async function handleLogin(e: React.FormEvent) {

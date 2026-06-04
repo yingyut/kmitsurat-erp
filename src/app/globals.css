@@ -1,10 +1,33 @@
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════
-   THEME: Midnight (Default) — inspired by Linear/Vercel
+   THEME: Snow (Default) — inspired by Apple/Stripe
+   Clean white with blue accent
+   ═══════════════════════════════════════════════ */
+:root {
+  --background: #fafafa;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-hover: #f5f5f5;
+  --border: #d4d4d4;
+  --accent: #2563eb;
+  --accent-hover: #3b82f6;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --muted: #6b7280;
+  --glow: rgba(37, 99, 235, 0.08);
+  --sidebar: var(--card);
+  --sidebar-fg: var(--foreground);
+  --sidebar-hover: var(--card-hover);
+  --sidebar-muted: var(--muted);
+}
+
+/* ═══════════════════════════════════════════════
+   THEME: Midnight — inspired by Linear/Vercel
    Deep space dark with indigo accent
    ═══════════════════════════════════════════════ */
-:root, [data-theme="midnight"] {
+[data-theme="midnight"] {
   --background: #080c14;
   --foreground: #e0e7ef;
   --card: #0f1729;
@@ -17,7 +40,6 @@
   --danger: #f87171;
   --muted: #64748b;
   --glow: rgba(99, 102, 241, 0.12);
-  /* sidebar defaults — all dark themes inherit from card */
   --sidebar: var(--card);
   --sidebar-fg: var(--foreground);
   --sidebar-hover: var(--card-hover);

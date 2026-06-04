@@ -136,7 +136,7 @@ function ThemePreview({ bg, card, sidebar, sidebarFg, accent, text }: {
 
 export default function ThemePage() {
   const { currentUser } = useCurrentUser();
-  const [current, setCurrent] = useState("midnight");
+  const [current, setCurrent] = useState("snow");
   const [mounted, setMounted] = useState(false);
   const [cc, setCC] = useState<CC>(DFLT);
   const [copyFrom, setCopyFrom] = useState("corporate");
@@ -145,7 +145,7 @@ export default function ThemePage() {
   useEffect(() => {
     setMounted(true);
     try {
-      const theme = localStorage.getItem("kmit_theme") || "midnight";
+      const theme = localStorage.getItem("kmit_theme") || "snow";
       setCurrent(theme);
       const raw = localStorage.getItem("kmit_theme_custom");
       if (raw) setCC(JSON.parse(raw));

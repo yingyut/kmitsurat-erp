@@ -89,7 +89,7 @@ function AppContent({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const theme = localStorage.getItem("kmit_theme") || "midnight";
+      const theme = localStorage.getItem("kmit_theme") || "snow";
       document.documentElement.setAttribute("data-theme", theme);
       if (theme === "custom") {
         const raw = localStorage.getItem("kmit_theme_custom");
