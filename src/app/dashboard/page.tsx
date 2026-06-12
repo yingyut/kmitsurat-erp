@@ -1044,7 +1044,12 @@ export default function DashboardPage() {
 
     // ── SALES ─────────────────────────────────────────────────────────────────
     if (id === "sales-person-cards") {
-      const myCards = personData.filter(p=>!p.isPool);
+      const pureSalesRoles = new Set(["sale","Sales Executive","Sales Manager","Branch Manager"]);
+      const myCards = personData.filter(p => {
+        if (p.isPool) return false;
+        const u = users.find(uu => uu.name === p.name);
+        return u ? pureSalesRoles.has(u.role) : false;
+      });
       // Personal card — show only when non-admin sales user sees their own row
       if (!seeAll) {
         const p = myCards[0];
