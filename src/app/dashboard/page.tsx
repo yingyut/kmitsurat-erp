@@ -1044,13 +1044,13 @@ export default function DashboardPage() {
 
     // ── SALES ─────────────────────────────────────────────────────────────────
     if (id === "sales-person-cards") {
-      const pureSalesRoles = new Set(["sale","Sales Executive","Sales Manager","Branch Manager"]);
+      // แสดงเฉพาะ role ระดับ field sales (sale / Sales Executive)
+      // Manager และ Avenger ไม่แสดงในตาราง แต่ยังเห็นข้อมูลทีมได้ตามปกติ
+      const fieldSalesRoles = new Set(["sale","Sales Executive"]);
       const myCards = personData.filter(p => {
         if (p.isPool) return false;
         const u = users.find(uu => uu.name === p.name);
-        if (!u || !pureSalesRoles.has(u.role)) return false;
-        // แสดงเฉพาะ user ที่มีข้อมูลจริง หรือเป็น user ที่ login อยู่
-        return p.tgt > 0 || p.act > 0 || p.activeProj > 0 || p.pipVal > 0 || p.name === myName;
+        return u ? fieldSalesRoles.has(u.role) : false;
       });
       // Personal card — show only when non-admin sales user sees their own row
       if (!seeAll) {
