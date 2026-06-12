@@ -571,7 +571,9 @@ export default function SalesPage() {
           customer_update:   {bg:"bg-indigo-500/10",  border:"border-indigo-500/25",  text:"text-indigo-500",  dot:"bg-indigo-600",  bar:"bg-indigo-600",  label:"Update",    icon:"📊"},
         };
         const thaiM = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+        const thaiMFull = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
         const dhNames = ["จ.","อ.","พ.","พฤ.","ศ.","ส.","อา."];
+        const dhFull  = ["จันทร์","อังคาร","พุธ","พฤหัส","ศุกร์","เสาร์","อาทิตย์"];
         const thaiDayFull = ["อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์"];
 
         // Month grid — calY/calM come from component-level useMemo
@@ -687,7 +689,7 @@ export default function SalesPage() {
         }
 
         const navLabel = apView === "year"  ? `ปี ${calY}` :
-                         apView === "month" ? `${thaiM[calM-1]} ${calY}` :
+                         apView === "month" ? `${thaiMFull[calM-1]} ${calY}` :
                          apView === "week"  ? `${weekDays[0].slice(5)} – ${weekDays[6].slice(5)}` :
                          apView === "day"   ? calDayDate : "รายการทั้งหมด";
 
@@ -1275,7 +1277,7 @@ export default function SalesPage() {
                 <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                   <div className="flex items-center gap-1.5">
                     <button onClick={navPrev} className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors text-lg leading-none">‹</button>
-                    <span className="text-sm font-semibold px-3 py-1.5 rounded-lg bg-card border border-border min-w-[128px] text-center">{navLabel}</span>
+                    <span className="text-xl font-bold text-foreground min-w-[200px] text-center tracking-tight">{navLabel}</span>
                     <button onClick={navNext} className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors text-lg leading-none">›</button>
                     {apView !== "list" && <button onClick={navToday} className="text-[11px] text-accent border border-accent/30 rounded-lg px-2.5 py-1 hover:bg-accent/10 transition-colors">วันนี้</button>}
                   </div>
@@ -1313,11 +1315,16 @@ export default function SalesPage() {
 
                 {/* ── Month Calendar ── */}
                 {apView === "month" && (
-                  <div>
-                    <div className="grid grid-cols-7 mb-1">
-                      {dhNames.map((d, i) => <div key={d} className={`text-center text-[10px] font-bold py-1.5 tracking-wide ${i === 6 ? "text-rose-400/80" : i === 5 ? "text-orange-400/80" : "text-muted/70"}`}>{d}</div>)}
+                  <div className="rounded-xl overflow-hidden border border-border/60 shadow-sm">
+                    <div className="grid grid-cols-7 bg-card-hover border-b border-border/60">
+                      {dhFull.map((d, i) => (
+                        <div key={d} className={`text-center text-xs font-semibold py-2.5 tracking-wide ${i === 6 ? "text-rose-400" : i === 5 ? "text-orange-400" : "text-muted/80"}`}>
+                          <span className="hidden sm:inline">{d}</span>
+                          <span className="sm:hidden">{dhNames[i]}</span>
+                        </div>
+                      ))}
                     </div>
-                    <div className="grid grid-cols-7 gap-px bg-border/30 rounded-xl overflow-hidden border border-border/50 shadow-sm">
+                    <div className="grid grid-cols-7 gap-px bg-border/20">
                       {calCells.map((dateStr, i) => {
                         const inM      = dateStr.startsWith(calNavDate);
                         const isTd     = dateStr === today;
@@ -1380,8 +1387,8 @@ export default function SalesPage() {
                           <div key={dateStr} className={`rounded-xl border flex flex-col shadow-sm ${isTd ? "border-blue-600/40 bg-blue-500/4" : hasOvd ? "border-red-500/30" : isSun ? "border-rose-500/20 bg-rose-500/4" : isSat ? "border-orange-500/20 bg-orange-500/4" : "border-border/60 bg-card"}`}>
                             <div className={`px-2 py-2 text-center border-b cursor-pointer hover:bg-card-hover/50 transition-colors ${isTd ? "border-blue-600/30 bg-blue-600/8" : hasOvd ? "border-red-500/20 bg-red-500/4" : isSun ? "border-rose-500/15 bg-rose-500/5" : isSat ? "border-orange-500/15 bg-orange-500/5" : "border-border/40"}`}
                               onClick={() => { setCalDayDate(dateStr); setApView("day"); }}>
-                              <p className={`text-[10px] font-bold uppercase tracking-wide ${isTd ? "text-blue-600" : hasOvd ? "text-red-500" : isSun ? "text-rose-400" : isSat ? "text-orange-400" : "text-muted/70"}`}>{dhNames[i]}</p>
-                              <p className={`text-xl font-bold leading-tight ${isTd ? "text-blue-600" : isPast ? "text-muted/50" : isSun ? "text-rose-400" : isSat ? "text-orange-400" : "text-foreground"}`}>{parseInt(dateStr.slice(8))}</p>
+                              <p className={`text-xs font-semibold tracking-wide ${isTd ? "text-blue-600" : hasOvd ? "text-red-500" : isSun ? "text-rose-400" : isSat ? "text-orange-400" : "text-muted/70"}`}>{dhFull[i]}</p>
+                              <p className={`text-2xl font-bold leading-tight mt-0.5 ${isTd ? "text-blue-600" : isPast ? "text-muted/50" : isSun ? "text-rose-400" : isSat ? "text-orange-400" : "text-foreground"}`}>{parseInt(dateStr.slice(8))}</p>
                               {dp.length > 0 && <span className={`text-[9px] rounded px-1.5 py-0.5 font-bold inline-block mt-0.5 border ${hasOvd ? "bg-red-500/10 border-red-500/25 text-red-500" : isTd ? "bg-blue-500/10 border-blue-500/25 text-blue-600" : "bg-card-hover border-border text-muted"}`}>{dp.length}</span>}
                             </div>
                             <div className="p-1 flex-1 space-y-0.5 min-h-[100px]">
