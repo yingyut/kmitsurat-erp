@@ -410,13 +410,8 @@ export default function DashboardPage() {
   const topExpiring = activeContracts.map(c => ({ c, d: dayDiff(c.end_date) ?? 9999 })).filter(x => x.d >= 0).sort((a,b) => a.d - b.d).slice(0,6);
 
   // ── Alerts ────────────────────────────────────────────────────────────────────
-  const salesOverdue = sc.sales.filter(a => {
-    // follow-up ค้าง: วันนัดผ่านไปแล้ว ยังไม่ done
-    if (a.next_follow_up && a.next_follow_up < today && a.status !== "done") return true;
-    // plan ค้าง: is_plan=true และ plan_status ยังไม่ completed (ยังไม่ได้สรุป/ปิดงาน)
-    if (a.is_plan && a.plan_status !== "completed") return true;
-    return false;
-  });
+  const salesOverdue = sc.sales.filter(a => a.next_follow_up && a.next_follow_up < today && a.status !== "done");
+  const salesPlanOverdue = sc.sales.filter(a => a.is_plan && a.plan_status !== "completed");
   const presaleOverdue = sc.presale.filter(r => r.due_date && r.due_date < today && r.status !== "completed");
   const svcOverdue = sc.service.filter(t => t.service_date && t.service_date < today && !["resolved","closed"].includes(t.status));
   type AlertItem = { id: string; msg: string; level: "red"|"orange"|"green"; href: string };
@@ -1063,16 +1058,27 @@ export default function DashboardPage() {
               );
             })()}
 
-            {/* ④ Follow-up ค้าง */}
-            <button onClick={()=>{setShowOdBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowPipeBreakdown(false);}}
-              className={`text-left rounded-xl bg-card border flex flex-col justify-between p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] transition-all hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-none ${salesOverdue.length>0?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">FOLLOW-UP ค้าง</p>
-                <span className="text-[10px] text-accent font-bold">{showOdBreakdown?"▲":"▼"}</span>
-              </div>
-              <p className={`text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none ${salesOverdue.length>0?"text-orange-500":"text-muted"}`}>{salesOverdue.length}</p>
-              <p className="text-[9px] text-muted/60 mt-0.5">{salesOverdue.length>0?"ต้องติดตามด่วน":"ทุกงานปกติ"}</p>
-            </button>
+            {/* ④ Follow-up ค้าง + Plan ค้าง */}
+            {(()=>{
+              const totalAlerts=salesOverdue.length+salesPlanOverdue.length;
+              const hasAlert=totalAlerts>0;
+              return (
+                <button onClick={()=>{setShowOdBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowPipeBreakdown(false);}}
+                  className={`text-left rounded-xl bg-card border flex flex-col justify-between p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] transition-all hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-none ${hasAlert?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">งานค้าง</p>
+                    <span className="text-[10px] text-accent font-bold">{showOdBreakdown?"▲":"▼"}</span>
+                  </div>
+                  <p className={`text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none ${hasAlert?"text-orange-500":"text-muted"}`}>{totalAlerts}</p>
+                  <div className="flex gap-1.5 mt-0.5">
+                    {salesOverdue.length>0&&<span className="text-[9px] text-orange-400">FU {salesOverdue.length}</span>}
+                    {salesOverdue.length>0&&salesPlanOverdue.length>0&&<span className="text-[9px] text-muted/40">·</span>}
+                    {salesPlanOverdue.length>0&&<span className="text-[9px] text-violet-400">Plan {salesPlanOverdue.length}</span>}
+                    {totalAlerts===0&&<span className="text-[9px] text-muted/60">ทุกงานปกติ</span>}
+                  </div>
+                </button>
+              );
+            })()}
           </div>
 
           {/* ── Breakdown panels ── */}
@@ -1182,57 +1188,91 @@ export default function DashboardPage() {
           })()}
 
           {/* ④ Follow-up ค้าง รายบุคคล */}
-          {showOdBreakdown&&(
-            <div className="rounded-xl border border-orange-500/25 bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-card-hover/50">
-                <p className="text-xs font-semibold">Follow-up ค้าง — รายบุคคล</p>
-                <p className="text-[10px] text-muted">รวม {salesOverdue.length} งาน</p>
-              </div>
-              {salesOverdue.length===0?<p className="text-xs text-muted px-4 py-4 text-center">ไม่มีงานค้าง</p>:(()=>{
-                const odMap=new Map<string,typeof salesOverdue>();
-                salesOverdue.forEach(a=>{const k=a.assigned_to||"ไม่ระบุ";if(!odMap.has(k))odMap.set(k,[]);odMap.get(k)!.push(a);});
-                return (
-                  <div className="divide-y divide-border/30">
-                    {Array.from(odMap.entries()).sort((a,b)=>b[1].length-a[1].length).map(([name,items])=>{
-                      const short=users.find(u=>u.name===name)?.name.split(" ")[0]||name.split(" ")[0]||name;
-                      const followupItems=items.filter(a=>!a.is_plan);
-                      const planItems=items.filter(a=>a.is_plan);
-                      return (
-                        <div key={name} className="px-4 py-2.5">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <p className="text-xs font-semibold text-orange-500">{short}</p>
-                            <div className="flex gap-1">
-                              {followupItems.length>0&&<span className="text-[10px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-full px-1.5 py-0.5">Follow {followupItems.length}</span>}
-                              {planItems.length>0&&<span className="text-[10px] bg-violet-500/10 border border-violet-500/25 text-violet-400 rounded-full px-1.5 py-0.5">Plan {planItems.length}</span>}
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            {items.slice(0,5).map(a=>{
-                              const isPlan=a.is_plan;
-                              const dateStr=isPlan?(a.plan_date||a.next_follow_up||""):a.next_follow_up||"";
-                              const href=`/sales${a.id?`?highlight=${a.id}`:""}`;
-                              return (
-                                <Link key={a.id||a.customer_name} href={href}
-                                  className="flex items-center gap-2 rounded-lg hover:bg-orange-500/5 px-2 py-1 -mx-2 transition-colors group">
-                                  {isPlan
-                                    ? <span className="text-[9px] bg-violet-500/10 border border-violet-500/25 text-violet-400 rounded px-1 shrink-0">Plan</span>
-                                    : <span className="text-[9px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded px-1 shrink-0">FU</span>}
-                                  <span className="text-[10px] text-muted/80 truncate flex-1 group-hover:text-foreground transition-colors">{a.customer_name||"—"}</span>
-                                  {dateStr&&<span className="text-[10px] text-orange-400/80 shrink-0">{dateStr}</span>}
-                                  <span className="text-[10px] text-muted/30 shrink-0">→</span>
-                                </Link>
-                              );
-                            })}
-                            {items.length>5&&<Link href="/sales" className="block text-[10px] text-accent hover:underline pl-2">+ อีก {items.length-5} งาน →</Link>}
-                          </div>
-                        </div>
-                      );
-                    })}
+          {showOdBreakdown&&(()=>{
+            // helper: group by assigned_to
+            function groupByPerson<T extends {assigned_to?:string}>(arr:T[]) {
+              const m=new Map<string,T[]>();
+              arr.forEach(a=>{const k=a.assigned_to||"ไม่ระบุ";if(!m.has(k))m.set(k,[]);m.get(k)!.push(a);});
+              return Array.from(m.entries()).sort((a,b)=>b[1].length-a[1].length);
+            }
+            const fuGroups=groupByPerson(salesOverdue);
+            const planGroups=groupByPerson(salesPlanOverdue);
+            const totalAlerts=salesOverdue.length+salesPlanOverdue.length;
+            // row renderer
+            const renderRow=(a:{id?:string;customer_name?:string;next_follow_up?:string;plan_date?:string;description?:string},dateStr:string,accent:string)=>(
+              <Link key={a.id||a.customer_name} href={`/sales${a.id?`?highlight=${a.id}`:""}`}
+                className={`flex items-center gap-2 rounded-lg px-2 py-1 -mx-2 transition-colors group hover:${accent==="orange"?"bg-orange-500/5":"bg-violet-500/5"}`}>
+                <span className="text-[10px] text-muted/80 truncate flex-1 group-hover:text-foreground transition-colors">{a.customer_name||a.description?.slice(0,30)||"—"}</span>
+                {dateStr&&<span className={`text-[10px] shrink-0 ${accent==="orange"?"text-orange-400/80":"text-violet-400/80"}`}>{dateStr}</span>}
+                <span className="text-[10px] text-muted/30 shrink-0">→</span>
+              </Link>
+            );
+            return (
+              <div className="rounded-xl border border-border/60 bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                {/* header */}
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-card-hover/50">
+                  <p className="text-xs font-semibold">งานค้าง — รายบุคคล</p>
+                  <p className="text-[10px] text-muted">รวม {totalAlerts} งาน</p>
+                </div>
+
+                {/* ── Section 1: Follow-up ค้าง ── */}
+                <div className="border-b border-border/40">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-orange-500/5">
+                    <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0"/>
+                    <p className="text-[11px] font-semibold text-orange-500">Follow-up ค้าง</p>
+                    <span className="text-[10px] text-muted ml-auto">{salesOverdue.length} งาน</span>
                   </div>
-                );
-              })()}
-            </div>
-          )}
+                  {fuGroups.length===0
+                    ? <p className="text-[10px] text-muted/60 px-4 py-3">ไม่มีงานค้าง</p>
+                    : <div className="divide-y divide-border/20">
+                        {fuGroups.map(([name,items])=>{
+                          const short=users.find(u=>u.name===name)?.name.split(" ")[0]||name.split(" ")[0]||name;
+                          return (
+                            <div key={name} className="px-4 py-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-[11px] font-semibold">{short}</p>
+                                <span className="text-[10px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-full px-1.5 py-0.5">{items.length}</span>
+                              </div>
+                              <div className="space-y-0.5">
+                                {items.slice(0,4).map(a=>renderRow(a,a.next_follow_up||"","orange"))}
+                                {items.length>4&&<Link href="/sales" className="block text-[10px] text-accent hover:underline pl-1">+ อีก {items.length-4} →</Link>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>}
+                </div>
+
+                {/* ── Section 2: Plan ค้าง ── */}
+                <div>
+                  <div className="flex items-center gap-2 px-4 py-2 bg-violet-500/5">
+                    <span className="w-2 h-2 rounded-full bg-violet-500 shrink-0"/>
+                    <p className="text-[11px] font-semibold text-violet-500">Plan ค้าง (ยังไม่สรุป)</p>
+                    <span className="text-[10px] text-muted ml-auto">{salesPlanOverdue.length} งาน</span>
+                  </div>
+                  {planGroups.length===0
+                    ? <p className="text-[10px] text-muted/60 px-4 py-3">ไม่มี Plan ค้าง</p>
+                    : <div className="divide-y divide-border/20">
+                        {planGroups.map(([name,items])=>{
+                          const short=users.find(u=>u.name===name)?.name.split(" ")[0]||name.split(" ")[0]||name;
+                          return (
+                            <div key={name} className="px-4 py-2">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-[11px] font-semibold">{short}</p>
+                                <span className="text-[10px] bg-violet-500/10 border border-violet-500/25 text-violet-400 rounded-full px-1.5 py-0.5">{items.length}</span>
+                              </div>
+                              <div className="space-y-0.5">
+                                {items.slice(0,4).map(a=>renderRow(a,a.plan_date||a.next_follow_up||"","violet"))}
+                                {items.length>4&&<Link href="/sales" className="block text-[10px] text-accent hover:underline pl-1">+ อีก {items.length-4} →</Link>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       );
     }
@@ -2258,7 +2298,7 @@ export default function DashboardPage() {
     showAchievBreakdown, setShowAchievBreakdown,
     showPipeBreakdown, setShowPipeBreakdown,
     showOdBreakdown, setShowOdBreakdown,
-    activeSalesData, users, myName,
+    activeSalesData, users, myName, salesPlanOverdue,
   ]);
 
   if (!mounted) return <div className="p-6 text-muted text-sm">Loading...</div>;
