@@ -410,7 +410,13 @@ export default function DashboardPage() {
   const topExpiring = activeContracts.map(c => ({ c, d: dayDiff(c.end_date) ?? 9999 })).filter(x => x.d >= 0).sort((a,b) => a.d - b.d).slice(0,6);
 
   // ── Alerts ────────────────────────────────────────────────────────────────────
-  const salesOverdue = sc.sales.filter(a => a.next_follow_up && a.next_follow_up < today && a.status !== "done");
+  const salesOverdue = sc.sales.filter(a => {
+    // follow-up ค้าง: วันนัดผ่านไปแล้ว ยังไม่ done
+    if (a.next_follow_up && a.next_follow_up < today && a.status !== "done") return true;
+    // plan ค้าง: is_plan=true และ plan_status ยังไม่ completed (ยังไม่ได้สรุป/ปิดงาน)
+    if (a.is_plan && a.plan_status !== "completed") return true;
+    return false;
+  });
   const presaleOverdue = sc.presale.filter(r => r.due_date && r.due_date < today && r.status !== "completed");
   const svcOverdue = sc.service.filter(t => t.service_date && t.service_date < today && !["resolved","closed"].includes(t.status));
   type AlertItem = { id: string; msg: string; level: "red"|"orange"|"green"; href: string };
@@ -1189,15 +1195,35 @@ export default function DashboardPage() {
                   <div className="divide-y divide-border/30">
                     {Array.from(odMap.entries()).sort((a,b)=>b[1].length-a[1].length).map(([name,items])=>{
                       const short=users.find(u=>u.name===name)?.name.split(" ")[0]||name.split(" ")[0]||name;
+                      const followupItems=items.filter(a=>!a.is_plan);
+                      const planItems=items.filter(a=>a.is_plan);
                       return (
                         <div key={name} className="px-4 py-2.5">
-                          <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center justify-between mb-1.5">
                             <p className="text-xs font-semibold text-orange-500">{short}</p>
-                            <span className="text-[10px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-full px-1.5 py-0.5">{items.length} งาน</span>
+                            <div className="flex gap-1">
+                              {followupItems.length>0&&<span className="text-[10px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-full px-1.5 py-0.5">Follow {followupItems.length}</span>}
+                              {planItems.length>0&&<span className="text-[10px] bg-violet-500/10 border border-violet-500/25 text-violet-400 rounded-full px-1.5 py-0.5">Plan {planItems.length}</span>}
+                            </div>
                           </div>
-                          <div className="space-y-0.5">
-                            {items.slice(0,3).map(a=><p key={a.id} className="text-[10px] text-muted/70 truncate">· {a.customer_name||"—"} <span className="text-orange-400/70">{a.next_follow_up}</span></p>)}
-                            {items.length>3&&<p className="text-[10px] text-muted/50">+ อีก {items.length-3} งาน</p>}
+                          <div className="space-y-1">
+                            {items.slice(0,5).map(a=>{
+                              const isPlan=a.is_plan;
+                              const dateStr=isPlan?(a.plan_date||a.next_follow_up||""):a.next_follow_up||"";
+                              const href=`/sales${a.id?`?highlight=${a.id}`:""}`;
+                              return (
+                                <Link key={a.id||a.customer_name} href={href}
+                                  className="flex items-center gap-2 rounded-lg hover:bg-orange-500/5 px-2 py-1 -mx-2 transition-colors group">
+                                  {isPlan
+                                    ? <span className="text-[9px] bg-violet-500/10 border border-violet-500/25 text-violet-400 rounded px-1 shrink-0">Plan</span>
+                                    : <span className="text-[9px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded px-1 shrink-0">FU</span>}
+                                  <span className="text-[10px] text-muted/80 truncate flex-1 group-hover:text-foreground transition-colors">{a.customer_name||"—"}</span>
+                                  {dateStr&&<span className="text-[10px] text-orange-400/80 shrink-0">{dateStr}</span>}
+                                  <span className="text-[10px] text-muted/30 shrink-0">→</span>
+                                </Link>
+                              );
+                            })}
+                            {items.length>5&&<Link href="/sales" className="block text-[10px] text-accent hover:underline pl-2">+ อีก {items.length-5} งาน →</Link>}
                           </div>
                         </div>
                       );
