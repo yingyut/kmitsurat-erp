@@ -1003,7 +1003,7 @@ export default function DashboardPage() {
       return (
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* ยอดขายรวม — คลิกเพื่อดู breakdown รายบุคคล */}
+            {/* ① ยอดขายรวม — top contributor chips */}
             <button
               onClick={() => setShowSalesBreakdown(v => !v)}
               className="text-left rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150"
@@ -1013,14 +1013,66 @@ export default function DashboardPage() {
                 <span className="text-[10px] text-accent font-bold">{showSalesBreakdown ? "▲" : "▼"}</span>
               </div>
               <p className="text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
-              <div className="space-y-1">
-                {targetPct > 0 && <div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
-                <p className="text-[9px] sm:text-[11px] text-muted/60 leading-snug truncate">{filterLabel} · กดดู breakdown</p>
+              <div className="min-h-[16px]">
+                {targetPct > 0 && <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mb-1"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
+                {breakdownRows.filter(p=>p.act>0).length>0
+                  ? <div className="flex flex-wrap gap-1">
+                      {breakdownRows.filter(p=>p.act>0).slice(0,3).map(p=>{
+                        const v = p.act>=1e6?`${(p.act/1e6).toFixed(1)}M`:`${Math.round(p.act/1000)}K`;
+                        return <span key={p.name} className="text-[9px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-500 rounded-full px-1.5 py-0.5">{p.short||p.name.split(" ")[0]} {v}</span>;
+                      })}
+                    </div>
+                  : <p className="text-[9px] text-muted/60">ยังไม่มีข้อมูล</p>}
               </div>
             </button>
-            <KpiCard label="Achievement %" value={target>0?`${targetPct.toFixed(0)}%`:"—"} sub={`${Math.round(actual/1000)}K / ${mgTgtM}`} color={targetPct>=80?"green":targetPct>=50?"amber":target>0?"red":"muted"} pct={targetPct} href="/reports" />
-            <KpiCard label="Pipeline รวม" value={pipeline>0?`${(pipeline/1e6).toFixed(1)}M`:"—"} sub={`${totalDeals} ดีล · Win ${convRate.toFixed(0)}%`} color="purple" href="/projects" />
-            {/* Follow-up card with per-person breakdown */}
+
+            {/* ② Achievement % — on/below target chips */}
+            {(() => {
+              const onTgt  = breakdownRows.filter(p => p.tgt>0 && p.pct>=80);
+              const below  = breakdownRows.filter(p => p.tgt>0 && p.pct<80);
+              const noTgt  = breakdownRows.filter(p => p.tgt===0);
+              const pctCol = targetPct>=80?"text-emerald-500":targetPct>=50?"text-amber-500":target>0?"text-orange-500":"text-muted";
+              const barCol = targetPct>=80?"bg-emerald-500":targetPct>=50?"bg-amber-500":target>0?"bg-orange-500":"bg-muted/20";
+              return (
+                <Link href="/reports" className="rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                  <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
+                  <p className={`text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none ${pctCol}`}>{target>0?`${targetPct.toFixed(0)}%`:"—"}</p>
+                  <div className="min-h-[16px]">
+                    {target>0 && <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mb-1"><div className={`h-full rounded-full ${barCol} transition-all`} style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
+                    <div className="flex flex-wrap gap-1">
+                      {onTgt.length>0  && <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-500 rounded-full px-1.5 py-0.5">✓ {onTgt.length} คน</span>}
+                      {below.length>0  && <span className="text-[9px] bg-amber-500/10 border border-amber-500/25 text-amber-500 rounded-full px-1.5 py-0.5">↓ {below.length} คน</span>}
+                      {noTgt.length>0  && <span className="text-[9px] bg-muted/10 border border-border/40 text-muted/60 rounded-full px-1.5 py-0.5">— {noTgt.length}</span>}
+                      {onTgt.length===0 && below.length===0 && noTgt.length===0 && <p className="text-[9px] text-muted/60">ยังไม่มีข้อมูล</p>}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })()}
+
+            {/* ③ Pipeline — stage count chips */}
+            {(() => {
+              const stageChips = [
+                { key:"lead",        label:"Lead",  colCls:"text-blue-500",   bgCls:"bg-blue-500/10 border-blue-500/25"   },
+                { key:"opportunity", label:"Oppo",  colCls:"text-cyan-500",   bgCls:"bg-cyan-500/10 border-cyan-500/25"   },
+                { key:"proposal",    label:"Prop",  colCls:"text-amber-500",  bgCls:"bg-amber-500/10 border-amber-500/25" },
+                { key:"negotiation", label:"Nego",  colCls:"text-orange-500", bgCls:"bg-orange-500/10 border-orange-500/25"},
+              ].map(s=>({...s, cnt:sc.projects.filter(p=>p.status===s.key).length})).filter(s=>s.cnt>0);
+              const pipM = pipeline>=1e6?`${(pipeline/1e6).toFixed(1)}M`:pipeline>0?`${Math.round(pipeline/1000)}K`:"—";
+              return (
+                <Link href="/projects" className="rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                  <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">PIPELINE รวม</p>
+                  <p className="text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none text-violet-500">{pipM}</p>
+                  <div className="min-h-[16px]">
+                    {stageChips.length>0
+                      ? <div className="flex flex-wrap gap-1">{stageChips.map(s=><span key={s.key} className={`text-[9px] border rounded-full px-1.5 py-0.5 ${s.bgCls} ${s.colCls}`}>{s.label} {s.cnt}</span>)}</div>
+                      : <p className="text-[9px] text-muted/60">ยังไม่มีดีล</p>}
+                  </div>
+                </Link>
+              );
+            })()}
+
+            {/* ④ Follow-up — per-person chips */}
             {(() => {
               const odMap = new Map<string,number>();
               salesOverdue.forEach(a => { const k = a.assigned_to||"ไม่ระบุ"; odMap.set(k,(odMap.get(k)||0)+1); });
@@ -1032,10 +1084,10 @@ export default function DashboardPage() {
                 <Link href="/sales" className={`rounded-xl bg-card border flex flex-col justify-between p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] transition-all hover:-translate-y-0.5 ${salesOverdue.length>0?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
                   <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">FOLLOW-UP ค้าง</p>
                   <p className={`text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none ${salesOverdue.length>0?"text-orange-500":"text-muted"}`}>{salesOverdue.length}</p>
-                  <div className="min-h-[14px]">
+                  <div className="min-h-[16px]">
                     {odList.length>0
                       ? <div className="flex flex-wrap gap-1">{odList.map(o=><span key={o.short} className="text-[9px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-full px-1.5 py-0.5">{o.short} {o.cnt}</span>)}</div>
-                      : <p className="text-[9px] sm:text-[11px] text-muted/60">ทุกงานปกติ</p>}
+                      : <p className="text-[9px] text-muted/60">ทุกงานปกติ</p>}
                   </div>
                 </Link>
               );
