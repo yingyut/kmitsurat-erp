@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, createContext, useContext, useMemo } from "react";
 import Link from "next/link";
 import { useCurrentUser } from "@/lib/UserContext";
-import { isOwnRecord, isOwner, filterOwned, canSeeAll } from "@/lib/ownership";
+import { isOwnRecord, isOwner, filterOwned, canSeeAll, canManageQuota } from "@/lib/ownership";
 import { showHeroKpiStrip } from "@/lib/featureFlags";
 import {
   DEFAULT_LAYOUTS, ALL_VIEWS, WIDGET_LABELS, getRoleDefaultView,
@@ -852,6 +852,101 @@ export default function DashboardPage() {
         ):<p className="text-xs text-muted py-2">ไม่มีสัญญาใกล้หมด</p>}
       </Section>
     );
+
+    // ── SALES TEAM PLANS ──────────────────────────────────────────────────────
+    if (id === "sales-team-plans") {
+      const canSeeTeam = seeAll || canManageQuota(currentUser);
+      const salesRoles = ["sale","avenger","Sales Executive","Sales Manager","Branch Manager"];
+      const salesTeam = users.filter(u => u.active && (salesRoles.includes(u.role) || (u.extra_roles??[]).some((r:string)=>salesRoles.includes(r))));
+      const allPlans  = sales.filter(a => a.is_plan);
+      const todayStr  = today;
+
+      if (!canSeeTeam) {
+        // เซลล์ทั่วไป — แสดงแผนของตัวเองเดือนนี้
+        const myPlans = allPlans.filter(a => a.assigned_to === myName);
+        const done    = myPlans.filter(p => p.status === "done").length;
+        const overdue = myPlans.filter(p => (p.plan_date||"") < todayStr && p.status !== "done").length;
+        const pct     = myPlans.length > 0 ? Math.round(done / myPlans.length * 100) : 0;
+        return (
+          <Section title="📋 แผนงานของฉัน" action={<Link href="/sales?tab=workplan" className="text-[11px] text-accent hover:underline">ดูปฏิทิน →</Link>}>
+            <div className="flex items-center gap-6 py-2">
+              <div className="text-center"><p className="text-2xl font-bold">{myPlans.length}</p><p className="text-[11px] text-muted">ทั้งหมด</p></div>
+              <div className="text-center"><p className="text-2xl font-bold text-green-500">{done}</p><p className="text-[11px] text-muted">เสร็จแล้ว</p></div>
+              {overdue > 0 && <div className="text-center"><p className="text-2xl font-bold text-red-500">{overdue}</p><p className="text-[11px] text-muted">เกินกำหนด</p></div>}
+              <div className="flex-1 max-w-[200px]">
+                <div className="flex justify-between text-[10px] text-muted mb-1"><span>ความคืบหน้า</span><span>{pct}%</span></div>
+                <div className="h-2 rounded-full bg-border/40 overflow-hidden"><div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${pct}%`}}/></div>
+              </div>
+            </div>
+          </Section>
+        );
+      }
+
+      // Manager/Admin — แสดงภาพรวมทีม
+      const rows = salesTeam.map(u => {
+        const uPlans   = allPlans.filter(p => p.assigned_to === u.name);
+        const uDone    = uPlans.filter(p => p.status === "done").length;
+        const uIP      = uPlans.filter(p => p.status === "in_progress").length;
+        const uOverdue = uPlans.filter(p => (p.plan_date||"") < todayStr && p.status !== "done").length;
+        const uToday   = uPlans.filter(p => p.plan_date === todayStr).length;
+        const pct      = uPlans.length > 0 ? Math.round(uDone / uPlans.length * 100) : 0;
+        return { u, total: uPlans.length, done: uDone, ip: uIP, overdue: uOverdue, today: uToday, pct };
+      }).sort((a, b) => b.total - a.total);
+
+      return (
+        <Section title="📋 แผนงานทีมขาย — ภาพรวมรายคน" action={<Link href="/sales?tab=workplan" className="text-[11px] text-accent hover:underline">ดูปฏิทิน →</Link>}>
+          {rows.length === 0 ? <p className="text-xs text-muted py-4">ยังไม่มีแผนงาน</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[500px]">
+                <thead>
+                  <tr className="text-left text-[10px] text-muted border-b border-border uppercase tracking-wide">
+                    <th className="pb-2 font-medium">เซลล์</th>
+                    <th className="pb-2 font-medium text-center">ทั้งหมด</th>
+                    <th className="pb-2 font-medium text-center">วันนี้</th>
+                    <th className="pb-2 font-medium text-center">ทำอยู่</th>
+                    <th className="pb-2 font-medium text-center">เสร็จ</th>
+                    <th className="pb-2 font-medium text-center">เกินกำหนด</th>
+                    <th className="pb-2 font-medium">ความคืบหน้า</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {rows.map(({ u, total, done, ip, overdue, today: td, pct }) => (
+                    <tr key={u.id} className="hover:bg-card-hover transition-colors">
+                      <td className="py-2.5 font-medium">
+                        <Link href={`/sales?tab=workplan`} className="hover:text-accent transition-colors">
+                          {u.nickname || u.first_name || u.name}
+                        </Link>
+                      </td>
+                      <td className="py-2.5 text-center font-bold">{total || "—"}</td>
+                      <td className="py-2.5 text-center">
+                        <span className={td > 0 ? "text-blue-500 font-bold" : "text-muted"}>{td || "—"}</span>
+                      </td>
+                      <td className="py-2.5 text-center">
+                        <span className={ip > 0 ? "text-amber-500 font-medium" : "text-muted"}>{ip || "—"}</span>
+                      </td>
+                      <td className="py-2.5 text-center text-green-500 font-medium">{done || "—"}</td>
+                      <td className="py-2.5 text-center">
+                        <span className={overdue > 0 ? "text-red-500 font-bold" : "text-muted"}>{overdue || "—"}</span>
+                      </td>
+                      <td className="py-2.5 min-w-[120px]">
+                        {total > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 rounded-full bg-border/40 overflow-hidden">
+                              <div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${pct}%`}}/>
+                            </div>
+                            <span className="text-[10px] text-muted tabular-nums w-8 text-right">{pct}%</span>
+                          </div>
+                        ) : <span className="text-muted">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+      );
+    }
 
     // ── SALES ─────────────────────────────────────────────────────────────────
     if (id === "sales-person-cards") {

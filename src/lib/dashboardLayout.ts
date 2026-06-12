@@ -30,6 +30,7 @@ export const WIDGET_LABELS: Record<string, string> = {
   "sales-qt-status": "สถานะ Quotation",
   "sales-funnel": "Sales Funnel",
   "sales-overdue": "Follow-up ค้าง",
+  "sales-team-plans": "แผนงานทีมขาย (รายคน)",
   "pre-person-cards": "Presale รายคน (Cards)",
   "pre-kpis": "Presale KPI",
   "pre-workload": "Presale Workload",
@@ -77,6 +78,7 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
     { id: "exec-contracts",      visible: true,  span: "half"  },
   ],
   sales: [
+    { id: "sales-team-plans",   visible: true,  span: "full" },
     { id: "sales-person-cards", visible: true,  span: "full" },
     { id: "sales-overdue",      visible: true,  span: "full" },
     { id: "sales-qt-status",    visible: true,  span: "half" },
