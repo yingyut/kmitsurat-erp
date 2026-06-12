@@ -465,7 +465,7 @@ export default function DashboardPage() {
   const activeUserNames = new Set(users.map(u => u.name));
   const SALES_ROLES = new Set(["sale","avenger","Sales Executive","Sales Manager","Branch Manager"]);
   const salesUsers = users.filter(u => SALES_ROLES.has(u.role));
-  type PersonRow = { name:string; short:string; tgt:number; act:number; pft:number; acts:number; activeProj:number; pct:number; targetK:number; actualK:number; isPool?:boolean };
+  type PersonRow = { name:string; short:string; tgt:number; act:number; pft:number; acts:number; activeProj:number; pipVal:number; pct:number; targetK:number; actualK:number; isPool?:boolean };
   const activeSalesData: PersonRow[] = salesUsers.map(u => {
     const short = u.nickname ? u.nickname.replace(/พี่|น้อง/g,"").trim() : u.name.split(" ")[0];
     const pQ = filtQuotas.filter(q => q.user_name === u.name);
@@ -475,14 +475,15 @@ export default function DashboardPage() {
     const pft = pQ.reduce((s,q) => s+(q.actual_profit||0), 0);
     const acts = filtSales.filter(a => a.assigned_to === u.name).length;
     const activeProj = sc.projects.filter(pr => pr.assigned_to === u.name && !["won","lost"].includes(pr.status)).length;
-    return { name:u.name, short, tgt, act, pft, acts, activeProj, pct: tgt>0?Math.round(act/tgt*100):0, targetK:Math.round(tgt/1000), actualK:Math.round(act/1000) };
+    const pipVal = sc.projects.filter(pr => pr.assigned_to === u.name && !["won","lost"].includes(pr.status)).reduce((s,p)=>s+(p.value||0),0);
+    return { name:u.name, short, tgt, act, pft, acts, activeProj, pipVal, pct: tgt>0?Math.round(act/tgt*100):0, targetK:Math.round(tgt/1000), actualK:Math.round(act/1000) };
   }).sort((a,b) => b.act-a.act);
   const poolSalesQ = filtQuotas.filter(q => q.user_name && !activeUserNames.has(q.user_name));
   const poolTgt = poolSalesQ.reduce((s,q)=>s+(q.quota_target||0),0), poolAct = poolSalesQ.reduce((s,q)=>s+liveAct(q.user_name,q.month,q.actual_sales),0), poolPft = poolSalesQ.reduce((s,q)=>s+(q.actual_profit||0),0);
   const poolSalesActs = filtSales.filter(a=>a.assigned_to&&!activeUserNames.has(a.assigned_to)).length;
   const poolSalesProj = sc.projects.filter(p=>p.assigned_to&&!activeUserNames.has(p.assigned_to)&&!["won","lost"].includes(p.status)).length;
   const poolRow: PersonRow|null = (poolTgt>0||poolAct>0||poolSalesActs>0||poolSalesProj>0)
-    ? { name:"กองกลาง",short:"กองกลาง",tgt:poolTgt,act:poolAct,pft:poolPft,acts:poolSalesActs,activeProj:poolSalesProj,pct:poolTgt>0?Math.round(poolAct/poolTgt*100):0,targetK:Math.round(poolTgt/1000),actualK:Math.round(poolAct/1000),isPool:true }
+    ? { name:"กองกลาง",short:"กองกลาง",tgt:poolTgt,act:poolAct,pft:poolPft,acts:poolSalesActs,activeProj:poolSalesProj,pipVal:0,pct:poolTgt>0?Math.round(poolAct/poolTgt*100):0,targetK:Math.round(poolTgt/1000),actualK:Math.round(poolAct/1000),isPool:true }
     : null;
   // ถ้า seeAllSales → แสดงทุกคน + กองกลาง  ถ้าไม่ → แสดงเฉพาะแถวของตัวเอง
   const personData: PersonRow[] = seeAllSales
@@ -679,36 +680,37 @@ export default function DashboardPage() {
     );
 
     if (id === "exec-pipeline" || id === "sales-funnel" || id === "prj-funnel") {
+      const stageV = (st: string) => sc.projects.filter(p=>p.status===st).reduce((s,p)=>s+(p.value||0),0);
+      const fmtV   = (v: number) => v>=1e6?`${(v/1e6).toFixed(1)}M`:v>0?`${Math.round(v/1000)}K`:"—";
       const pipeCards = [
-        { name:"Lead",        sub:"ลีด",          value:funnelSteps.find(s=>s.name==="Lead")?.value??0,        color:"text-blue-500",    bg:"bg-blue-500/10 border-blue-500/25"    },
-        { name:"Opportunity", sub:"โอกาสขาย",     value:funnelSteps.find(s=>s.name==="Opportunity")?.value??0, color:"text-cyan-500",    bg:"bg-cyan-500/10 border-cyan-500/25"    },
-        { name:"Proposal",    sub:"เสนอราคา",     value:funnelSteps.find(s=>s.name==="Proposal")?.value??0,    color:"text-amber-500",   bg:"bg-amber-500/10 border-amber-500/25"  },
-        { name:"Negotiation", sub:"กำลังเจรจา",   value:funnelSteps.find(s=>s.name==="Negotiation")?.value??0, color:"text-orange-500",  bg:"bg-orange-500/10 border-orange-500/25"},
-        { name:"Won",         sub:"ปิดดีลได้",    value:funnelSteps.find(s=>s.name==="Won")?.value??0,         color:"text-emerald-500", bg:"bg-emerald-500/10 border-emerald-500/25"},
+        { name:"Lead",        sub:"ลีด",         cnt:funnelSteps.find(s=>s.name==="Lead")?.value??0,        val:stageV("lead"),        color:"text-blue-500",    bg:"bg-blue-500/10 border-blue-500/25"     },
+        { name:"Opportunity", sub:"โอกาสขาย",    cnt:funnelSteps.find(s=>s.name==="Opportunity")?.value??0, val:stageV("opportunity"), color:"text-cyan-500",    bg:"bg-cyan-500/10 border-cyan-500/25"     },
+        { name:"Proposal",    sub:"เสนอราคา",    cnt:funnelSteps.find(s=>s.name==="Proposal")?.value??0,    val:stageV("proposal"),    color:"text-amber-500",   bg:"bg-amber-500/10 border-amber-500/25"   },
+        { name:"Negotiation", sub:"กำลังเจรจา",  cnt:funnelSteps.find(s=>s.name==="Negotiation")?.value??0, val:stageV("negotiation"), color:"text-orange-500",  bg:"bg-orange-500/10 border-orange-500/25" },
+        { name:"Won",         sub:"ปิดดีลได้",   cnt:funnelSteps.find(s=>s.name==="Won")?.value??0,         val:stageV("won"),         color:"text-emerald-500", bg:"bg-emerald-500/10 border-emerald-500/25"},
       ];
       return (
-        <Section title="Sales Pipeline" action={<Link href="/projects" className="text-[11px] text-accent hover:underline">ดูดีล →</Link>}>
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            {pipeCards.slice(0,3).map(s=>(
-              <Link key={s.name} href="/projects" className={`rounded-xl border p-3 text-center hover:opacity-80 transition-opacity ${s.bg}`}>
-                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                <p className="text-[11px] font-medium mt-0.5">{s.sub}</p>
-                <p className="text-[10px] text-muted/50">{s.name}</p>
+        <Section title="Sales Pipeline" action={<Link href="/projects" className="text-[11px] text-accent hover:underline">ดูดีลทั้งหมด →</Link>}>
+          <div className="space-y-1.5 mb-3">
+            {pipeCards.map(s=>(
+              <Link key={s.name} href="/projects" className={`flex items-center gap-3 rounded-xl border px-3 py-2 hover:opacity-80 transition-opacity ${s.bg}`}>
+                <div className="w-20 shrink-0">
+                  <p className={`text-[11px] font-semibold ${s.color}`}>{s.sub}</p>
+                  <p className="text-[9px] text-muted/60">{s.name}</p>
+                </div>
+                <div className={`text-xl font-bold tabular-nums ${s.color} w-8 text-center`}>{s.cnt}</div>
+                <div className="flex-1 text-right">
+                  <p className={`text-[11px] font-medium ${s.color}`}>{fmtV(s.val)}</p>
+                  <p className="text-[9px] text-muted/50">THB</p>
+                </div>
               </Link>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            {pipeCards.slice(3).map(s=>(
-              <Link key={s.name} href="/projects" className={`rounded-xl border p-3 text-center hover:opacity-80 transition-opacity ${s.bg}`}>
-                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-                <p className="text-[11px] font-medium mt-0.5">{s.sub}</p>
-                <p className="text-[10px] text-muted/50">{s.name}</p>
-              </Link>
-            ))}
-          </div>
-          <Link href="/projects" className="block rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-center hover:opacity-80 transition-opacity">
-            <p className="text-[11px] text-muted/60 mb-0.5">Win Rate</p>
-            <p className="text-2xl font-bold text-emerald-500">{convRate.toFixed(0)}%</p>
+          <Link href="/projects" className="flex items-center justify-between rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 hover:opacity-80 transition-opacity">
+            <div>
+              <p className="text-[11px] text-muted/60">Win Rate</p>
+              <p className="text-xl font-bold text-emerald-500">{convRate.toFixed(0)}%</p>
+            </div>
             <p className="text-[11px] text-muted/60">{wonCount} / {totalDeals} ดีล</p>
           </Link>
         </Section>
@@ -987,6 +989,59 @@ export default function DashboardPage() {
       );
     }
 
+    // ── SALES MANAGER KPI STRIP ───────────────────────────────────────────────
+    if (id === "sales-manager-kpis") {
+      const mgMonthQ  = sc.quotas.filter(q => q.month === thisMonth);
+      const mgTarget  = mgMonthQ.reduce((s,q) => s+(q.quota_target||0), 0);
+      const mgActual  = mgMonthQ.reduce((s,q) => s+liveAct(q.user_name, q.month, q.actual_sales), 0);
+      const mgPct     = mgTarget > 0 ? Math.round(mgActual/mgTarget*100) : 0;
+      const mgActM    = mgActual >= 1e6 ? `${(mgActual/1e6).toFixed(2)}M` : mgActual > 0 ? `${Math.round(mgActual/1000)}K` : "—";
+      const mgTgtM    = mgTarget >= 1e6 ? `${(mgTarget/1e6).toFixed(1)}M` : mgTarget > 0 ? `${Math.round(mgTarget/1000)}K` : "—";
+      const monthName = new Date(parseInt(thisMonth.slice(0,4)), parseInt(thisMonth.slice(5,7))-1).toLocaleDateString("th-TH",{month:"long",year:"numeric"});
+      return (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <KpiCard label="ยอดขายเดือนนี้" value={mgActM} sub={monthName} color="green" href="/sales" pct={mgPct} />
+          <KpiCard label="Achievement %" value={mgTarget>0?`${mgPct}%`:"—"} sub={`${Math.round(mgActual/1000)}K / ${mgTgtM}`} color={mgPct>=80?"green":mgPct>=50?"amber":"red"} pct={mgPct} href="/reports" />
+          <KpiCard label="Pipeline รวม" value={pipeline>0?`${(pipeline/1e6).toFixed(1)}M`:"—"} sub={`${totalDeals} ดีล · Win ${convRate.toFixed(0)}%`} color="purple" href="/projects" />
+          <KpiCard label="Follow-up ค้าง" value={String(salesOverdue.length)} sub={salesOverdue.length>0?"ต้องติดตามด่วน":"ทุกงานปกติ"} color={salesOverdue.length>0?"red":"green"} alert={salesOverdue.length>0} href="/sales" />
+        </div>
+      );
+    }
+
+    // ── TOP DEALS ──────────────────────────────────────────────────────────────
+    if (id === "sales-top-deals") {
+      const stageLabel: Record<string,string> = { lead:"Lead",opportunity:"Opportunity",proposal:"Proposal",negotiation:"Negotiation",won:"Won" };
+      const stageCl: Record<string,string>    = { lead:"text-blue-500",opportunity:"text-cyan-500",proposal:"text-amber-500",negotiation:"text-orange-500",won:"text-emerald-500" };
+      const topDeals = sc.projects
+        .filter(p => !["won","lost"].includes(p.status) && (p.value||0) > 0)
+        .sort((a,b) => (b.value||0)-(a.value||0))
+        .slice(0,10);
+      const fmtVal = (v:number) => v>=1e6?`${(v/1e6).toFixed(1)}M`:`${Math.round(v/1000)}K`;
+      return (
+        <Section title="🏆 Top Deals" action={<Link href="/projects" className="text-[11px] text-accent hover:underline">ดูดีลทั้งหมด →</Link>}>
+          {topDeals.length===0 ? <p className="text-xs text-muted py-4 text-center">ยังไม่มีดีล</p> : (
+            <div className="space-y-1">
+              {topDeals.map((p,idx) => (
+                <Link key={p.id} href="/projects" className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/40 hover:bg-card-hover transition-colors group">
+                  <span className="text-[10px] text-muted/40 w-4 tabular-nums">{idx+1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate group-hover:text-accent transition-colors">{p.customer_name||p.name}</p>
+                    <p className="text-[10px] text-muted/60 truncate">{p.name}</p>
+                  </div>
+                  <div className="text-right shrink-0 space-y-0.5">
+                    <p className="text-xs font-bold text-green-500">{fmtVal(p.value||0)}</p>
+                    <p className={`text-[10px] font-medium ${stageCl[p.status]||"text-muted"}`}>{stageLabel[p.status]||p.status}</p>
+                  </div>
+                  {seeAll && <div className="text-[10px] text-muted/60 shrink-0 w-14 text-right truncate">{p.assigned_to?.split(" ")[0]||"—"}</div>}
+                  <div className="text-[10px] text-muted/50 shrink-0 w-16 text-right">{p.next_action_date||p.expected_close_date||"—"}</div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </Section>
+      );
+    }
+
     // ── SALES ─────────────────────────────────────────────────────────────────
     if (id === "sales-person-cards") {
       const myCards = personData.filter(p=>!p.isPool);
@@ -1051,35 +1106,39 @@ export default function DashboardPage() {
       return (
         <div>
           <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">Sales รายบุคคล · {filterLabel}</p>
-          <div className="flex gap-3 flex-wrap">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {myCards.map(p=>{
               const myOverdue = salesOverdue.filter(a=>a.assigned_to===p.name).length;
+              const pipM = p.pipVal>=1e6?`${(p.pipVal/1e6).toFixed(1)}M`:p.pipVal>0?`${Math.round(p.pipVal/1000)}K`:"—";
               return (
                 <Link key={p.name} href="/sales"
-                  className="flex-1 min-w-[200px] max-w-[280px] rounded-2xl bg-card border border-border p-4 hover:border-accent/50 hover:bg-card-hover transition-all">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <p className="text-sm font-semibold">{p.short}</p>
-                      <p className="text-[10px] text-muted truncate max-w-[140px]">{p.name}</p>
+                  className="rounded-2xl bg-card border border-border p-3 hover:border-accent/50 hover:bg-card-hover transition-all">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold truncate">{p.short}</p>
+                      <p className="text-[10px] text-muted truncate">{p.name}</p>
                     </div>
-                    <div className={`text-xs font-bold px-2 py-0.5 rounded-full border ${p.pct>=80?"bg-green-500/10 border-green-500/25 text-green-500":p.pct>=50?"bg-amber-500/10 border-amber-500/25 text-amber-500":p.tgt>0?"bg-red-500/10 border-red-500/25 text-red-500":"border-border/40 bg-muted/10 text-muted"}`}>
+                    <div className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ml-1 ${p.pct>=80?"bg-green-500/10 border-green-500/25 text-green-500":p.pct>=50?"bg-amber-500/10 border-amber-500/25 text-amber-500":p.tgt>0?"bg-red-500/10 border-red-500/25 text-red-500":"border-border/40 bg-muted/10 text-muted"}`}>
                       {p.tgt>0?`${p.pct}%`:"—"}
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs"><span className="text-muted">ยอดขาย</span><span className="font-semibold text-green-500">{p.actualK>0?`${p.actualK.toLocaleString()}K`:"—"}</span></div>
-                    <div className="flex justify-between text-xs"><span className="text-muted">เป้า</span><span className="text-muted">{p.targetK>0?`${p.targetK.toLocaleString()}K`:"—"}</span></div>
-                    {p.tgt>0&&<div className="h-1.5 rounded-full bg-background overflow-hidden"><div className={`h-full rounded-full ${p.pct>=80?"bg-green-500":p.pct>=50?"bg-amber-500":"bg-rose-500"}`} style={{ width:`${Math.min(p.pct,100)}%` }}/></div>}
-                    <div className="flex gap-3 mt-2 pt-2 border-t border-border">
-                      <div className="text-center"><p className="text-xs font-bold">{p.acts}</p><p className="text-[10px] text-muted">Activity</p></div>
-                      <div className="text-center"><p className="text-xs font-bold">{p.activeProj}</p><p className="text-[10px] text-muted">โปรเจค</p></div>
-                      <div className="text-center"><p className={`text-xs font-bold ${myOverdue>0?"text-red-500":""}`}>{myOverdue}</p><p className="text-[10px] text-muted">ค้าง</p></div>
-                    </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[11px]"><span className="text-muted">ยอดขาย</span><span className="font-semibold text-green-500">{p.actualK>0?`${p.actualK.toLocaleString()}K`:"—"}</span></div>
+                    <div className="flex justify-between text-[11px]"><span className="text-muted">เป้า</span><span className="text-muted">{p.targetK>0?`${p.targetK.toLocaleString()}K`:"—"}</span></div>
+                    <div className="flex justify-between text-[11px]"><span className="text-muted">Pipeline</span><span className="text-purple-500 font-medium">{pipM}</span></div>
+                    {p.tgt>0&&<div className="h-1 rounded-full bg-background overflow-hidden mt-1"><div className={`h-full rounded-full ${p.pct>=80?"bg-green-500":p.pct>=50?"bg-amber-500":"bg-rose-500"}`} style={{ width:`${Math.min(p.pct,100)}%` }}/></div>}
+                  </div>
+                  <div className="flex gap-2 mt-2 pt-2 border-t border-border/50">
+                    <div className="text-center flex-1"><p className="text-xs font-bold">{p.activeProj}</p><p className="text-[9px] text-muted">ดีล</p></div>
+                    <div className="w-px bg-border/40"/>
+                    <div className="text-center flex-1"><p className={`text-xs font-bold ${myOverdue>0?"text-red-500":""}`}>{myOverdue}</p><p className="text-[9px] text-muted">ค้าง</p></div>
+                    <div className="w-px bg-border/40"/>
+                    <div className="text-center flex-1"><p className="text-xs font-bold">{p.acts}</p><p className="text-[9px] text-muted">Act</p></div>
                   </div>
                 </Link>
               );
             })}
-            {myCards.length===0&&<p className="text-xs text-muted py-4">ยังไม่มีข้อมูล Sales</p>}
+            {myCards.length===0&&<p className="text-xs text-muted py-4 col-span-full">ยังไม่มีข้อมูล Sales</p>}
           </div>
         </div>
       );
