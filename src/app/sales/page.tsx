@@ -737,7 +737,7 @@ export default function SalesPage() {
                       </div>
 
                       {/* Date + Customer + Assigned */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 items-end">
                         <div>
                           <label className="text-[10px] text-muted">วันที่วางแผน</label>
                           <input type="date" value={actForm.plan_date || today} onChange={e => setActForm({...actForm, plan_date: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
