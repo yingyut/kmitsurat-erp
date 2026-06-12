@@ -881,66 +881,106 @@ export default function DashboardPage() {
         );
       }
 
-      // Manager/Admin — แสดงภาพรวมทีม
+      // Manager/Admin — weekly grid + summary
+      const nowLocal = new Date();
+      const localToday = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,"0")}-${String(nowLocal.getDate()).padStart(2,"0")}`;
+      const dowNow = nowLocal.getDay();
+      const monOffset = dowNow === 0 ? -6 : 1 - dowNow;
+      const weekDates = Array.from({length: 7}, (_, i) => {
+        const d = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate() + monOffset + i);
+        const str = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+        return { str, day: d.getDate(), isSat: d.getDay()===6, isSun: d.getDay()===0, isToday: str===localToday };
+      });
+      const dhShort = ["จ","อ","พ","พฤ","ศ","ส","อา"];
+
       const rows = salesTeam.map(u => {
         const uPlans   = allPlans.filter(p => p.assigned_to === u.name);
         const uDone    = uPlans.filter(p => p.status === "done").length;
         const uIP      = uPlans.filter(p => p.status === "in_progress").length;
-        const uOverdue = uPlans.filter(p => (p.plan_date||"") < todayStr && p.status !== "done").length;
-        const uToday   = uPlans.filter(p => p.plan_date === todayStr).length;
+        const uOverdue = uPlans.filter(p => (p.plan_date||"") < localToday && p.status !== "done").length;
         const pct      = uPlans.length > 0 ? Math.round(uDone / uPlans.length * 100) : 0;
-        return { u, total: uPlans.length, done: uDone, ip: uIP, overdue: uOverdue, today: uToday, pct };
+        const weekCells = weekDates.map(wd => {
+          const dp = uPlans.filter(p => p.plan_date === wd.str);
+          return { count: dp.length, done: dp.filter(p=>p.status==="done").length, ip: dp.filter(p=>p.status==="in_progress").length };
+        });
+        return { u, total: uPlans.length, done: uDone, ip: uIP, overdue: uOverdue, pct, weekCells };
       }).sort((a, b) => b.total - a.total);
 
       return (
         <Section title="📋 แผนงานทีมขาย — ภาพรวมรายคน" action={<Link href="/sales?tab=workplan" className="text-[11px] text-accent hover:underline">ดูปฏิทิน →</Link>}>
           {rows.length === 0 ? <p className="text-xs text-muted py-4">ยังไม่มีแผนงาน</p> : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs min-w-[500px]">
-                <thead>
-                  <tr className="text-left text-[10px] text-muted border-b border-border uppercase tracking-wide">
-                    <th className="pb-2 font-medium">เซลล์</th>
-                    <th className="pb-2 font-medium text-center">ทั้งหมด</th>
-                    <th className="pb-2 font-medium text-center">วันนี้</th>
-                    <th className="pb-2 font-medium text-center">ทำอยู่</th>
-                    <th className="pb-2 font-medium text-center">เสร็จ</th>
-                    <th className="pb-2 font-medium text-center">เกินกำหนด</th>
-                    <th className="pb-2 font-medium">ความคืบหน้า</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {rows.map(({ u, total, done, ip, overdue, today: td, pct }) => (
-                    <tr key={u.id} className="hover:bg-card-hover transition-colors">
-                      <td className="py-2.5 font-medium">
-                        <Link href={`/sales?tab=workplan`} className="hover:text-accent transition-colors">
-                          {u.nickname || u.first_name || u.name}
-                        </Link>
-                      </td>
-                      <td className="py-2.5 text-center font-bold">{total || "—"}</td>
-                      <td className="py-2.5 text-center">
-                        <span className={td > 0 ? "text-blue-500 font-bold" : "text-muted"}>{td || "—"}</span>
-                      </td>
-                      <td className="py-2.5 text-center">
-                        <span className={ip > 0 ? "text-amber-500 font-medium" : "text-muted"}>{ip || "—"}</span>
-                      </td>
-                      <td className="py-2.5 text-center text-green-500 font-medium">{done || "—"}</td>
-                      <td className="py-2.5 text-center">
-                        <span className={overdue > 0 ? "text-red-500 font-bold" : "text-muted"}>{overdue || "—"}</span>
-                      </td>
-                      <td className="py-2.5 min-w-[120px]">
-                        {total > 0 ? (
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 rounded-full bg-border/40 overflow-hidden">
-                              <div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${pct}%`}}/>
-                            </div>
-                            <span className="text-[10px] text-muted tabular-nums w-8 text-right">{pct}%</span>
-                          </div>
-                        ) : <span className="text-muted">—</span>}
-                      </td>
+            <div className="space-y-3">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[560px]">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="pb-2 text-left text-[10px] text-muted font-medium w-20">เซลล์</th>
+                      {weekDates.map((wd, i) => (
+                        <th key={wd.str} className={`pb-1 text-center w-9 text-[10px] font-medium ${wd.isToday?"text-accent":wd.isSat?"text-orange-500":wd.isSun?"text-rose-500":"text-muted"}`}>
+                          <div>{dhShort[i]}</div>
+                          <div className={`text-[11px] leading-tight ${wd.isToday?"bg-accent text-white rounded-full w-5 h-5 flex items-center justify-center mx-auto":""}`}>{wd.day}</div>
+                        </th>
+                      ))}
+                      <th className="pb-2 text-center text-[10px] text-muted font-medium px-1">รวม</th>
+                      <th className="pb-2 text-center text-[10px] text-muted font-medium px-1">เสร็จ</th>
+                      <th className="pb-2 text-center text-[10px] text-muted font-medium px-1">ค้าง</th>
+                      <th className="pb-2 text-[10px] text-muted font-medium min-w-[70px] pl-2">%</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-border/30">
+                    {rows.map(({ u, total, done, overdue, pct, weekCells }) => (
+                      <tr key={u.id} className="hover:bg-card-hover transition-colors">
+                        <td className="py-2 font-medium text-xs">
+                          <Link href="/sales?tab=workplan" className="hover:text-accent transition-colors">
+                            {u.nickname || u.first_name || u.name}
+                          </Link>
+                        </td>
+                        {weekCells.map((cell, ci) => {
+                          const wd = weekDates[ci];
+                          const allDone = cell.count > 0 && cell.done === cell.count;
+                          const partial = cell.count > 0 && cell.done > 0 && cell.done < cell.count;
+                          const inProg  = cell.count > 0 && cell.done === 0 && cell.ip > 0;
+                          const pending = cell.count > 0 && cell.done === 0 && cell.ip === 0;
+                          const color = allDone ? "bg-green-500/20 border-green-500/50 text-green-500"
+                                      : partial  ? "bg-amber-500/20 border-amber-500/50 text-amber-500"
+                                      : inProg   ? "bg-blue-500/20 border-blue-500/50 text-blue-500"
+                                      : pending  ? "bg-slate-400/15 border-slate-400/40 text-slate-400"
+                                      : "";
+                          return (
+                            <td key={wd.str} className={`py-2 text-center ${wd.isToday ? "bg-accent/5" : ""}`}>
+                              {cell.count > 0
+                                ? <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-[10px] font-bold ${color}`}>{cell.count}</span>
+                                : <span className="text-[10px] text-muted/40">—</span>}
+                            </td>
+                          );
+                        })}
+                        <td className="py-2 text-center font-bold text-xs px-1">{total||"—"}</td>
+                        <td className="py-2 text-center text-green-500 font-medium text-xs px-1">{done||"—"}</td>
+                        <td className="py-2 text-center text-xs px-1">
+                          <span className={overdue>0?"text-red-500 font-bold":"text-muted"}>{overdue||"—"}</span>
+                        </td>
+                        <td className="py-2 pl-2">
+                          {total > 0 ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="flex-1 h-1.5 rounded-full bg-border/40 overflow-hidden min-w-[36px]">
+                                <div className="h-full rounded-full bg-green-500" style={{width:`${pct}%`}}/>
+                              </div>
+                              <span className="text-[10px] text-muted tabular-nums">{pct}%</span>
+                            </div>
+                          ) : <span className="text-muted text-xs">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-wrap gap-3 text-[10px] text-muted border-t border-border/40 pt-2">
+                <span className="flex items-center gap-1"><span className="w-3.5 h-3.5 rounded-full border bg-green-500/20 border-green-500/50 inline-block"/> เสร็จทั้งหมด</span>
+                <span className="flex items-center gap-1"><span className="w-3.5 h-3.5 rounded-full border bg-amber-500/20 border-amber-500/50 inline-block"/> เสร็จบางส่วน</span>
+                <span className="flex items-center gap-1"><span className="w-3.5 h-3.5 rounded-full border bg-blue-500/20 border-blue-500/50 inline-block"/> กำลังทำ</span>
+                <span className="flex items-center gap-1"><span className="w-3.5 h-3.5 rounded-full border bg-slate-400/15 border-slate-400/40 inline-block"/> ยังไม่เริ่ม</span>
+                <span className="flex items-center gap-1"><span className="text-muted/40 mr-0.5">—</span> ไม่มีแผน</span>
+              </div>
             </div>
           )}
         </Section>
