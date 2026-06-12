@@ -80,12 +80,17 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
     { id: "exec-contracts",      visible: true,  span: "half"  },
   ],
   sales: [
+    // ① ยอดขายเป็นอย่างไร
     { id: "sales-manager-kpis", visible: true,  span: "full" },
-    { id: "sales-person-cards", visible: true,  span: "full" },
+    // ② ดีลไหนต้องรีบตาม
+    { id: "sales-overdue",      visible: true,  span: "full" },
     { id: "sales-top-deals",    visible: true,  span: "half" },
     { id: "sales-funnel",       visible: true,  span: "half" },
-    { id: "sales-overdue",      visible: true,  span: "full" },
+    // ③ ใครต้องการความช่วยเหลือ
+    { id: "sales-person-cards", visible: true,  span: "full" },
+    // ④ รายละเอียดเพิ่มเติม
     { id: "sales-qt-status",    visible: true,  span: "half" },
+    // ซ่อนไว้ใน Edit Mode
     { id: "sales-team-plans",   visible: false, span: "full" },
     { id: "sales-kpis",         visible: false, span: "full" },
     { id: "sales-table",        visible: false, span: "half" },
