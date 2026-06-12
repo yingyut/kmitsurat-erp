@@ -1000,7 +1000,7 @@ export default function DashboardPage() {
       const monthName = new Date(parseInt(thisMonth.slice(0,4)), parseInt(thisMonth.slice(5,7))-1).toLocaleDateString("th-TH",{month:"long",year:"numeric"});
       return (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <KpiCard label="ยอดขายเดือนนี้" value={mgActM} sub={monthName} color="green" href="/sales" pct={mgPct} />
+          <KpiCard label="ยอดขายเดือนนี้" value={mgActM} sub={monthName} color="green" href="/reports" pct={mgPct} />
           <KpiCard label="Achievement %" value={mgTarget>0?`${mgPct}%`:"—"} sub={`${Math.round(mgActual/1000)}K / ${mgTgtM}`} color={mgPct>=80?"green":mgPct>=50?"amber":"red"} pct={mgPct} href="/reports" />
           <KpiCard label="Pipeline รวม" value={pipeline>0?`${(pipeline/1e6).toFixed(1)}M`:"—"} sub={`${totalDeals} ดีล · Win ${convRate.toFixed(0)}%`} color="purple" href="/projects" />
           <KpiCard label="Follow-up ค้าง" value={String(salesOverdue.length)} sub={salesOverdue.length>0?"ต้องติดตามด่วน":"ทุกงานปกติ"} color={salesOverdue.length>0?"red":"green"} alert={salesOverdue.length>0} href="/sales" />
