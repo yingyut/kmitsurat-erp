@@ -464,7 +464,7 @@ export default function DashboardPage() {
   // ── Sales Users ───────────────────────────────────────────────────────────────
   const activeUserNames = new Set(users.map(u => u.name));
   const SALES_ROLES = new Set(["sale","Sales Executive","Sales Manager","Branch Manager"]);
-  const salesUsers = users.filter(u => SALES_ROLES.has(u.role));
+  const salesUsers = users.filter(u => u.active && SALES_ROLES.has(u.role));
   type PersonRow = { name:string; short:string; tgt:number; act:number; pft:number; acts:number; activeProj:number; pipVal:number; pct:number; targetK:number; actualK:number; isPool?:boolean };
   const activeSalesData: PersonRow[] = salesUsers.map(u => {
     const short = u.nickname ? u.nickname.replace(/พี่|น้อง/g,"").trim() : u.name.split(" ")[0];
