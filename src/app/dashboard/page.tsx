@@ -992,14 +992,10 @@ export default function DashboardPage() {
 
     // ── SALES MANAGER KPI STRIP ───────────────────────────────────────────────
     if (id === "sales-manager-kpis") {
-      const mgMonthQ  = sc.quotas.filter(q => q.month === thisMonth);
-      const mgTarget  = mgMonthQ.reduce((s,q) => s+(q.quota_target||0), 0);
-      const mgActual  = mgMonthQ.reduce((s,q) => s+liveAct(q.user_name, q.month, q.actual_sales), 0);
-      const mgPct     = mgTarget > 0 ? Math.round(mgActual/mgTarget*100) : 0;
-      const mgActM    = mgActual >= 1e6 ? `${(mgActual/1e6).toFixed(2)}M` : mgActual > 0 ? `${Math.round(mgActual/1000)}K` : "—";
-      const mgTgtM    = mgTarget >= 1e6 ? `${(mgTarget/1e6).toFixed(1)}M` : mgTarget > 0 ? `${Math.round(mgTarget/1000)}K` : "—";
-      const monthName = new Date(parseInt(thisMonth.slice(0,4)), parseInt(thisMonth.slice(5,7))-1).toLocaleDateString("th-TH",{month:"long",year:"numeric"});
-      // breakdown รายบุคคล — เฉพาะ field sales ที่มีข้อมูล
+      // ใช้ค่าเดียวกับ hero strip (filter-based) เพื่อให้สอดคล้องกัน
+      const mgActM = actual >= 1e6 ? `${(actual/1e6).toFixed(2)}M` : actual > 0 ? `${Math.round(actual/1000)}K` : "—";
+      const mgTgtM = target >= 1e6 ? `${(target/1e6).toFixed(1)}M` : target > 0 ? `${Math.round(target/1000)}K` : "—";
+      // breakdown รายบุคคล — field sales เท่านั้น เรียงตามยอดขาย
       const fieldSalesRoles = new Set(["sale","Sales Executive"]);
       const breakdownRows = activeSalesData
         .filter(p => { const u = users.find(uu=>uu.name===p.name); return u ? fieldSalesRoles.has(u.role) : false; })
@@ -1007,63 +1003,63 @@ export default function DashboardPage() {
       return (
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* ยอดขายเดือนนี้ — คลิกเพื่อดู breakdown */}
+            {/* ยอดขายรวม — คลิกเพื่อดู breakdown รายบุคคล */}
             <button
               onClick={() => setShowSalesBreakdown(v => !v)}
-              className="text-left rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all"
+              className="text-left rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150"
             >
               <div className="flex items-center justify-between">
-                <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium">ยอดขายเดือนนี้</p>
-                <span className="text-[10px] text-accent">{showSalesBreakdown ? "▲" : "▼"}</span>
+                <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ยอดขายรวม</p>
+                <span className="text-[10px] text-accent font-bold">{showSalesBreakdown ? "▲" : "▼"}</span>
               </div>
               <p className="text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
               <div className="space-y-1">
-                {mgPct > 0 && <div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(mgPct,100)}%`}}/></div>}
-                <p className="text-[9px] sm:text-[11px] text-muted/60 leading-snug">{monthName} · กดดู breakdown</p>
+                {targetPct > 0 && <div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
+                <p className="text-[9px] sm:text-[11px] text-muted/60 leading-snug truncate">{filterLabel} · กดดู breakdown</p>
               </div>
             </button>
-            <KpiCard label="Achievement %" value={mgTarget>0?`${mgPct}%`:"—"} sub={`${Math.round(mgActual/1000)}K / ${mgTgtM}`} color={mgPct>=80?"green":mgPct>=50?"amber":"red"} pct={mgPct} href="/reports" />
+            <KpiCard label="Achievement %" value={target>0?`${targetPct.toFixed(0)}%`:"—"} sub={`${Math.round(actual/1000)}K / ${mgTgtM}`} color={targetPct>=80?"green":targetPct>=50?"amber":target>0?"red":"muted"} pct={targetPct} href="/reports" />
             <KpiCard label="Pipeline รวม" value={pipeline>0?`${(pipeline/1e6).toFixed(1)}M`:"—"} sub={`${totalDeals} ดีล · Win ${convRate.toFixed(0)}%`} color="purple" href="/projects" />
             <KpiCard label="Follow-up ค้าง" value={String(salesOverdue.length)} sub={salesOverdue.length>0?"ต้องติดตามด่วน":"ทุกงานปกติ"} color={salesOverdue.length>0?"red":"green"} alert={salesOverdue.length>0} href="/sales" />
           </div>
           {/* Breakdown รายบุคคล */}
           {showSalesBreakdown && (
-            <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
+            <div className="rounded-xl border border-border/60 bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-card-hover/50">
-                <p className="text-xs font-semibold">ยอดขายรายบุคคล — {monthName}</p>
-                <p className="text-[10px] text-muted">รวม {mgActM}</p>
+                <p className="text-xs font-semibold">ยอดขายรายบุคคล — {filterLabel}</p>
+                <p className="text-[10px] text-muted">ทีมรวม {mgActM}</p>
               </div>
               {breakdownRows.length === 0 ? (
-                <p className="text-xs text-muted px-4 py-3">ยังไม่มีข้อมูล</p>
+                <p className="text-xs text-muted px-4 py-4 text-center">ยังไม่มีข้อมูลยอดขาย</p>
               ) : (
                 <div className="divide-y divide-border/30">
                   {breakdownRows.map(p => {
                     const pActM = p.act >= 1e6 ? `${(p.act/1e6).toFixed(2)}M` : p.act > 0 ? `${Math.round(p.act/1000)}K` : "—";
                     const pTgtM = p.tgt >= 1e6 ? `${(p.tgt/1e6).toFixed(1)}M` : p.tgt > 0 ? `${Math.round(p.tgt/1000)}K` : "—";
-                    const contrib = mgActual > 0 ? Math.round(p.act/mgActual*100) : 0;
+                    const contrib = actual > 0 && p.act > 0 ? Math.round(p.act/actual*100) : 0;
                     const pctColor = p.pct>=80?"text-emerald-500":p.pct>=50?"text-amber-500":p.tgt>0?"text-orange-500":"text-muted";
-                    const barColor = p.pct>=80?"bg-emerald-500":p.pct>=50?"bg-amber-500":p.tgt>0?"bg-orange-500":"bg-muted/30";
+                    const barColor = p.pct>=80?"bg-emerald-500":p.pct>=50?"bg-amber-500":p.tgt>0?"bg-orange-500":"bg-muted/20";
                     return (
                       <div key={p.name} className="flex items-center gap-3 px-4 py-2.5 hover:bg-card-hover transition-colors">
                         <div className="w-20 shrink-0">
-                          <p className="text-xs font-medium truncate">{p.short||p.name}</p>
-                          <p className="text-[10px] text-muted truncate">{p.name}</p>
+                          <p className="text-xs font-semibold truncate">{p.short||p.name}</p>
+                          <p className="text-[10px] text-muted/60 truncate">{p.name}</p>
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <div className="flex-1 h-1.5 rounded-full bg-border/40 overflow-hidden">
                               <div className={`h-full rounded-full transition-all ${barColor}`} style={{width:`${Math.min(p.pct,100)}%`}}/>
                             </div>
-                            <span className={`text-[10px] font-bold w-8 text-right tabular-nums ${pctColor}`}>{p.tgt>0?`${p.pct}%`:"—"}</span>
+                            <span className={`text-[10px] font-bold w-9 text-right tabular-nums ${pctColor}`}>{p.tgt>0?`${p.pct}%`:"—"}</span>
                           </div>
                           <div className="flex gap-3 text-[10px] text-muted">
                             <span>จริง <span className="text-foreground font-medium">{pActM}</span></span>
-                            {p.tgt > 0 && <span>เป้า {pTgtM}</span>}
+                            {p.tgt>0 && <span>/ เป้า {pTgtM}</span>}
                           </div>
                         </div>
-                        <div className="text-right shrink-0 w-14">
-                          <p className="text-xs font-bold text-emerald-500">{pActM}</p>
-                          <p className="text-[10px] text-muted">{contrib > 0 ? `${contrib}% รวม` : "—"}</p>
+                        <div className="text-right shrink-0 w-16">
+                          <p className="text-sm font-bold text-emerald-500">{pActM}</p>
+                          {contrib > 0 && <p className="text-[10px] text-muted">{contrib}% of ทีม</p>}
                         </div>
                       </div>
                     );
