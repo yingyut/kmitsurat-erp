@@ -693,7 +693,7 @@ export default function DashboardPage() {
       return (
         <Section title="Sales Pipeline" action={<Link href="/projects" className="text-[11px] text-accent hover:underline">ดูดีลทั้งหมด →</Link>}>
           <div className="space-y-1.5 mb-3">
-            {pipeCards.map(s=>(
+            {pipeCards.filter(s => s.cnt > 0 || s.val > 0).map(s=>(
               <Link key={s.name} href="/projects" className={`flex items-center gap-3 rounded-xl border px-3 py-2 hover:opacity-80 transition-opacity ${s.bg}`}>
                 <div className="w-20 shrink-0">
                   <p className={`text-[11px] font-semibold ${s.color}`}>{s.sub}</p>
@@ -1020,7 +1020,26 @@ export default function DashboardPage() {
             </button>
             <KpiCard label="Achievement %" value={target>0?`${targetPct.toFixed(0)}%`:"—"} sub={`${Math.round(actual/1000)}K / ${mgTgtM}`} color={targetPct>=80?"green":targetPct>=50?"amber":target>0?"red":"muted"} pct={targetPct} href="/reports" />
             <KpiCard label="Pipeline รวม" value={pipeline>0?`${(pipeline/1e6).toFixed(1)}M`:"—"} sub={`${totalDeals} ดีล · Win ${convRate.toFixed(0)}%`} color="purple" href="/projects" />
-            <KpiCard label="Follow-up ค้าง" value={String(salesOverdue.length)} sub={salesOverdue.length>0?"ต้องติดตามด่วน":"ทุกงานปกติ"} color={salesOverdue.length>0?"red":"green"} alert={salesOverdue.length>0} href="/sales" />
+            {/* Follow-up card with per-person breakdown */}
+            {(() => {
+              const odMap = new Map<string,number>();
+              salesOverdue.forEach(a => { const k = a.assigned_to||"ไม่ระบุ"; odMap.set(k,(odMap.get(k)||0)+1); });
+              const odList = Array.from(odMap.entries()).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([name,cnt])=>({
+                short: users.find(u=>u.name===name)?.name.split(" ")[0] || name.split(" ")[0] || name,
+                cnt,
+              }));
+              return (
+                <Link href="/sales" className={`rounded-xl bg-card border flex flex-col justify-between p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] transition-all hover:-translate-y-0.5 ${salesOverdue.length>0?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
+                  <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">FOLLOW-UP ค้าง</p>
+                  <p className={`text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none ${salesOverdue.length>0?"text-orange-500":"text-muted"}`}>{salesOverdue.length}</p>
+                  <div className="min-h-[14px]">
+                    {odList.length>0
+                      ? <div className="flex flex-wrap gap-1">{odList.map(o=><span key={o.short} className="text-[9px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-full px-1.5 py-0.5">{o.short} {o.cnt}</span>)}</div>
+                      : <p className="text-[9px] sm:text-[11px] text-muted/60">ทุกงานปกติ</p>}
+                  </div>
+                </Link>
+              );
+            })()}
           </div>
           {/* Breakdown รายบุคคล */}
           {showSalesBreakdown && (
@@ -1087,16 +1106,13 @@ export default function DashboardPage() {
             <div className="space-y-1">
               {topDeals.map((p,idx) => (
                 <Link key={p.id} href="/projects" className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/40 hover:bg-card-hover transition-colors group">
-                  <span className="text-[10px] text-muted/40 w-4 tabular-nums">{idx+1}</span>
+                  <span className="text-[10px] text-muted/40 w-4 tabular-nums shrink-0">{idx+1}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate group-hover:text-accent transition-colors">{p.customer_name||p.name}</p>
-                    <p className="text-[10px] text-muted/60 truncate">{p.name}</p>
                   </div>
-                  <div className="text-right shrink-0 space-y-0.5">
-                    <p className="text-xs font-bold text-green-500">{fmtVal(p.value||0)}</p>
-                    <p className={`text-[10px] font-medium ${stageCl[p.status]||"text-muted"}`}>{stageLabel[p.status]||p.status}</p>
-                  </div>
-                  {seeAll && <div className="text-[10px] text-muted/60 shrink-0 w-14 text-right truncate">{p.assigned_to?.split(" ")[0]||"—"}</div>}
+                  <p className={`text-[10px] font-medium shrink-0 ${stageCl[p.status]||"text-muted"}`}>{stageLabel[p.status]||p.status}</p>
+                  <p className="text-xs font-bold text-green-500 shrink-0 w-14 text-right tabular-nums">{fmtVal(p.value||0)}</p>
+                  <div className="text-[10px] text-muted/60 shrink-0 w-12 text-right truncate">{p.assigned_to?.split(" ")[0]||"—"}</div>
                   <div className="text-[10px] text-muted/50 shrink-0 w-16 text-right">{p.next_action_date||p.expected_close_date||"—"}</div>
                 </Link>
               ))}
@@ -1114,8 +1130,9 @@ export default function DashboardPage() {
       const myCards = personData.filter(p => {
         if (p.isPool) return false;
         const u = users.find(uu => uu.name === p.name);
-        return u ? fieldSalesRoles.has(u.role) : false;
-      });
+        if (!u || !fieldSalesRoles.has(u.role)) return false;
+        return p.act > 0 || p.pipVal > 0 || p.acts > 0; // ซ่อน card ที่ไม่มีข้อมูลเลย
+      }).sort((a,b) => b.pct - a.pct); // เรียงตาม achievement มากไปน้อย
       // Personal card — show only when non-admin sales user sees their own row
       if (!seeAll) {
         const p = myCards[0];
@@ -1174,9 +1191,21 @@ export default function DashboardPage() {
         );
       }
       // Admin / seeAll: team cards view
+      const onTarget   = myCards.filter(p => p.tgt > 0 && p.pct >= 80).length;
+      const belowTarget = myCards.filter(p => p.tgt > 0 && p.pct < 80).length;
+      const totalOD    = myCards.reduce((s,p) => s + salesOverdue.filter(a=>a.assigned_to===p.name).length, 0);
       return (
         <div>
-          <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">Sales รายบุคคล · {filterLabel}</p>
+          {/* Team Summary */}
+          <div className="flex flex-wrap items-center gap-3 mb-3 px-1">
+            <p className="text-[11px] text-muted uppercase tracking-widest font-medium">Sales รายบุคคล · {filterLabel}</p>
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-[10px] bg-card border border-border/60 rounded-full px-2 py-0.5 text-muted">{myCards.length} คน</span>
+              {onTarget > 0 && <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-500 rounded-full px-2 py-0.5">✓ เป้า {onTarget}</span>}
+              {belowTarget > 0 && <span className="text-[10px] bg-amber-500/10 border border-amber-500/25 text-amber-500 rounded-full px-2 py-0.5">↓ ต่ำกว่าเป้า {belowTarget}</span>}
+              {totalOD > 0 && <span className="text-[10px] bg-orange-500/10 border border-orange-500/25 text-orange-500 rounded-full px-2 py-0.5">⚠ ค้าง {totalOD}</span>}
+            </div>
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {myCards.map(p=>{
               const myOverdue = salesOverdue.filter(a=>a.assigned_to===p.name).length;
