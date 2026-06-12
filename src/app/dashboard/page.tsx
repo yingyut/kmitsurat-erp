@@ -1048,7 +1048,9 @@ export default function DashboardPage() {
       const myCards = personData.filter(p => {
         if (p.isPool) return false;
         const u = users.find(uu => uu.name === p.name);
-        return u ? pureSalesRoles.has(u.role) : false;
+        if (!u || !pureSalesRoles.has(u.role)) return false;
+        // แสดงเฉพาะ user ที่มีข้อมูลจริง หรือเป็น user ที่ login อยู่
+        return p.tgt > 0 || p.act > 0 || p.activeProj > 0 || p.pipVal > 0 || p.name === myName;
       });
       // Personal card — show only when non-admin sales user sees their own row
       if (!seeAll) {
