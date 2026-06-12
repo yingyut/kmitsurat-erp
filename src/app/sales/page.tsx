@@ -1339,7 +1339,10 @@ export default function SalesPage() {
                               isSun ? "bg-rose-500/5" :
                               isSat ? "bg-orange-500/4" :
                               "bg-card hover:bg-card-hover/40"}`}>
-                            <div className="flex items-center justify-between mb-1 px-0.5">
+                            <div className="flex items-center justify-end mb-1 px-1 pt-0.5">
+                              {ovdInDay && <span className="text-red-500 text-[9px] font-black leading-none mr-auto">!</span>}
+                              {allDone  && <span className="text-green-500 text-[9px] font-bold leading-none mr-auto">✓</span>}
+                              {!ovdInDay && !allDone && dp.length > 1 && inM && <span className="text-[9px] text-muted/50 leading-none mr-auto">{dp.length}</span>}
                               <span className={`text-[11px] font-bold w-5 h-5 flex items-center justify-center rounded-full leading-none ${
                                 isTd ? "bg-blue-600 text-white text-[10px]" :
                                 !inM ? "text-muted/20" :
@@ -1348,9 +1351,6 @@ export default function SalesPage() {
                                 isSun ? "text-rose-400" :
                                 isSat ? "text-orange-400" :
                                 "text-foreground"}`}>{parseInt(dateStr.slice(8))}</span>
-                              {ovdInDay && <span className="text-red-600 text-[9px] font-black leading-none">!</span>}
-                              {allDone  && <span className="text-green-500 text-[9px] font-bold leading-none">✓</span>}
-                              {!ovdInDay && !allDone && dp.length > 1 && inM && <span className="text-[9px] text-muted/60 leading-none">{dp.length}</span>}
                             </div>
                             <div className="space-y-px">
                               {vis.map(p => chip(p))}
