@@ -579,15 +579,17 @@ export default function SalesPage() {
         const firstDow = (firstOfMonth.getDay() + 6) % 7;
         const daysInMonth = new Date(calY, calM, 0).getDate();
         const totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+        const toLocalDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
         const calCells = Array.from({length: totalCells}, (_, i) => {
-          const d = new Date(firstOfMonth.getTime() - firstDow * 86400000 + i * 86400000);
-          return d.toISOString().slice(0, 10);
+          const d = new Date(calY, calM - 1, 1 - firstDow + i);
+          return toLocalDate(d);
         });
 
         // Week grid
         const weekDays = Array.from({length: 7}, (_, i) => {
-          const d = new Date(new Date(calWeekStart + "T12:00:00").getTime() + i * 86400000);
-          return d.toISOString().slice(0, 10);
+          const base = new Date(calWeekStart + "T12:00:00");
+          const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
+          return toLocalDate(d);
         });
 
         // Team
