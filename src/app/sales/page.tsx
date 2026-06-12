@@ -1661,7 +1661,48 @@ export default function SalesPage() {
               </div>
 
               {/* ── Right Side Panel ── */}
-              <div className="hidden xl:flex flex-col gap-3 w-44 shrink-0">
+              <div className="hidden xl:flex flex-col gap-3 w-52 shrink-0">
+
+                {/* ── Team Summary (manager/admin only) ── */}
+                {!ownSalesOnly && visibleTeam.length > 1 && (
+                  <div className="rounded-xl bg-card border border-border overflow-hidden">
+                    <div className="px-3 py-2 border-b border-border bg-card-hover/30">
+                      <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">ทีมขาย</p>
+                    </div>
+                    <div className="p-1.5 space-y-0.5 max-h-64 overflow-y-auto">
+                      {visibleTeam.map(u => {
+                        const uPlans   = allPlans.filter(p => p.assigned_to === u.name);
+                        const uDone    = uPlans.filter(p => p.status === "done").length;
+                        const uOverdue = uPlans.filter(p => (p.plan_date||"") < today && p.status !== "done").length;
+                        const uTotal   = uPlans.length;
+                        const pct      = uTotal > 0 ? Math.round(uDone / uTotal * 100) : 0;
+                        const isFiltered = apPersonFilter === u.name;
+                        return (
+                          <button key={u.id} onClick={() => setApPersonFilter(isFiltered ? "" : u.name)}
+                            className={`w-full text-left rounded-lg px-2.5 py-2 transition-colors ${isFiltered ? "bg-accent/10 border border-accent/30" : "hover:bg-card-hover"}`}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className={`text-[11px] font-semibold truncate max-w-[100px] ${isFiltered ? "text-accent" : "text-foreground"}`}>
+                                {u.nickname || u.first_name || u.name}
+                              </span>
+                              <span className="text-[10px] text-muted tabular-nums">{uTotal}</span>
+                            </div>
+                            {uTotal > 0 && (
+                              <div className="h-1 rounded-full bg-background overflow-hidden mb-1">
+                                <div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${pct}%`}}/>
+                              </div>
+                            )}
+                            <div className="flex gap-2 text-[9px]">
+                              <span className="text-green-500 font-bold">✓{uDone}</span>
+                              {uOverdue > 0 && <span className="text-red-500 font-bold">⚠{uOverdue}</span>}
+                              <span className="text-muted ml-auto">{uTotal > 0 ? `${pct}%` : "—"}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Mini KPI */}
                 <div className="rounded-xl bg-card border border-border p-3">
                   <div className="flex items-center justify-between mb-2">

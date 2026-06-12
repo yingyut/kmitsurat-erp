@@ -69,11 +69,13 @@ export function filterOwned<T extends OwnableRecord>(
 
 /**
  * canSeeAll — ตรวจสอบว่า user มีสิทธิ์เห็นข้อมูลทั้งหมด (ทุก role)
- * Admin และ Avenger เท่านั้นที่เห็นข้อมูลรวมทุกคนได้
+ * Admin, Avenger และ Manager roles เห็นข้อมูลทีมได้
  */
 export function canSeeAll(user: User | null | undefined): boolean {
   const role = user?.role ?? "";
-  return ["admin", "Administrator", "avenger"].includes(role);
+  if (["admin", "Administrator", "avenger"].includes(role)) return true;
+  if (role.toLowerCase().includes("manager")) return true;
+  return false;
 }
 
 /**
