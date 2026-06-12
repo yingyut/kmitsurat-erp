@@ -62,7 +62,7 @@ const emptyUser = {
   name: "", first_name: "", last_name: "", nickname: "", display_preference: "nickname" as DisplayPref,
   email: "", role: "Sales Executive" as User["role"], position: "", department: "", phone: "", bio: "",
   active: true, employment_status: "active" as EmploymentStatus, resigned_at: "",
-  sales_code: "", login_username: "",
+  sales_code: "", login_username: "", password: "",
   extra_roles: [] as string[],
 };
 
@@ -103,6 +103,7 @@ export default function UsersPage() {
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userForm, setUserForm] = useState(emptyUser);
+  const [showPwdForm, setShowPwdForm] = useState(false);
 
   // Team form
   const [showTeamForm, setShowTeamForm] = useState(false);
@@ -200,6 +201,7 @@ export default function UsersPage() {
       employment_status: (user.employment_status || "active") as EmploymentStatus,
       resigned_at: user.resigned_at || "",
       sales_code: user.sales_code || "", login_username: user.login_username || "",
+      password: user.password || "",
       extra_roles: user.extra_roles || [],
     });
     setShowUserForm(true);
@@ -214,7 +216,11 @@ export default function UsersPage() {
     try {
       const es = userForm.employment_status || "active";
       const derivedActive = es === "active" || es === "on_leave";
-      const payload = { ...userForm, name: computedName || userForm.name, active: derivedActive };
+      const pwdValue = userForm.password.trim();
+      const base = { ...userForm, name: computedName || userForm.name, active: derivedActive };
+      const payload = editingUserId
+        ? pwdValue ? base : (({ password: _p, ...rest }) => rest)(base)
+        : { ...base, password: pwdValue || "P@ssw0rd" };
       if (editingUserId) {
         await fs.users.update(editingUserId, payload as unknown as Record<string, unknown>);
         await fs.logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", module: "users", action: "update", resource_id: editingUserId, resource_name: computedName || userForm.name, details: `แก้ไขข้อมูลผู้ใช้: ${computedName || userForm.name} (${userForm.role})` });
@@ -632,6 +638,13 @@ export default function UsersPage() {
                   <div>
                     <label className="text-[10px] text-muted">Login Username (ภาษาอังกฤษ)</label>
                     <input placeholder="เช่น yingyut, suppaluck" value={userForm.login_username} onChange={(e) => setUserForm({ ...userForm, login_username: e.target.value.toLowerCase().replace(/[^a-z0-9._]/g, "") })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent lowercase font-mono mt-1" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">{editingUserId ? "รหัสผ่าน (เว้นว่างถ้าไม่เปลี่ยน)" : "รหัสผ่านเริ่มต้น"}</label>
+                    <div className="relative mt-1">
+                      <input type={showPwdForm ? "text" : "password"} placeholder={editingUserId ? "เว้นว่างเพื่อคงรหัสผ่านเดิม" : "ค่าเริ่มต้น: P@ssw0rd"} value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 pr-10 text-sm focus:outline-none focus:border-accent font-mono" />
+                      <button type="button" onClick={() => setShowPwdForm(v => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground text-xs px-1">{showPwdForm ? "ซ่อน" : "แสดง"}</button>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] text-muted">รหัสเซลล์ (3-5 ตัว)</label>
