@@ -1313,10 +1313,10 @@ export default function SalesPage() {
                 {apView === "month" && (
                   <div>
                     <div className="grid grid-cols-7 mb-1">
-                      {dhNames.map((d, i) => <div key={d} className={`text-center text-[10px] font-bold py-1.5 tracking-wide ${i >= 5 ? "text-muted/35" : "text-muted/70"}`}>{d}</div>)}
+                      {dhNames.map((d, i) => <div key={d} className={`text-center text-[10px] font-bold py-1.5 tracking-wide ${i === 6 ? "text-rose-400/80" : i === 5 ? "text-orange-400/80" : "text-muted/70"}`}>{d}</div>)}
                     </div>
                     <div className="grid grid-cols-7 gap-px bg-border/30 rounded-xl overflow-hidden border border-border/50 shadow-sm">
-                      {calCells.map(dateStr => {
+                      {calCells.map((dateStr, i) => {
                         const inM      = dateStr.startsWith(calNavDate);
                         const isTd     = dateStr === today;
                         const isPast   = dateStr < today;
@@ -1326,6 +1326,9 @@ export default function SalesPage() {
                         const vis      = dp.slice(0, 3);
                         const more     = dp.length - vis.length;
                         const isSelected = drawerDay === dateStr;
+                        const dow      = i % 7;
+                        const isSun    = dow === 6;
+                        const isSat    = dow === 5;
                         return (
                           <div key={dateStr} onClick={() => inM && setDrawerDay(drawerDay === dateStr ? null : dateStr)}
                             className={`min-h-[90px] p-1 cursor-pointer transition-colors ${
@@ -1333,6 +1336,8 @@ export default function SalesPage() {
                               isSelected ? "bg-blue-500/8 ring-2 ring-inset ring-blue-600" :
                               isTd ? "bg-blue-500/5" :
                               ovdInDay ? "bg-red-500/4" :
+                              isSun ? "bg-rose-500/5" :
+                              isSat ? "bg-orange-500/4" :
                               "bg-card hover:bg-card-hover/40"}`}>
                             <div className="flex items-center justify-between mb-1 px-0.5">
                               <span className={`text-[11px] font-bold w-5 h-5 flex items-center justify-center rounded-full leading-none ${
@@ -1340,6 +1345,8 @@ export default function SalesPage() {
                                 !inM ? "text-muted/20" :
                                 ovdInDay ? "text-red-500" :
                                 isPast ? "text-muted/50" :
+                                isSun ? "text-rose-400" :
+                                isSat ? "text-orange-400" :
                                 "text-foreground"}`}>{parseInt(dateStr.slice(8))}</span>
                               {ovdInDay && <span className="text-red-600 text-[9px] font-black leading-none">!</span>}
                               {allDone  && <span className="text-green-500 text-[9px] font-bold leading-none">✓</span>}
@@ -1365,12 +1372,14 @@ export default function SalesPage() {
                         const isPast = dateStr < today;
                         const dp    = plansOn(dateStr);
                         const hasOvd = dp.some(p => p.status !== "done" && isPast);
+                        const isSun  = i === 6;
+                        const isSat  = i === 5;
                         return (
-                          <div key={dateStr} className={`rounded-xl border flex flex-col shadow-sm ${isTd ? "border-blue-600/40 bg-blue-500/4" : hasOvd ? "border-red-500/30" : "border-border/60 bg-card"}`}>
-                            <div className={`px-2 py-2 text-center border-b cursor-pointer hover:bg-card-hover/50 transition-colors ${isTd ? "border-blue-600/30 bg-blue-600/8" : hasOvd ? "border-red-500/20 bg-red-500/4" : "border-border/40"}`}
+                          <div key={dateStr} className={`rounded-xl border flex flex-col shadow-sm ${isTd ? "border-blue-600/40 bg-blue-500/4" : hasOvd ? "border-red-500/30" : isSun ? "border-rose-500/20 bg-rose-500/4" : isSat ? "border-orange-500/20 bg-orange-500/4" : "border-border/60 bg-card"}`}>
+                            <div className={`px-2 py-2 text-center border-b cursor-pointer hover:bg-card-hover/50 transition-colors ${isTd ? "border-blue-600/30 bg-blue-600/8" : hasOvd ? "border-red-500/20 bg-red-500/4" : isSun ? "border-rose-500/15 bg-rose-500/5" : isSat ? "border-orange-500/15 bg-orange-500/5" : "border-border/40"}`}
                               onClick={() => { setCalDayDate(dateStr); setApView("day"); }}>
-                              <p className={`text-[10px] font-bold uppercase tracking-wide ${isTd ? "text-blue-600" : hasOvd ? "text-red-500" : "text-muted/70"}`}>{dhNames[i]}</p>
-                              <p className={`text-xl font-bold leading-tight ${isTd ? "text-blue-600" : isPast ? "text-muted/50" : "text-foreground"}`}>{parseInt(dateStr.slice(8))}</p>
+                              <p className={`text-[10px] font-bold uppercase tracking-wide ${isTd ? "text-blue-600" : hasOvd ? "text-red-500" : isSun ? "text-rose-400" : isSat ? "text-orange-400" : "text-muted/70"}`}>{dhNames[i]}</p>
+                              <p className={`text-xl font-bold leading-tight ${isTd ? "text-blue-600" : isPast ? "text-muted/50" : isSun ? "text-rose-400" : isSat ? "text-orange-400" : "text-foreground"}`}>{parseInt(dateStr.slice(8))}</p>
                               {dp.length > 0 && <span className={`text-[9px] rounded px-1.5 py-0.5 font-bold inline-block mt-0.5 border ${hasOvd ? "bg-red-500/10 border-red-500/25 text-red-500" : isTd ? "bg-blue-500/10 border-blue-500/25 text-blue-600" : "bg-card-hover border-border text-muted"}`}>{dp.length}</span>}
                             </div>
                             <div className="p-1 flex-1 space-y-0.5 min-h-[100px]">
