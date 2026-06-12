@@ -2214,8 +2214,8 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── HERO KPI STRIP — ซ่อนสำหรับ sales view ส่วนตัว และ service roles ── */}
-        {showHeroKpiStrip && !(view === "sales" && !seeAll) && !isServiceRole && (
+        {/* ── HERO KPI STRIP — ซ่อนสำหรับ sales view ทุก role และ service roles ── */}
+        {showHeroKpiStrip && view !== "sales" && !isServiceRole && (
           <div className="grid grid-cols-4 gap-2">
             <KpiCard size="sm" label="ยอดขาย" value={`${(actual/1e6).toFixed(1)}M`} sub={`THB`} color="green" href="/sales" pct={targetPct} />
             <KpiCard size="sm" label="Achievement" value={`${targetPct.toFixed(0)}%`} sub={`${(actual/1000).toFixed(0)}K/${(target/1000).toFixed(0)}K`} color={targetPct>=80?"green":targetPct>=50?"amber":"red"} pct={targetPct} href="/reports" />
