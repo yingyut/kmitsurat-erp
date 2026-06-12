@@ -55,7 +55,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const loggedIn = localStorage.getItem("kmit_logged_in") === "true";
+        const loggedIn = sessionStorage.getItem("kmit_logged_in") === "true";
         setIsLoggedIn(loggedIn);
 
         const fs = await import("@/lib/firestore");
@@ -64,11 +64,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setUsers(active);
 
         if (loggedIn) {
-          const savedName = localStorage.getItem("kmit_current_user");
+          const savedName = sessionStorage.getItem("kmit_current_user");
           const saved = savedName ? active.find(u => u.name === savedName) : null;
           if (saved) setCurrentUser(saved);
           else {
-            localStorage.removeItem("kmit_logged_in");
+            sessionStorage.removeItem("kmit_logged_in");
             setIsLoggedIn(false);
           }
         }
@@ -79,15 +79,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   function handleSetUser(u: User | null) {
     setCurrentUser(u);
-    if (u) localStorage.setItem("kmit_current_user", u.name);
-    else localStorage.removeItem("kmit_current_user");
+    if (u) sessionStorage.setItem("kmit_current_user", u.name);
+    else sessionStorage.removeItem("kmit_current_user");
   }
 
   function logout() {
     setCurrentUser(null);
     setIsLoggedIn(false);
-    localStorage.removeItem("kmit_logged_in");
-    localStorage.removeItem("kmit_current_user");
+    sessionStorage.removeItem("kmit_logged_in");
+    sessionStorage.removeItem("kmit_current_user");
     window.location.href = "/login";
   }
 
