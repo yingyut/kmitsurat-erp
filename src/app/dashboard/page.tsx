@@ -221,7 +221,10 @@ export default function DashboardPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [jobRequests, setJobRequests] = useState<JobRequest[]>([]);
-  const [showSalesBreakdown, setShowSalesBreakdown] = useState(false);
+  const [showSalesBreakdown,  setShowSalesBreakdown]  = useState(false);
+  const [showAchievBreakdown, setShowAchievBreakdown] = useState(false);
+  const [showPipeBreakdown,   setShowPipeBreakdown]   = useState(false);
+  const [showOdBreakdown,     setShowOdBreakdown]     = useState(false);
 
   // ── Realtime Firestore subscriptions ─────────────────────────────────────────
   useEffect(() => {
@@ -1002,141 +1005,206 @@ export default function DashboardPage() {
         .sort((a,b) => b.act - a.act);
       return (
         <div className="space-y-3">
+          {/* 4 KPI cards — ทุกใบกดเพื่อดู breakdown ด้านล่าง */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* ① ยอดขายรวม — top contributor chips */}
-            <button
-              onClick={() => setShowSalesBreakdown(v => !v)}
-              className="text-left rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150"
-            >
+            {/* ① ยอดขายรวม */}
+            <button onClick={()=>{setShowSalesBreakdown(v=>!v);setShowAchievBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
+              className="text-left rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ยอดขายรวม</p>
-                <span className="text-[10px] text-accent font-bold">{showSalesBreakdown ? "▲" : "▼"}</span>
+                <span className="text-[10px] text-accent font-bold">{showSalesBreakdown?"▲":"▼"}</span>
               </div>
               <p className="text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
-              <div className="min-h-[16px]">
-                {targetPct > 0 && <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mb-1"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
-                {breakdownRows.filter(p=>p.act>0).length>0
-                  ? <div className="flex flex-wrap gap-1">
-                      {breakdownRows.filter(p=>p.act>0).slice(0,3).map(p=>{
-                        const v = p.act>=1e6?`${(p.act/1e6).toFixed(1)}M`:`${Math.round(p.act/1000)}K`;
-                        return <span key={p.name} className="text-[9px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-500 rounded-full px-1.5 py-0.5">{p.short||p.name.split(" ")[0]} {v}</span>;
-                      })}
-                    </div>
-                  : <p className="text-[9px] text-muted/60">ยังไม่มีข้อมูล</p>}
+              <div>
+                {targetPct>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
+                <p className="text-[9px] text-muted/60 mt-0.5">{filterLabel}</p>
               </div>
             </button>
 
-            {/* ② Achievement % — on/below target chips */}
-            {(() => {
-              const onTgt  = breakdownRows.filter(p => p.tgt>0 && p.pct>=80);
-              const below  = breakdownRows.filter(p => p.tgt>0 && p.pct<80);
-              const noTgt  = breakdownRows.filter(p => p.tgt===0);
-              const pctCol = targetPct>=80?"text-emerald-500":targetPct>=50?"text-amber-500":target>0?"text-orange-500":"text-muted";
-              const barCol = targetPct>=80?"bg-emerald-500":targetPct>=50?"bg-amber-500":target>0?"bg-orange-500":"bg-muted/20";
+            {/* ② Achievement % */}
+            {(()=>{
+              const pctCol=targetPct>=80?"text-emerald-500":targetPct>=50?"text-amber-500":target>0?"text-orange-500":"text-muted";
+              const barCol=targetPct>=80?"bg-emerald-500":targetPct>=50?"bg-amber-500":target>0?"bg-orange-500":"bg-muted/20";
               return (
-                <Link href="/reports" className="rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
-                  <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
+                <button onClick={()=>{setShowAchievBreakdown(v=>!v);setShowSalesBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
+                  className="text-left rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
+                    <span className="text-[10px] text-accent font-bold">{showAchievBreakdown?"▲":"▼"}</span>
+                  </div>
                   <p className={`text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none ${pctCol}`}>{target>0?`${targetPct.toFixed(0)}%`:"—"}</p>
-                  <div className="min-h-[16px]">
-                    {target>0 && <div className="h-0.5 rounded-full bg-border/50 overflow-hidden mb-1"><div className={`h-full rounded-full ${barCol} transition-all`} style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
-                    <div className="flex flex-wrap gap-1">
-                      {onTgt.length>0  && <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/25 text-emerald-500 rounded-full px-1.5 py-0.5">✓ {onTgt.length} คน</span>}
-                      {below.length>0  && <span className="text-[9px] bg-amber-500/10 border border-amber-500/25 text-amber-500 rounded-full px-1.5 py-0.5">↓ {below.length} คน</span>}
-                      {noTgt.length>0  && <span className="text-[9px] bg-muted/10 border border-border/40 text-muted/60 rounded-full px-1.5 py-0.5">— {noTgt.length}</span>}
-                      {onTgt.length===0 && below.length===0 && noTgt.length===0 && <p className="text-[9px] text-muted/60">ยังไม่มีข้อมูล</p>}
-                    </div>
+                  <div>
+                    {target>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className={`h-full rounded-full ${barCol} transition-all`} style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
+                    <p className="text-[9px] text-muted/60 mt-0.5">{target>0?`${Math.round(actual/1000)}K / ${mgTgtM}`:"ยังไม่มีเป้า"}</p>
                   </div>
-                </Link>
+                </button>
               );
             })()}
 
-            {/* ③ Pipeline — stage count chips */}
-            {(() => {
-              const stageChips = [
-                { key:"lead",        label:"Lead",  colCls:"text-blue-500",   bgCls:"bg-blue-500/10 border-blue-500/25"   },
-                { key:"opportunity", label:"Oppo",  colCls:"text-cyan-500",   bgCls:"bg-cyan-500/10 border-cyan-500/25"   },
-                { key:"proposal",    label:"Prop",  colCls:"text-amber-500",  bgCls:"bg-amber-500/10 border-amber-500/25" },
-                { key:"negotiation", label:"Nego",  colCls:"text-orange-500", bgCls:"bg-orange-500/10 border-orange-500/25"},
-              ].map(s=>({...s, cnt:sc.projects.filter(p=>p.status===s.key).length})).filter(s=>s.cnt>0);
-              const pipM = pipeline>=1e6?`${(pipeline/1e6).toFixed(1)}M`:pipeline>0?`${Math.round(pipeline/1000)}K`:"—";
+            {/* ③ Pipeline รวม */}
+            {(()=>{
+              const pipM=pipeline>=1e6?`${(pipeline/1e6).toFixed(1)}M`:pipeline>0?`${Math.round(pipeline/1000)}K`:"—";
               return (
-                <Link href="/projects" className="rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
-                  <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">PIPELINE รวม</p>
+                <button onClick={()=>{setShowPipeBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowOdBreakdown(false);}}
+                  className="text-left rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">PIPELINE รวม</p>
+                    <span className="text-[10px] text-accent font-bold">{showPipeBreakdown?"▲":"▼"}</span>
+                  </div>
                   <p className="text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none text-violet-500">{pipM}</p>
-                  <div className="min-h-[16px]">
-                    {stageChips.length>0
-                      ? <div className="flex flex-wrap gap-1">{stageChips.map(s=><span key={s.key} className={`text-[9px] border rounded-full px-1.5 py-0.5 ${s.bgCls} ${s.colCls}`}>{s.label} {s.cnt}</span>)}</div>
-                      : <p className="text-[9px] text-muted/60">ยังไม่มีดีล</p>}
-                  </div>
-                </Link>
+                  <p className="text-[9px] text-muted/60 mt-0.5">{totalDeals} ดีล · Win {convRate.toFixed(0)}%</p>
+                </button>
               );
             })()}
 
-            {/* ④ Follow-up — per-person chips */}
-            {(() => {
-              const odMap = new Map<string,number>();
-              salesOverdue.forEach(a => { const k = a.assigned_to||"ไม่ระบุ"; odMap.set(k,(odMap.get(k)||0)+1); });
-              const odList = Array.from(odMap.entries()).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([name,cnt])=>({
-                short: users.find(u=>u.name===name)?.name.split(" ")[0] || name.split(" ")[0] || name,
-                cnt,
-              }));
-              return (
-                <Link href="/sales" className={`rounded-xl bg-card border flex flex-col justify-between p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] transition-all hover:-translate-y-0.5 ${salesOverdue.length>0?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
-                  <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">FOLLOW-UP ค้าง</p>
-                  <p className={`text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none ${salesOverdue.length>0?"text-orange-500":"text-muted"}`}>{salesOverdue.length}</p>
-                  <div className="min-h-[16px]">
-                    {odList.length>0
-                      ? <div className="flex flex-wrap gap-1">{odList.map(o=><span key={o.short} className="text-[9px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-full px-1.5 py-0.5">{o.short} {o.cnt}</span>)}</div>
-                      : <p className="text-[9px] text-muted/60">ทุกงานปกติ</p>}
-                  </div>
-                </Link>
-              );
-            })()}
+            {/* ④ Follow-up ค้าง */}
+            <button onClick={()=>{setShowOdBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowPipeBreakdown(false);}}
+              className={`text-left rounded-xl bg-card border flex flex-col justify-between p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] transition-all hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-none ${salesOverdue.length>0?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">FOLLOW-UP ค้าง</p>
+                <span className="text-[10px] text-accent font-bold">{showOdBreakdown?"▲":"▼"}</span>
+              </div>
+              <p className={`text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none ${salesOverdue.length>0?"text-orange-500":"text-muted"}`}>{salesOverdue.length}</p>
+              <p className="text-[9px] text-muted/60 mt-0.5">{salesOverdue.length>0?"ต้องติดตามด่วน":"ทุกงานปกติ"}</p>
+            </button>
           </div>
-          {/* Breakdown รายบุคคล */}
-          {showSalesBreakdown && (
+
+          {/* ── Breakdown panels ── */}
+
+          {/* ① ยอดขายรายบุคคล */}
+          {showSalesBreakdown&&(
             <div className="rounded-xl border border-border/60 bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-card-hover/50">
                 <p className="text-xs font-semibold">ยอดขายรายบุคคล — {filterLabel}</p>
                 <p className="text-[10px] text-muted">ทีมรวม {mgActM}</p>
               </div>
-              {breakdownRows.length === 0 ? (
-                <p className="text-xs text-muted px-4 py-4 text-center">ยังไม่มีข้อมูลยอดขาย</p>
-              ) : (
+              {breakdownRows.length===0?<p className="text-xs text-muted px-4 py-4 text-center">ยังไม่มีข้อมูลยอดขาย</p>:(
                 <div className="divide-y divide-border/30">
-                  {breakdownRows.map(p => {
-                    const pActM = p.act >= 1e6 ? `${(p.act/1e6).toFixed(2)}M` : p.act > 0 ? `${Math.round(p.act/1000)}K` : "—";
-                    const pTgtM = p.tgt >= 1e6 ? `${(p.tgt/1e6).toFixed(1)}M` : p.tgt > 0 ? `${Math.round(p.tgt/1000)}K` : "—";
-                    const contrib = actual > 0 && p.act > 0 ? Math.round(p.act/actual*100) : 0;
-                    const pctColor = p.pct>=80?"text-emerald-500":p.pct>=50?"text-amber-500":p.tgt>0?"text-orange-500":"text-muted";
-                    const barColor = p.pct>=80?"bg-emerald-500":p.pct>=50?"bg-amber-500":p.tgt>0?"bg-orange-500":"bg-muted/20";
+                  {breakdownRows.map(p=>{
+                    const pActM=p.act>=1e6?`${(p.act/1e6).toFixed(2)}M`:p.act>0?`${Math.round(p.act/1000)}K`:"—";
+                    const pTgtM=p.tgt>=1e6?`${(p.tgt/1e6).toFixed(1)}M`:p.tgt>0?`${Math.round(p.tgt/1000)}K`:"—";
+                    const contrib=actual>0&&p.act>0?Math.round(p.act/actual*100):0;
+                    const pctColor=p.pct>=80?"text-emerald-500":p.pct>=50?"text-amber-500":p.tgt>0?"text-orange-500":"text-muted";
+                    const barColor=p.pct>=80?"bg-emerald-500":p.pct>=50?"bg-amber-500":p.tgt>0?"bg-orange-500":"bg-muted/20";
                     return (
                       <div key={p.name} className="flex items-center gap-3 px-4 py-2.5 hover:bg-card-hover transition-colors">
-                        <div className="w-20 shrink-0">
-                          <p className="text-xs font-semibold truncate">{p.short||p.name}</p>
-                          <p className="text-[10px] text-muted/60 truncate">{p.name}</p>
-                        </div>
+                        <div className="w-20 shrink-0"><p className="text-xs font-semibold truncate">{p.short||p.name}</p><p className="text-[10px] text-muted/60 truncate">{p.name}</p></div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <div className="flex-1 h-1.5 rounded-full bg-border/40 overflow-hidden">
-                              <div className={`h-full rounded-full transition-all ${barColor}`} style={{width:`${Math.min(p.pct,100)}%`}}/>
-                            </div>
+                            <div className="flex-1 h-1.5 rounded-full bg-border/40 overflow-hidden"><div className={`h-full rounded-full transition-all ${barColor}`} style={{width:`${Math.min(p.pct,100)}%`}}/></div>
                             <span className={`text-[10px] font-bold w-9 text-right tabular-nums ${pctColor}`}>{p.tgt>0?`${p.pct}%`:"—"}</span>
                           </div>
                           <div className="flex gap-3 text-[10px] text-muted">
                             <span>จริง <span className="text-foreground font-medium">{pActM}</span></span>
-                            {p.tgt>0 && <span>/ เป้า {pTgtM}</span>}
+                            {p.tgt>0&&<span>/ เป้า {pTgtM}</span>}
                           </div>
                         </div>
                         <div className="text-right shrink-0 w-16">
                           <p className="text-sm font-bold text-emerald-500">{pActM}</p>
-                          {contrib > 0 && <p className="text-[10px] text-muted">{contrib}% of ทีม</p>}
+                          {contrib>0&&<p className="text-[10px] text-muted">{contrib}% of ทีม</p>}
                         </div>
                       </div>
                     );
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ② Achievement รายบุคคล */}
+          {showAchievBreakdown&&(
+            <div className="rounded-xl border border-border/60 bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-card-hover/50">
+                <p className="text-xs font-semibold">Achievement รายบุคคล — {filterLabel}</p>
+                <p className="text-[10px] text-muted">ทีม {targetPct.toFixed(0)}%</p>
+              </div>
+              {breakdownRows.length===0?<p className="text-xs text-muted px-4 py-4 text-center">ยังไม่มีข้อมูล</p>:(
+                <div className="divide-y divide-border/30">
+                  {[...breakdownRows].sort((a,b)=>b.pct-a.pct).map(p=>{
+                    const pActM=p.act>=1e6?`${(p.act/1e6).toFixed(2)}M`:p.act>0?`${Math.round(p.act/1000)}K`:"—";
+                    const pTgtM=p.tgt>=1e6?`${(p.tgt/1e6).toFixed(1)}M`:p.tgt>0?`${Math.round(p.tgt/1000)}K`:"—";
+                    const pctColor=p.pct>=80?"text-emerald-500":p.pct>=50?"text-amber-500":p.tgt>0?"text-orange-500":"text-muted";
+                    const barColor=p.pct>=80?"bg-emerald-500":p.pct>=50?"bg-amber-500":p.tgt>0?"bg-orange-500":"bg-muted/20";
+                    return (
+                      <div key={p.name} className="flex items-center gap-3 px-4 py-2.5 hover:bg-card-hover transition-colors">
+                        <div className="w-20 shrink-0"><p className="text-xs font-semibold truncate">{p.short||p.name}</p></div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 rounded-full bg-border/40 overflow-hidden"><div className={`h-full rounded-full transition-all ${barColor}`} style={{width:`${Math.min(p.pct,100)}%`}}/></div>
+                            <span className={`text-xs font-bold w-10 text-right tabular-nums ${pctColor}`}>{p.tgt>0?`${p.pct}%`:"—"}</span>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 w-24 text-[10px] text-muted">
+                          <span className="text-foreground font-medium">{pActM}</span>{p.tgt>0?` / ${pTgtM}`:""}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ③ Pipeline by stage */}
+          {showPipeBreakdown&&(()=>{
+            const stageList=[
+              {key:"lead",        label:"Lead",        sub:"ลีด",          colCls:"text-blue-500",   bgCls:"bg-blue-500/10 border-blue-500/25"   },
+              {key:"opportunity", label:"Opportunity", sub:"โอกาสขาย",    colCls:"text-cyan-500",   bgCls:"bg-cyan-500/10 border-cyan-500/25"   },
+              {key:"proposal",    label:"Proposal",    sub:"เสนอราคา",    colCls:"text-amber-500",  bgCls:"bg-amber-500/10 border-amber-500/25" },
+              {key:"negotiation", label:"Negotiation", sub:"กำลังเจรจา",  colCls:"text-orange-500", bgCls:"bg-orange-500/10 border-orange-500/25"},
+            ].map(s=>{const d=sc.projects.filter(p=>p.status===s.key);return{...s,cnt:d.length,val:d.reduce((sum,p)=>sum+(p.value||0),0)};}).filter(s=>s.cnt>0);
+            const fmtV=(v:number)=>v>=1e6?`${(v/1e6).toFixed(1)}M`:v>0?`${Math.round(v/1000)}K`:"—";
+            return (
+              <div className="rounded-xl border border-border/60 bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-card-hover/50">
+                  <p className="text-xs font-semibold">Sales Pipeline — {filterLabel}</p>
+                  <p className="text-[10px] text-muted">{totalDeals} ดีล · Win {convRate.toFixed(0)}%</p>
+                </div>
+                {stageList.length===0?<p className="text-xs text-muted px-4 py-4 text-center">ยังไม่มีดีล</p>:(
+                  <div className="divide-y divide-border/30">
+                    {stageList.map(s=>(
+                      <div key={s.key} className="flex items-center gap-3 px-4 py-2.5">
+                        <div className="w-28 shrink-0"><p className={`text-xs font-semibold ${s.colCls}`}>{s.sub}</p><p className="text-[10px] text-muted/60">{s.label}</p></div>
+                        <div className={`text-xl font-bold tabular-nums w-8 text-center ${s.colCls}`}>{s.cnt}</div>
+                        <div className="flex-1 text-right"><p className={`text-xs font-semibold ${s.colCls}`}>{fmtV(s.val)}</p><p className="text-[9px] text-muted/50">THB</p></div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ④ Follow-up ค้าง รายบุคคล */}
+          {showOdBreakdown&&(
+            <div className="rounded-xl border border-orange-500/25 bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-card-hover/50">
+                <p className="text-xs font-semibold">Follow-up ค้าง — รายบุคคล</p>
+                <p className="text-[10px] text-muted">รวม {salesOverdue.length} งาน</p>
+              </div>
+              {salesOverdue.length===0?<p className="text-xs text-muted px-4 py-4 text-center">ไม่มีงานค้าง</p>:(()=>{
+                const odMap=new Map<string,typeof salesOverdue>();
+                salesOverdue.forEach(a=>{const k=a.assigned_to||"ไม่ระบุ";if(!odMap.has(k))odMap.set(k,[]);odMap.get(k)!.push(a);});
+                return (
+                  <div className="divide-y divide-border/30">
+                    {Array.from(odMap.entries()).sort((a,b)=>b[1].length-a[1].length).map(([name,items])=>{
+                      const short=users.find(u=>u.name===name)?.name.split(" ")[0]||name.split(" ")[0]||name;
+                      return (
+                        <div key={name} className="px-4 py-2.5">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs font-semibold text-orange-500">{short}</p>
+                            <span className="text-[10px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-full px-1.5 py-0.5">{items.length} งาน</span>
+                          </div>
+                          <div className="space-y-0.5">
+                            {items.slice(0,3).map(a=><p key={a.id} className="text-[10px] text-muted/70 truncate">· {a.customer_name||"—"} <span className="text-orange-400/70">{a.next_follow_up}</span></p>)}
+                            {items.length>3&&<p className="text-[10px] text-muted/50">+ อีก {items.length-3} งาน</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -2160,7 +2228,11 @@ export default function DashboardPage() {
     fyYear, fyEndYear, activeContracts.length, wonCount, totalDeals, convRate,
     topExpiring, service, svcOpen, svcInProg, svcDone,
     jobRequests, contracts, canSeeFinanceDash, hasPermission, sc.service,
-    showSalesBreakdown, setShowSalesBreakdown, activeSalesData, users, myName,
+    showSalesBreakdown, setShowSalesBreakdown,
+    showAchievBreakdown, setShowAchievBreakdown,
+    showPipeBreakdown, setShowPipeBreakdown,
+    showOdBreakdown, setShowOdBreakdown,
+    activeSalesData, users, myName,
   ]);
 
   if (!mounted) return <div className="p-6 text-muted text-sm">Loading...</div>;
