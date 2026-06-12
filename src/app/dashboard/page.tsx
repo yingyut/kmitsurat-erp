@@ -412,24 +412,23 @@ export default function DashboardPage() {
   type AlertItem = { id: string; msg: string; level: "red"|"orange"|"green"; href: string };
   const alerts: AlertItem[] = [];
   const myRole = currentUser?.role ?? "";
-  const isSalesRole = ["sale","avenger","Sales Executive","Sales Manager","Branch Manager"].includes(myRole) && !seeAll;
-  const isPresaleRole = ["presale","Presales Manager","Presales"].includes(myRole) && !seeAll;
-  const isServiceRole = ["service","Service Engineer","Service Manager","Service Technician"].includes(myRole) && !seeAll;
-  // Sales alerts — always shown (sc.sales is already user-scoped)
+  const isAdminAvenger = ["admin","Administrator","avenger"].includes(myRole);
+  // isSalesRole — เซลล์ทุกระดับ (รวม Manager) ยกเว้น admin/avenger ที่เห็นทุกอย่าง
+  const isSalesRole   = ["sale","Sales Executive","Sales Manager","Branch Manager"].includes(myRole);
+  const isPresaleRole = ["presale","Presales Manager","Presales Engineer","BOQ Engineer"].includes(myRole);
+  const isServiceRole = ["service","Service Manager","Service Technician","Operations Coordinator"].includes(myRole);
+  // Sales alerts — แสดงเสมอ (sc.sales scoped ตาม role แล้ว)
   if (salesOverdue.length > 0) alerts.push({ id:"so", msg:`Sales overdue ${salesOverdue.length} รายการ — ติดตามลูกค้าด่วน`, level:"red", href:"/sales" });
-  // Presale alerts — only for presale/admin roles
+  // Presale alerts — ซ่อนจากฝ่ายขายและ service
   if (!isSalesRole && !isServiceRole && presaleOverdue.length > 0) alerts.push({ id:"po", msg:`Presale ค้าง SLA ${presaleOverdue.length} งาน`, level:"red", href:"/presale" });
-  // Contract alerts — only for admin/avenger (service domain)
-  if (seeAll) {
+  // Service alerts — ซ่อนจากฝ่ายขายและ presale
+  if (!isSalesRole && !isPresaleRole && svcOverdue.length > 0) alerts.push({ id:"sv", msg:`Service ค้าง ${svcOverdue.length} งาน`, level:"orange", href:"/service" });
+  // Contract/Warranty/PM alerts — เฉพาะ admin/avenger เท่านั้น
+  if (isAdminAvenger) {
+    const warranty30 = assets.filter(a => { const d = dayDiff(a.warranty_end); return d !== null && d >= 0 && d <= 30; });
+    const warrantyExpired = assets.filter(a => { const d = dayDiff(a.warranty_end); return d !== null && d < 0; });
     if (expiredContracts.length > 0) alerts.push({ id:"ec", msg:`สัญญาหมดอายุแล้ว ${expiredContracts.length} รายการ — ต่ออายุด่วน`, level:"red", href:"/contracts" });
     if (expiringContracts.length > 0) alerts.push({ id:"rc", msg:`${expiringContracts.length} สัญญาใกล้หมดใน ≤30 วัน`, level:"orange", href:"/contracts" });
-  }
-  // Service alerts — only for service/admin roles
-  if (!isSalesRole && !isPresaleRole && svcOverdue.length > 0) alerts.push({ id:"sv", msg:`Service ค้าง ${svcOverdue.length} งาน`, level:"orange", href:"/service" });
-  // Asset / warranty alerts — only for admin/avenger
-  const warranty30 = assets.filter(a => { const d = dayDiff(a.warranty_end); return d !== null && d >= 0 && d <= 30; });
-  const warrantyExpired = assets.filter(a => { const d = dayDiff(a.warranty_end); return d !== null && d < 0; });
-  if (seeAll) {
     if (warrantyExpired.length > 0) alerts.push({ id:"we", msg:`${warrantyExpired.length} อุปกรณ์หมดประกันแล้ว — ตรวจสอบ MA`, level:"red", href:"/assets" });
     if (warranty30.length > 0) alerts.push({ id:"w30", msg:`${warranty30.length} อุปกรณ์ประกันหมดใน ≤30 วัน`, level:"orange", href:"/assets" });
     const pmDue = assets.filter(a => { const d = dayDiff(a.pm_next_date); return d !== null && d < 0; });
