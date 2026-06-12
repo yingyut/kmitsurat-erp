@@ -47,7 +47,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: "presale", title: "พรีเซลล์", subtitle: "PRESALE", dot: "bg-violet-500",
     items: [
-      { href: "/presale",            label: "Presale Tasks",     thai: "งานพรีเซลล์ (BOQ / Solution)",       icon: "📋" },
+      { href: "/presale",            label: "Presale Tasks",     thai: "งานพรีเซลล์ (BOQ / Solution)",       icon: "📋", badgeKey: "jobReqPresale" },
       { href: "/presale/projects",   label: "Presale Projects",  thai: "โปรเจกต์ออกแบบ Multi-Tool BOQ",      icon: "📁" },
       { href: "/presale/tools",      label: "Tool Launcher",     thai: "เครื่องมือออกแบบ BOQ",                icon: "🧰" },
       { href: "/project-management", label: "Project Execution", thai: "ดำเนินโปรเจค / Action Plan",         icon: "🗂️" },
@@ -145,6 +145,9 @@ const MANAGER_ROLES = new Set([
   "Service Manager", "Operations Coordinator", "Coordinator",
 ]);
 
+const PRESALE_ROLES_SET = new Set(["presale", "Presales Manager", "Presales Engineer", "BOQ Engineer"]);
+const SERVICE_ROLES_SET = new Set(["service", "Service Manager", "Service Technician", "Operations Coordinator"]);
+
 function useBadges(userName: string | undefined, role: string | undefined): Record<string, number> {
   const [counts, setCounts] = useState<Record<string, number>>({});
 
@@ -152,20 +155,41 @@ function useBadges(userName: string | undefined, role: string | undefined): Reco
     if (!userName) return;
     let alive = true;
     const openStatuses = ["new", "open", "in_progress"];
+    const r = role ?? "";
+    const isPrivileged = MANAGER_ROLES.has(r) || ["admin", "Administrator", "avenger"].includes(r);
 
     (async () => {
       try {
-        const q = MANAGER_ROLES.has(role ?? "")
-          ? query(collection(db, "service_tickets"),
-              where("tenant_id", "==", "kmitsurat"),
-              where("status", "in", openStatuses))
-          : query(collection(db, "service_tickets"),
-              where("tenant_id", "==", "kmitsurat"),
-              where("technician", "==", userName),
-              where("status", "in", openStatuses));
+        const newCounts: Record<string, number> = {};
 
-        const snap = await getDocs(q);
-        if (alive) setCounts({ tickets: snap.size });
+        // ── Service tickets (เดิม) ──────────────────────────────────────────────
+        const qT = isPrivileged
+          ? query(collection(db, "service_tickets"), where("tenant_id", "==", "kmitsurat"), where("status", "in", openStatuses))
+          : query(collection(db, "service_tickets"), where("tenant_id", "==", "kmitsurat"), where("technician", "==", userName), where("status", "in", openStatuses));
+        const snapT = await getDocs(qT);
+        newCounts.tickets = snapT.size;
+
+        // ── Job Requests pending → Presale ──────────────────────────────────────
+        if (PRESALE_ROLES_SET.has(r) || isPrivileged) {
+          const qPre = query(collection(db, "job_requests"),
+            where("tenant_id", "==", "kmitsurat"),
+            where("request_to_team", "==", "presale"),
+            where("status", "==", "pending"));
+          const snapPre = await getDocs(qPre);
+          newCounts.jobReqPresale = snapPre.size;
+        }
+
+        // ── Job Requests pending → Service (รวมกับ tickets badge) ──────────────
+        if (SERVICE_ROLES_SET.has(r) || isPrivileged) {
+          const qSvc = query(collection(db, "job_requests"),
+            where("tenant_id", "==", "kmitsurat"),
+            where("request_to_team", "==", "service"),
+            where("status", "==", "pending"));
+          const snapSvc = await getDocs(qSvc);
+          newCounts.tickets = (newCounts.tickets || 0) + snapSvc.size;
+        }
+
+        if (alive) setCounts(newCounts);
       } catch {}
     })();
 
