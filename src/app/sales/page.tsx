@@ -772,10 +772,13 @@ export default function SalesPage() {
                         </div>
                         <div>
                           <label className="text-[10px] text-muted">ผู้รับผิดชอบ</label>
-                          <select value={actForm.assigned_to} onChange={e => setActForm({...actForm, assigned_to: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
-                            <option value="">— เลือก —</option>
-                            {users.filter(u => salesRoles.includes(u.role) || (u.extra_roles??[]).some(r=>salesRoles.includes(r))).map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
-                          </select>
+                          {canReassign
+                            ? <select value={actForm.assigned_to} onChange={e => setActForm({...actForm, assigned_to: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                                <option value="">— เลือก —</option>
+                                {users.filter(u => salesRoles.includes(u.role) || (u.extra_roles??[]).some(r=>salesRoles.includes(r))).map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                              </select>
+                            : <div className="w-full rounded-lg bg-background/50 border border-border/50 px-3 py-2 text-sm mt-1 text-foreground">{actForm.assigned_to || myName}</div>
+                          }
                         </div>
                       </div>
 
