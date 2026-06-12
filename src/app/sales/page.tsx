@@ -91,11 +91,14 @@ export default function SalesPage() {
   const [actValidate, setActValidate] = useState(false);
   const [calNavDate, setCalNavDate] = useState(today.slice(0, 7));
   const [calWeekStart, setCalWeekStart] = useState(() => {
-    const dow = new Date().getDay();
-    const monOff = dow === 0 ? 6 : dow - 1;
-    return new Date(Date.now() - monOff * 86400000).toISOString().slice(0, 10);
+    const now = new Date();
+    const monOff = now.getDay() === 0 ? 6 : now.getDay() - 1;
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - monOff);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   });
   const [calDayDate, setCalDayDate] = useState(today);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [pickerY, setPickerY] = useState(0);
   const [typeFilter, setTypeFilter] = useState("");
   const [drawerDay, setDrawerDay] = useState<string | null>(null);
   const [showMgDash, setShowMgDash] = useState(false);
@@ -103,22 +106,37 @@ export default function SalesPage() {
 
   // Derived calendar values — lifted out of IIFE so nav functions are cheap
   const [calY, calM] = useMemo(() => calNavDate.split("-").map(Number), [calNavDate]);
+  const localYM  = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  const localDate = (d: Date) => `${localYM(d)}-${String(d.getDate()).padStart(2,"0")}`;
   function navPrev() {
-    if (apView === "year") { setCalNavDate(`${calY - 1}-${String(calM).padStart(2, "0")}`); }
-    else if (apView === "month") { const d = new Date(calY, calM - 2, 1); setCalNavDate(d.toISOString().slice(0, 7)); }
-    else if (apView === "week") { const d = new Date(new Date(calWeekStart + "T12:00:00").getTime() - 7 * 86400000); setCalWeekStart(d.toISOString().slice(0, 10)); }
-    else if (apView === "day") { const d = new Date(new Date(calDayDate + "T12:00:00").getTime() - 86400000); setCalDayDate(d.toISOString().slice(0, 10)); }
+    if (apView === "year")  { setCalNavDate(`${calY-1}-${String(calM).padStart(2,"0")}`); }
+    else if (apView === "month") { setCalNavDate(localYM(new Date(calY, calM-2, 1))); }
+    else if (apView === "week") {
+      const [wy,wm,wd] = calWeekStart.split("-").map(Number);
+      setCalWeekStart(localDate(new Date(wy, wm-1, wd-7)));
+    }
+    else if (apView === "day") {
+      const [dy,dm,dd] = calDayDate.split("-").map(Number);
+      setCalDayDate(localDate(new Date(dy, dm-1, dd-1)));
+    }
   }
   function navNext() {
-    if (apView === "year") { setCalNavDate(`${calY + 1}-${String(calM).padStart(2, "0")}`); }
-    else if (apView === "month") { const d = new Date(calY, calM, 1); setCalNavDate(d.toISOString().slice(0, 7)); }
-    else if (apView === "week") { const d = new Date(new Date(calWeekStart + "T12:00:00").getTime() + 7 * 86400000); setCalWeekStart(d.toISOString().slice(0, 10)); }
-    else if (apView === "day") { const d = new Date(new Date(calDayDate + "T12:00:00").getTime() + 86400000); setCalDayDate(d.toISOString().slice(0, 10)); }
+    if (apView === "year")  { setCalNavDate(`${calY+1}-${String(calM).padStart(2,"0")}`); }
+    else if (apView === "month") { setCalNavDate(localYM(new Date(calY, calM, 1))); }
+    else if (apView === "week") {
+      const [wy,wm,wd] = calWeekStart.split("-").map(Number);
+      setCalWeekStart(localDate(new Date(wy, wm-1, wd+7)));
+    }
+    else if (apView === "day") {
+      const [dy,dm,dd] = calDayDate.split("-").map(Number);
+      setCalDayDate(localDate(new Date(dy, dm-1, dd+1)));
+    }
   }
   function navToday() {
     setCalNavDate(today.slice(0, 7));
-    const dow = new Date().getDay(); const monOff = dow === 0 ? 6 : dow - 1;
-    setCalWeekStart(new Date(Date.now() - monOff * 86400000).toISOString().slice(0, 10));
+    const now = new Date();
+    const monOff = now.getDay() === 0 ? 6 : now.getDay() - 1;
+    setCalWeekStart(localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()-monOff)));
     setCalDayDate(today);
   }
 
@@ -1275,11 +1293,35 @@ export default function SalesPage() {
               <div className="flex-1 min-w-0">
                 {/* Controls */}
                 <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 relative">
                     <button onClick={navPrev} className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors text-lg leading-none">‹</button>
-                    <span className="text-xl font-bold text-foreground min-w-[200px] text-center tracking-tight">{navLabel}</span>
+                    <button onClick={() => { setPickerY(calY); setShowMonthPicker(p => !p); }}
+                      className="text-xl font-bold text-foreground min-w-[200px] text-center tracking-tight hover:text-accent transition-colors px-2 py-1 rounded-lg hover:bg-card-hover">
+                      {navLabel}
+                    </button>
                     <button onClick={navNext} className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted hover:text-foreground hover:bg-card-hover transition-colors text-lg leading-none">›</button>
                     {apView !== "list" && <button onClick={navToday} className="text-[11px] text-accent border border-accent/30 rounded-lg px-2.5 py-1 hover:bg-accent/10 transition-colors">วันนี้</button>}
+                    {/* Month/Year Picker Popup */}
+                    {showMonthPicker && (
+                      <div className="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-xl shadow-2xl p-4 w-64">
+                        <div className="flex items-center justify-between mb-3">
+                          <button onClick={() => setPickerY(y => y-1)} className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted hover:bg-card-hover">‹</button>
+                          <span className="text-sm font-bold">{pickerY}</span>
+                          <button onClick={() => setPickerY(y => y+1)} className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted hover:bg-card-hover">›</button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {thaiMFull.map((m, i) => {
+                            const isActive = pickerY === calY && i+1 === calM;
+                            return (
+                              <button key={m} onClick={() => { setCalNavDate(`${pickerY}-${String(i+1).padStart(2,"0")}`); setApView("month"); setShowMonthPicker(false); }}
+                                className={`rounded-lg px-2 py-2 text-xs font-medium transition-colors ${isActive ? "bg-accent text-white" : "hover:bg-card-hover text-foreground"}`}>
+                                {m}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {!ownSalesOnly && visibleTeam.length > 1 && (
