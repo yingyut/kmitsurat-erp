@@ -855,8 +855,8 @@ export default function DashboardPage() {
     // ── SALES TEAM PLANS ──────────────────────────────────────────────────────
     if (id === "sales-team-plans") {
       const canSeeTeam = seeAll || canManageQuota(currentUser);
-      const salesRoles = ["sale","avenger","Sales Executive","Sales Manager","Branch Manager"];
-      const salesTeam = users.filter(u => u.active && (salesRoles.includes(u.role) || (u.extra_roles??[]).some((r:string)=>salesRoles.includes(r))));
+      const salesRoles = ["sale","Sales Executive","Sales Manager","Branch Manager"];
+      const salesTeam = users.filter(u => u.active && salesRoles.includes(u.role));
       const allPlans  = sales.filter(a => a.is_plan);
       const todayStr  = today;
 
