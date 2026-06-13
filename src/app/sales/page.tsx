@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest, Quotation, InAppNotification, PresaleRequest, PresaleWorkStep } from "@/lib/types";
+import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest, Quotation, InAppNotification, PresaleRequest, PresaleWorkStep, PresaleAttachment } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
 import { isOwnRecord, isOwner, canSeeAll, canManageQuota } from "@/lib/ownership";
@@ -79,6 +79,23 @@ async function compressImage(file: File): Promise<string> {
 }
 
 // ── Presale task helpers ──────────────────────────────────────────────────────
+const STEP_META: Record<PresaleWorkStep["type"], { icon: string; label: string }> = {
+  research:     { icon: "🔍", label: "ค้นหาข้อมูล" },
+  presentation: { icon: "🎤", label: "สร้างไฟล์นำเสนอ" },
+  boq:          { icon: "💰", label: "จัดทำ BOQ" },
+  bom:          { icon: "🛒", label: "จัดทำ BOM" },
+  design:       { icon: "🎨", label: "ออกแบบระบบ" },
+  site_visit:   { icon: "📍", label: "สำรวจหน้างาน" },
+  other:        { icon: "📝", label: "อื่นๆ" },
+};
+const ATTACHMENT_TYPE_ICON: Record<string, string> = {
+  design: "🎨", drawing: "📐", presentation: "🎤", spec: "📄",
+  image: "🖼️", document: "📑", other: "📎",
+};
+const STEP_BAR_COLOR: Record<string, string> = {
+  pending: "bg-slate-600", in_progress: "bg-amber-500", done: "bg-green-500",
+};
+
 const PRESALE_STATUS_TH: Record<string, string> = {
   new: "งานใหม่", pending: "รอดำเนินการ", assigned: "มอบหมายแล้ว",
   in_progress: "กำลังดำเนินการ", waiting_info: "รอข้อมูล",
@@ -3577,81 +3594,244 @@ export default function SalesPage() {
         )}
 
         {/* Presale task detail panel */}
-        {selectedPresaleDetail && (
-          <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedPresaleDetail(null)}>
-            <div className="w-full max-w-sm bg-card border-l border-border shadow-2xl h-full overflow-y-auto flex flex-col"
-              style={{ animation: "slideInRight 0.2s ease-out" }} onClick={e => e.stopPropagation()}>
-              <div className="px-4 py-3 border-b border-violet-500/30 bg-violet-900/10 shrink-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-bold text-violet-300">📋 รายละเอียด Presale</p>
-                    <p className="text-xs text-muted mt-0.5">{selectedPresaleDetail.customer_name}{selectedPresaleDetail.project_name ? ` · ${selectedPresaleDetail.project_name}` : ""}</p>
+        {selectedPresaleDetail && (() => {
+          const pt = selectedPresaleDetail;
+          const steps = pt.work_steps || [];
+          const stepsWithDate = steps.filter(s => s.start_date && s.duration_days > 0);
+          const ec = getEstCompletion(steps);
+          const todayStr2 = new Date().toISOString().slice(0, 10);
+          const allFiles: (PresaleAttachment & { _src: string })[] = [
+            ...(pt.attachments || []).map(a => ({ ...a, _src: "attach" })),
+          ];
+
+          // Gantt
+          let ganttJsx: React.ReactNode = null;
+          if (stepsWithDate.length > 0) {
+            const DAY_MS = 86400000;
+            const parseD = (s: string) => new Date(s + "T00:00:00").getTime();
+            const minTs = Math.min(...stepsWithDate.map(s => parseD(s.start_date)));
+            const maxTs = Math.max(...stepsWithDate.map(s => parseD(s.start_date) + (s.duration_days - 1) * DAY_MS));
+            const totalDays = Math.ceil((maxTs - minTs) / DAY_MS) + 1;
+            const DAY_W = Math.max(18, Math.min(36, Math.floor(480 / Math.max(totalDays, 1))));
+            const LABEL_W = 130;
+            const chartW = LABEL_W + totalDays * DAY_W;
+            const todayTs = parseD(todayStr2);
+            const todayOff = Math.floor((todayTs - minTs) / DAY_MS);
+            const showTodayLine = todayOff >= 0 && todayOff < totalDays;
+            const dayHeaders: { idx: number; date: Date; isFirst: boolean }[] = [];
+            for (let i = 0; i < totalDays; i++) {
+              const d = new Date(minTs + i * DAY_MS);
+              dayHeaders.push({ idx: i, date: d, isFirst: d.getDate() === 1 });
+            }
+            ganttJsx = (
+              <div>
+                <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-2">📊 Gantt Chart</p>
+                <div className="rounded-lg border border-border bg-background overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <div style={{ width: chartW, minWidth: "100%" }}>
+                      {/* Header */}
+                      <div className="flex border-b border-border/40" style={{ height: 26 }}>
+                        <div style={{ width: LABEL_W, flexShrink: 0 }} className="px-2 flex items-end pb-1">
+                          <span className="text-[9px] text-muted">ขั้นตอน</span>
+                        </div>
+                        <div className="relative flex-1" style={{ width: totalDays * DAY_W }}>
+                          {dayHeaders.map(({ idx, date, isFirst }) => {
+                            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                            const showLabel = date.getDate() === 1 || (totalDays <= 30 && idx % 5 === 0) || (totalDays <= 14);
+                            return (
+                              <div key={idx} className={`absolute top-0 bottom-0 border-r border-border/20 flex items-end justify-center pb-0.5 ${isWeekend ? "bg-slate-800/30" : ""}`}
+                                style={{ left: idx * DAY_W, width: DAY_W }}>
+                                {(showLabel || isFirst) && (
+                                  <span className={`text-[8px] leading-none ${isFirst ? "text-accent/70 font-medium" : "text-muted/60"}`}>
+                                    {isFirst ? `${date.getDate()}/${date.getMonth()+1}` : date.getDate()}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {showTodayLine && <div className="absolute top-0 bottom-0 w-px bg-red-400/60 z-20 pointer-events-none" style={{ left: (todayOff + 0.5) * DAY_W }} />}
+                        </div>
+                      </div>
+                      {/* Rows */}
+                      {steps.map((step, idx) => {
+                        if (!step.start_date) return null;
+                        const offsetDays = Math.floor((parseD(step.start_date) - minTs) / DAY_MS);
+                        const barLeft = offsetDays * DAY_W;
+                        const barW = step.duration_days * DAY_W;
+                        return (
+                          <div key={step.id || idx} className={`flex items-center border-b border-border/20 last:border-0 ${idx % 2 === 1 ? "bg-card/20" : ""}`} style={{ height: 34 }}>
+                            <div style={{ width: LABEL_W, flexShrink: 0 }} className="px-2 flex items-center gap-1 min-w-0">
+                              <span className="text-sm shrink-0">{STEP_META[step.type].icon}</span>
+                              <span className={`text-[10px] truncate ${step.status === "done" ? "line-through text-muted" : "font-medium"}`}>{step.label}</span>
+                            </div>
+                            <div className="relative flex-1" style={{ width: totalDays * DAY_W, height: 34 }}>
+                              {dayHeaders.filter(d => d.date.getDay() === 0 || d.date.getDay() === 6).map(({ idx: di }) => (
+                                <div key={di} className="absolute top-0 bottom-0 bg-slate-800/20 pointer-events-none" style={{ left: di * DAY_W, width: DAY_W }} />
+                              ))}
+                              {showTodayLine && <div className="absolute top-0 bottom-0 w-px bg-red-400/40 z-10 pointer-events-none" style={{ left: (todayOff + 0.5) * DAY_W }} />}
+                              <div className={`absolute top-2 bottom-2 rounded ${STEP_BAR_COLOR[step.status]} shadow-sm flex items-center overflow-hidden`}
+                                style={{ left: barLeft, width: Math.max(barW, DAY_W * 0.8) }}
+                                title={`${step.start_date} · ${step.duration_days} วัน${step.assignee ? ` · ${step.assignee}` : ""}`}>
+                                <span className="px-1.5 text-[9px] text-white font-medium whitespace-nowrap overflow-hidden">
+                                  {barW >= DAY_W * 2 && `${step.duration_days}d`}
+                                  {step.assignee && barW >= DAY_W * 4 && ` · ${step.assignee.split(" ")[0]}`}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <button onClick={() => setSelectedPresaleDetail(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover">✕</button>
+                  <div className="flex gap-3 px-3 py-1.5 border-t border-border/40 text-[9px] text-muted">
+                    <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-1.5 rounded-sm bg-slate-600" /> รอ</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-1.5 rounded-sm bg-amber-500" /> กำลังทำ</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-1.5 rounded-sm bg-green-500" /> เสร็จ</span>
+                    <span className="flex items-center gap-1 ml-auto"><span className="inline-block w-px h-3 bg-red-400" /> วันนี้</span>
+                  </div>
                 </div>
               </div>
-              <div className="flex-1 px-4 py-3 space-y-4 overflow-y-auto">
-                {/* Status row */}
-                <div className="flex flex-wrap gap-2">
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${PRESALE_STATUS_COLOR[selectedPresaleDetail.status] || "bg-slate-700/60 text-slate-300"}`}>
-                    {PRESALE_STATUS_TH[selectedPresaleDetail.status] || selectedPresaleDetail.status}
-                  </span>
-                  {selectedPresaleDetail.assigned_to && (
-                    <span className="rounded-full px-2.5 py-1 text-[10px] bg-card-hover text-muted">👤 {selectedPresaleDetail.assigned_to}</span>
-                  )}
-                  {(selectedPresaleDetail.co_workers || []).map(cw => (
-                    <span key={cw} className="rounded-full px-2.5 py-1 text-[10px] bg-card-hover text-muted">👤 {cw}</span>
-                  ))}
+            );
+          }
+
+          return (
+            <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedPresaleDetail(null)}>
+              <div className="w-full max-w-xl bg-card border-l border-border shadow-2xl h-full overflow-y-auto flex flex-col"
+                style={{ animation: "slideInRight 0.2s ease-out" }} onClick={e => e.stopPropagation()}>
+
+                {/* Header */}
+                <div className="px-4 py-3 border-b border-violet-500/30 bg-violet-900/10 shrink-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-bold text-violet-300">📋 รายละเอียด Presale</p>
+                      <p className="text-xs font-medium text-foreground mt-0.5">{pt.customer_name}{pt.project_name ? ` · ${pt.project_name}` : ""}</p>
+                    </div>
+                    <button onClick={() => setSelectedPresaleDetail(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover">✕</button>
+                  </div>
+                  {/* Status + people */}
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${PRESALE_STATUS_COLOR[pt.status] || "bg-slate-700/60 text-slate-300"}`}>
+                      {PRESALE_STATUS_TH[pt.status] || pt.status}
+                    </span>
+                    {pt.assigned_to && <span className="rounded-full px-2.5 py-0.5 text-[10px] bg-card-hover text-muted">👤 {pt.assigned_to}</span>}
+                    {(pt.co_workers || []).map(cw => <span key={cw} className="rounded-full px-2.5 py-0.5 text-[10px] bg-card-hover text-muted">👤 {cw}</span>)}
+                  </div>
                 </div>
 
-                {/* Est completion */}
-                {(() => {
-                  const ec = getEstCompletion(selectedPresaleDetail.work_steps || []);
-                  const today2 = new Date().toISOString().slice(0, 10);
-                  return ec ? (
-                    <div className={`rounded-lg px-3 py-2 text-sm font-medium flex items-center gap-2 ${ec < today2 && selectedPresaleDetail.status !== "completed" ? "bg-red-900/20 border border-red-500/30 text-red-300" : "bg-emerald-900/20 border border-emerald-500/30 text-emerald-300"}`}>
+                <div className="flex-1 px-4 py-4 space-y-5 overflow-y-auto">
+
+                  {/* Est completion */}
+                  {ec && (
+                    <div className={`rounded-lg px-3 py-2.5 flex items-center gap-2 text-sm font-medium border ${ec < todayStr2 && pt.status !== "completed" ? "bg-red-900/20 border-red-500/30 text-red-300" : "bg-emerald-900/20 border-emerald-500/30 text-emerald-300"}`}>
                       🗓 ประมาณการวันแล้วเสร็จ: <span className="font-bold">{ec}</span>
+                      {ec < todayStr2 && pt.status !== "completed" && <span className="text-[10px] text-red-400 ml-auto">⚠ เลยกำหนดแล้ว</span>}
                     </div>
-                  ) : null;
-                })()}
+                  )}
 
-                {/* Requirement */}
-                {selectedPresaleDetail.requirement && (
-                  <div>
-                    <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-1">รายละเอียดงาน</p>
-                    <p className="text-xs text-foreground leading-relaxed">{selectedPresaleDetail.requirement}</p>
-                  </div>
-                )}
-
-                {/* Work steps */}
-                {(selectedPresaleDetail.work_steps || []).length > 0 && (
-                  <div>
-                    <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-2">แผนงาน ({(selectedPresaleDetail.work_steps || []).filter(s => s.status === "done").length}/{(selectedPresaleDetail.work_steps || []).length} เสร็จ)</p>
-                    <div className="space-y-1.5">
-                      {(selectedPresaleDetail.work_steps || []).map((s, i) => (
-                        <div key={s.id || i} className={`rounded-lg px-3 py-2 border text-xs ${s.status === "done" ? "bg-green-900/10 border-green-500/20" : s.status === "in_progress" ? "bg-amber-900/10 border-amber-500/20" : "bg-card-hover border-border"}`}>
-                          <div className="flex items-center gap-1.5">
-                            <span>{s.status === "done" ? "✅" : s.status === "in_progress" ? "🔄" : "⬜"}</span>
-                            <span className="flex-1 font-medium">{s.label}</span>
-                            <span className={`text-[9px] rounded-full px-1.5 py-0.5 ${s.status === "done" ? "bg-green-900/50 text-green-300" : s.status === "in_progress" ? "bg-amber-900/50 text-amber-300" : "bg-slate-700/60 text-slate-400"}`}>
-                              {PRESALE_STEP_STATUS_TH[s.status] || s.status}
-                            </span>
-                          </div>
-                          <div className="flex gap-2 mt-0.5 text-[10px] text-muted pl-5">
-                            {s.start_date && <span>เริ่ม {s.start_date}</span>}
-                            {s.duration_days > 0 && <span>{s.duration_days} วัน</span>}
-                            {s.assignee && <span>· {s.assignee}</span>}
-                          </div>
-                          {s.notes && <p className="text-[10px] text-muted mt-0.5 pl-5 italic">{s.notes}</p>}
-                        </div>
-                      ))}
+                  {/* Requirement */}
+                  {pt.requirement && (
+                    <div>
+                      <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-1">รายละเอียดงาน</p>
+                      <p className="text-xs text-foreground leading-relaxed">{pt.requirement}</p>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {/* Gantt chart */}
+                  {ganttJsx}
+
+                  {/* Work steps list (fallback when no dates) */}
+                  {steps.length > 0 && stepsWithDate.length === 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-2">แผนงาน ({steps.filter(s => s.status === "done").length}/{steps.length} เสร็จ)</p>
+                      <div className="space-y-1.5">
+                        {steps.map((s, i) => (
+                          <div key={s.id || i} className={`rounded-lg px-3 py-2 border text-xs ${s.status === "done" ? "bg-green-900/10 border-green-500/20" : s.status === "in_progress" ? "bg-amber-900/10 border-amber-500/20" : "bg-card-hover border-border"}`}>
+                            <div className="flex items-center gap-1.5">
+                              <span>{STEP_META[s.type].icon}</span>
+                              <span className="flex-1 font-medium">{s.label}</span>
+                              <span className={`text-[9px] rounded-full px-1.5 py-0.5 ${PRESALE_STEP_STATUS_TH[s.status] ? (s.status === "done" ? "bg-green-900/50 text-green-300" : s.status === "in_progress" ? "bg-amber-900/50 text-amber-300" : "bg-slate-700/60 text-slate-400") : ""}`}>
+                                {PRESALE_STEP_STATUS_TH[s.status] || s.status}
+                              </span>
+                            </div>
+                            {s.notes && <p className="text-[10px] text-muted mt-0.5 pl-5 italic">{s.notes}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* BOQ Links */}
+                  {(pt.boq_links || []).length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-2">💰 ไฟล์ BOQ</p>
+                      <div className="space-y-1">
+                        {(pt.boq_links || []).map((lk, i) => (
+                          <a key={i} href={lk.url} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-2 rounded-lg bg-background border border-border px-3 py-2 text-xs text-accent hover:bg-card-hover hover:underline">
+                            🔗 <span className="flex-1 truncate">{lk.label || lk.url}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* BOM Links */}
+                  {(pt.bom_links || []).length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-2">🛒 ไฟล์ BOM</p>
+                      <div className="space-y-1">
+                        {(pt.bom_links || []).map((lk, i) => (
+                          <a key={i} href={lk.url} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-2 rounded-lg bg-background border border-border px-3 py-2 text-xs text-accent hover:bg-card-hover hover:underline">
+                            🔗 <span className="flex-1 truncate">{lk.label || lk.url}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Presale attachments */}
+                  {allFiles.length > 0 && (
+                    <div>
+                      <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-2">📎 ไฟล์งาน / เอกสาร</p>
+                      <div className="space-y-1.5">
+                        {allFiles.map((f, i) => f.url.startsWith("data:image") ? (
+                          <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-2 rounded-lg bg-background border border-border px-3 py-2 hover:bg-card-hover">
+                            <img src={f.url} className="w-8 h-8 rounded object-cover shrink-0" alt={f.name} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs truncate text-accent">{f.name}</p>
+                              {f.notes && <p className="text-[10px] text-muted truncate">{f.notes}</p>}
+                            </div>
+                          </a>
+                        ) : (
+                          <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-2 rounded-lg bg-background border border-border px-3 py-2 text-xs text-accent hover:bg-card-hover hover:underline">
+                            <span className="text-base shrink-0">{ATTACHMENT_TYPE_ICON[f.type] || "📎"}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="truncate">{f.name}</p>
+                              {f.notes && <p className="text-[10px] text-muted truncate">{f.notes}</p>}
+                            </div>
+                            <span className="text-[9px] text-muted shrink-0">{f.uploaded_at}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Solution summary */}
+                  {pt.solution_summary && (
+                    <div>
+                      <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-1">📝 Solution Summary</p>
+                      <pre className="text-[11px] text-foreground/80 leading-relaxed whitespace-pre-wrap break-words rounded-lg bg-background border border-border px-3 py-2 max-h-60 overflow-y-auto font-sans">{pt.solution_summary}</pre>
+                    </div>
+                  )}
+
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </>)}
 
       </>)}
