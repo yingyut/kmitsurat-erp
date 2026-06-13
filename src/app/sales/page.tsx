@@ -322,6 +322,10 @@ export default function SalesPage() {
 
   // Request form
   const [reqForm, setReqForm] = useState({ request_from: "", request_to_team: "presale" as JobRequest["request_to_team"], request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium" as JobRequest["priority"], status: "pending" as JobRequest["status"], assigned_to: "", reject_reason: "", accept_note: "" });
+  const [reqCategory,     setReqCategory]     = useState<"job"|"approval">("job");
+  const [reqApprovalType, setReqApprovalType] = useState<"purchase"|"ot"|"resource"|"other">("other");
+  const [approvingReqId,  setApprovingReqId]  = useState<string|null>(null);
+  const [approveNote,     setApproveNote]     = useState("");
   const [reqAttachments, setReqAttachments] = useState<{ type: "link" | "file"; name: string; url: string }[]>([]);
   const [reqLinkInput, setReqLinkInput] = useState("");
 
@@ -415,6 +419,12 @@ export default function SalesPage() {
   const ownSalesOnly = !canSeeAll(currentUser);
   const canReassign = hasPermission("assign_job");
   const myName = currentUser?.name ?? "";
+
+  // Request permission helpers
+  const MANAGER_ROLES = ["admin", "avenger", "Administrator", "Branch Manager", "Sales Manager", "Presales Manager", "Service Manager"];
+  const myRole0 = currentUser?.role ?? "";
+  const canSendJobReq = !["presale", "service", "Presales Engineer", "Presales Manager", "Service Technician", "Service Manager"].includes(myRole0);
+  const canApproveReq = MANAGER_ROLES.includes(myRole0);
 
   // Memoized plan lists — avoids re-filtering on every calendar nav click
   const allPlans = useMemo(() => activities.filter(a => {
@@ -897,22 +907,31 @@ export default function SalesPage() {
     const { jobRequests, inAppNotifications } = await import("@/lib/firestore");
     try {
       const sender = reqForm.request_from || currentUser?.name || currentUser?.email || "";
-      await jobRequests.add({ ...reqForm, request_from: sender, attachments: reqAttachments } as unknown as Record<string, unknown>);
+      const isApproval = reqCategory === "approval";
+      const team = isApproval ? "manager" : reqForm.request_to_team;
+      await jobRequests.add({
+        ...reqForm,
+        request_from: sender,
+        request_to_team: team,
+        request_category: reqCategory,
+        ...(isApproval ? { approval_type: reqApprovalType } : {}),
+        attachments: reqAttachments,
+      } as unknown as Record<string, unknown>);
 
-      // Notify target team
-      const team = reqForm.request_to_team; // "presale" | "service"
-      const teamUsers = users.filter(u => {
-        if (team === "service") return ["service", "Service Technician", "Service Manager"].includes(u.role);
-        if (team === "presale") return ["presale", "Presale Engineer", "Presale Manager"].includes(u.role);
-        return false;
-      });
-      const recipients = teamUsers.map(u => u.name).filter(Boolean);
+      // Notify recipients
+      const recipients = isApproval
+        ? users.filter(u => MANAGER_ROLES.includes(u.role)).map(u => u.name).filter(Boolean)
+        : users.filter(u => {
+            if (team === "service") return ["service", "Service Technician", "Service Manager"].includes(u.role);
+            if (team === "presale") return ["presale", "Presales Engineer", "Presales Manager"].includes(u.role);
+            return false;
+          }).map(u => u.name).filter(Boolean);
       if (recipients.length > 0) {
         await inAppNotifications.add({
-          module: team,
-          title: `📩 Job Request ใหม่: ${reqForm.title}`,
+          module: isApproval ? "sales" : team,
+          title: isApproval ? `📝 ขออนุมัติ: ${reqForm.title}` : `📩 Job Request ใหม่: ${reqForm.title}`,
           body: `จาก ${sender}${reqForm.customer_name ? ` · ${reqForm.customer_name}` : ""}${reqForm.description ? ` — ${reqForm.description.slice(0, 80)}` : ""}`,
-          link: `/${team}`,
+          link: isApproval ? "/sales?tab=requests" : `/${team}`,
           recipients,
           read_by: [],
           created_at: new Date().toISOString(),
@@ -924,6 +943,33 @@ export default function SalesPage() {
       setReqAttachments([]); setReqLinkInput(""); setShowReqForm(false); await load();
     }
     catch (e) { console.error(e); } finally { setSaving(false); }
+  }
+
+  async function approveRequest(id: string, approved: boolean, note: string) {
+    setSaving(true);
+    try {
+      const { jobRequests, inAppNotifications } = await import("@/lib/firestore");
+      const req = jobReqs.find(r => r.id === id);
+      await jobRequests.update(id, {
+        status: approved ? "completed" : "rejected",
+        approved_by: currentUser?.name || "",
+        approved_at: new Date().toISOString(),
+        approved_note: note,
+      });
+      if (req?.request_from) {
+        await inAppNotifications.add({
+          module: "sales",
+          title: approved ? `✅ อนุมัติแล้ว: ${req.title}` : `❌ ไม่อนุมัติ: ${req.title}`,
+          body: `${approved ? "อนุมัติ" : "ไม่อนุมัติ"} โดย ${currentUser?.name || ""}${note ? ` · ${note}` : ""}`,
+          link: "/sales?tab=requests",
+          recipients: [req.request_from],
+          read_by: [],
+          created_at: new Date().toISOString(),
+        } as unknown as Record<string, unknown>);
+      }
+      setApprovingReqId(null); setApproveNote("");
+      await load();
+    } finally { setSaving(false); }
   }
 
   // Save quota
@@ -1108,7 +1154,7 @@ export default function SalesPage() {
               </div>
               {tab === "workplan" && <button onClick={() => { resetActForm(); setActForm(f => ({ ...f, is_plan: true, plan_date: today })); setShowPlanForm(!showPlanForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showPlanForm ? "Cancel" : "+ วางแผน"}</button>}
               {tab === "activities" && <button onClick={() => { resetActForm(); setActValidate(false); setShowForm(!showForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ บันทึกกิจกรรม"}</button>}
-              {tab === "requests" && <button onClick={() => setShowReqForm(!showReqForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showReqForm ? "Cancel" : "+ Job Request"}</button>}
+              {tab === "requests" && <button onClick={() => { if (!showReqForm) { setReqCategory(canSendJobReq ? "job" : "approval"); } setShowReqForm(!showReqForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showReqForm ? "Cancel" : canSendJobReq ? "+ Job Request" : "+ ขออนุมัติ"}</button>}
               {tab === "pipeline" && <Link href="/quotations" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">→ สร้าง QT</Link>}
             </div>
           </div>
@@ -1144,12 +1190,18 @@ export default function SalesPage() {
           Requests
           {(() => {
               const myRole2 = currentUser?.role ?? "";
-              const filtered = ["service","Service Technician","Service Manager"].includes(myRole2)
-                ? jobReqs.filter(r => r.request_to_team === "service" && r.status === "pending")
-                : ["presale","Presale Engineer","Presale Manager"].includes(myRole2)
-                ? jobReqs.filter(r => r.request_to_team === "presale" && r.status === "pending")
-                : jobReqs.filter(r => r.status === "pending");
-              return filtered.length > 0 ? <span className="rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold">{filtered.length}</span> : null;
+              const myNameR2 = currentUser?.name ?? "";
+              const isManagerRole = MANAGER_ROLES.includes(myRole2);
+              const jobPending = ["service","Service Technician","Service Manager"].includes(myRole2)
+                ? jobReqs.filter(r => (r.request_category||"job")==="job" && r.request_to_team === "service" && r.status === "pending")
+                : ["presale","Presales Engineer","Presales Manager"].includes(myRole2)
+                ? jobReqs.filter(r => (r.request_category||"job")==="job" && r.request_to_team === "presale" && r.status === "pending")
+                : jobReqs.filter(r => (r.request_category||"job")==="job" && r.status === "pending");
+              const approvalPending = isManagerRole
+                ? jobReqs.filter(r => r.request_category === "approval" && r.status === "pending")
+                : jobReqs.filter(r => r.request_category === "approval" && r.status === "pending" && r.request_from === myNameR2);
+              const total = jobPending.length + approvalPending.length;
+              return total > 0 ? <span className="rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold">{total}</span> : null;
             })()}
         </button>
       </div>
@@ -3611,10 +3663,27 @@ export default function SalesPage() {
       {tab === "requests" && (<>
         {showReqForm && (
           <div className="rounded-xl bg-card border border-border p-5 mb-4">
-            <h2 className="text-base font-semibold mb-3">สร้าง Job Request</h2>
+            {/* Category toggle — only show if user can send both types */}
+            {canSendJobReq && (
+              <div className="flex gap-1.5 mb-4 p-1 bg-background rounded-xl border border-border w-fit">
+                {(["job","approval"] as const).map(cat => (
+                  <button key={cat} type="button" onClick={() => setReqCategory(cat)}
+                    className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors ${reqCategory === cat ? "bg-accent text-white shadow" : "text-muted hover:bg-card-hover"}`}>
+                    {cat === "job" ? "📋 Job Request" : "📝 ขออนุมัติ"}
+                  </button>
+                ))}
+              </div>
+            )}
+            <h2 className="text-base font-semibold mb-3">
+              {reqCategory === "approval" ? "📝 ขออนุมัติ" : "📋 Job Request"}
+            </h2>
             <div className="grid grid-cols-1 @md:grid-cols-2 @lg:grid-cols-3 gap-3 mb-3">
               <div><label className="text-[10px] text-muted">หัวข้อ *</label><input value={reqForm.title} onChange={e => setReqForm({ ...reqForm, title: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
-              <div><label className="text-[10px] text-muted">ส่งถึงทีม</label><select value={reqForm.request_to_team} onChange={e => setReqForm({ ...reqForm, request_to_team: e.target.value as JobRequest["request_to_team"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="presale">Presale</option><option value="service">Service</option></select></div>
+              {reqCategory === "job" ? (
+                <div><label className="text-[10px] text-muted">ส่งถึงทีม</label><select value={reqForm.request_to_team === "manager" ? "presale" : reqForm.request_to_team} onChange={e => setReqForm({ ...reqForm, request_to_team: e.target.value as JobRequest["request_to_team"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="presale">Presale</option><option value="service">Service</option></select></div>
+              ) : (
+                <div><label className="text-[10px] text-muted">ประเภทการขออนุมัติ</label><select value={reqApprovalType} onChange={e => setReqApprovalType(e.target.value as typeof reqApprovalType)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="purchase">🛒 ซื้อของ / จัดซื้อ</option><option value="ot">⏰ OT / ทำงานล่วงเวลา</option><option value="resource">👥 ขอบุคลากร / ทรัพยากร</option><option value="other">📄 อื่นๆ</option></select></div>
+              )}
               <div className="relative"><label className="text-[10px] text-muted">ลูกค้า</label>
                 <input placeholder="ค้นหาลูกค้า..." value={reqCustSearch}
                   onChange={e => { setReqCustSearch(e.target.value); setReqCustOpen(true); if (!e.target.value) setReqForm({ ...reqForm, customer_id: "", customer_name: "" }); }}
@@ -3687,32 +3756,96 @@ export default function SalesPage() {
 
         {(() => {
           const myRole = currentUser?.role ?? "";
+          const myNameR = currentUser?.name ?? "";
           const isServiceRole = ["service", "Service Technician", "Service Manager"].includes(myRole);
-          const isPresaleRole = ["presale", "Presale Engineer", "Presale Manager"].includes(myRole);
-          const visibleReqs = isServiceRole
-            ? jobReqs.filter(r => r.request_to_team === "service")
+          const isPresaleRole = ["presale", "Presales Engineer", "Presales Manager"].includes(myRole);
+          // Job requests: presale/service see only requests addressed to their team; others see all
+          const jobRequests2 = jobReqs.filter(r => (r.request_category || "job") === "job");
+          const approvalReqs = jobReqs.filter(r => r.request_category === "approval");
+          const visibleJobReqs = isServiceRole
+            ? jobRequests2.filter(r => r.request_to_team === "service")
             : isPresaleRole
-            ? jobReqs.filter(r => r.request_to_team === "presale")
-            : jobReqs;
+            ? jobRequests2.filter(r => r.request_to_team === "presale")
+            : jobRequests2;
+          // Approval requests: managers see all, others see only their own
+          const visibleApprovalReqs = canApproveReq
+            ? approvalReqs
+            : approvalReqs.filter(r => r.request_from === myNameR);
+          const visibleReqs = [...visibleJobReqs, ...visibleApprovalReqs]
+            .sort((a,b) => ((b as unknown as Record<string,string>).created_at || "").localeCompare((a as unknown as Record<string,string>).created_at || ""));
+
+          const APPROVAL_TYPE_LABEL: Record<string, string> = { purchase: "🛒 ซื้อของ", ot: "⏰ OT", resource: "👥 ขอบุคลากร", other: "📄 อื่นๆ" };
+
           return visibleReqs.length === 0 ? <p className="text-muted text-sm">ไม่มี Request</p> : (
           <div className="space-y-2">{visibleReqs.map(r => {
+            const isApprovalReq = (r.request_category || "job") === "approval";
+            const isApproved = r.status === "completed" && r.approved_by;
+            const isRejected = r.status === "rejected" && r.approved_by;
             const pt = r.request_to_team === "presale" ? findPresaleTask(r, presaleReqs) : null;
             const estComp = pt ? getEstCompletion(pt.work_steps || []) : null;
             const currentStep = pt?.work_steps?.find(s => s.status === "in_progress") || pt?.work_steps?.find(s => s.status === "pending");
             const doneSteps = pt?.work_steps?.filter(s => s.status === "done").length ?? 0;
             const totalSteps = pt?.work_steps?.length ?? 0;
             return (
-            <div key={r.id} className="rounded-xl bg-card border border-border p-3">
+            <div key={r.id} className={`rounded-xl bg-card border p-3 ${isApprovalReq ? "border-amber-500/30" : "border-border"}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                     <span className="text-sm font-medium">{r.title}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${r.request_to_team === "presale" ? "bg-purple-900/50 text-purple-400" : "bg-rose-900/50 text-rose-400"}`}>→ {r.request_to_team}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${r.status === "completed" ? "bg-green-900/50 text-green-400" : r.status === "accepted" || r.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : r.status === "rejected" ? "bg-red-900/50 text-red-400" : "bg-blue-900/50 text-blue-400"}`}>{r.status}</span>
+                    {isApprovalReq ? (
+                      <>
+                        <span className="rounded-full px-2 py-0.5 text-[9px] font-medium bg-amber-900/50 text-amber-400">📝 ขออนุมัติ</span>
+                        {r.approval_type && <span className="rounded-full px-2 py-0.5 text-[9px] font-medium bg-background border border-border">{APPROVAL_TYPE_LABEL[r.approval_type] || r.approval_type}</span>}
+                      </>
+                    ) : (
+                      <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${r.request_to_team === "presale" ? "bg-purple-900/50 text-purple-400" : "bg-rose-900/50 text-rose-400"}`}>→ {r.request_to_team}</span>
+                    )}
+                    {isApprovalReq ? (
+                      <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${isApproved ? "bg-green-900/50 text-green-400" : isRejected ? "bg-red-900/50 text-red-400" : "bg-amber-900/50 text-amber-300"}`}>
+                        {isApproved ? "✅ อนุมัติแล้ว" : isRejected ? "❌ ไม่อนุมัติ" : "🟡 รออนุมัติ"}
+                      </span>
+                    ) : (
+                      <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${r.status === "completed" ? "bg-green-900/50 text-green-400" : r.status === "accepted" || r.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : r.status === "rejected" ? "bg-red-900/50 text-red-400" : "bg-blue-900/50 text-blue-400"}`}>{r.status}</span>
+                    )}
                   </div>
-                  <p className="text-xs text-foreground font-medium">{r.customer_name}{r.project_name ? ` · ${r.project_name}` : ""}</p>
+                  <p className="text-[11px] text-muted">จาก: <span className="text-foreground font-medium">{r.request_from}</span></p>
+                  <p className="text-xs text-foreground font-medium mt-0.5">{r.customer_name}{r.project_name ? ` · ${r.project_name}` : ""}</p>
                   <p className="text-xs text-muted mt-0.5 line-clamp-2">{r.description}</p>
                   {r.due_date && <p className="text-[10px] text-muted mt-0.5">กำหนด: {r.due_date}</p>}
+                  {/* Approval result info */}
+                  {isApprovalReq && (isApproved || isRejected) && (
+                    <div className={`mt-2 rounded-lg p-2.5 text-[11px] ${isApproved ? "bg-green-900/10 border border-green-500/20 text-green-400" : "bg-red-900/10 border border-red-500/20 text-red-400"}`}>
+                      <p className="font-semibold">{isApproved ? "✅ อนุมัติ" : "❌ ไม่อนุมัติ"} โดย {r.approved_by}</p>
+                      {r.approved_note && <p className="text-muted mt-0.5">{r.approved_note}</p>}
+                    </div>
+                  )}
+                  {/* Manager approve/reject inline panel */}
+                  {isApprovalReq && canApproveReq && !isApproved && !isRejected && (
+                    approvingReqId === r.id ? (
+                      <div className="mt-2 rounded-lg bg-card-hover border border-border p-2.5 space-y-2">
+                        <textarea value={approveNote} onChange={e => setApproveNote(e.target.value)} rows={2}
+                          placeholder="หมายเหตุ (ไม่จำเป็น)..."
+                          className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs resize-none focus:outline-none focus:border-accent placeholder:text-muted/40" />
+                        <div className="flex gap-2">
+                          <button onClick={() => approveRequest(r.id!, true, approveNote)} disabled={saving}
+                            className="flex-1 rounded-lg bg-green-600 text-white text-xs font-semibold py-2 hover:bg-green-500 disabled:opacity-50">
+                            {saving ? "..." : "✓ อนุมัติ"}
+                          </button>
+                          <button onClick={() => approveRequest(r.id!, false, approveNote)} disabled={saving}
+                            className="flex-1 rounded-lg bg-red-600/80 text-white text-xs font-semibold py-2 hover:bg-red-500 disabled:opacity-50">
+                            {saving ? "..." : "✕ ไม่อนุมัติ"}
+                          </button>
+                          <button onClick={() => { setApprovingReqId(null); setApproveNote(""); }}
+                            className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">ยกเลิก</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setApprovingReqId(r.id!); setApproveNote(""); }}
+                        className="mt-2 rounded-lg border border-amber-500/40 text-amber-400 text-xs font-semibold px-3 py-1.5 hover:bg-amber-900/20 transition-colors">
+                        📋 ตัดสินใจ
+                      </button>
+                    )
+                  )}
 
                   {/* Presale task status panel */}
                   {pt && (

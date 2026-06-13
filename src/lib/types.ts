@@ -279,7 +279,8 @@ export interface JobRequest {
   id?: string;
   tenant_id: string;
   request_from: string;
-  request_to_team: "presale" | "service";
+  request_category?: "job" | "approval";   // "job" = ของาน, "approval" = ขออนุมัติ
+  request_to_team: "presale" | "service" | "manager";
   request_to_person: string;
   customer_id: string;
   customer_name: string;
@@ -296,6 +297,11 @@ export interface JobRequest {
   accept_note: string;
   accepted_by?: string;
   accepted_at?: string;
+  // Approval request fields
+  approval_type?: "purchase" | "ot" | "resource" | "other";
+  approved_by?: string;
+  approved_at?: string;
+  approved_note?: string;
   attachments?: { type: "link" | "file"; name: string; url: string }[];
 }
 
