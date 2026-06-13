@@ -337,7 +337,8 @@ export interface SalesActivity {
   plan_time?: string;            // HH:mm — เวลาเริ่มต้นของแผน
   next_action_time?: string;     // HH:mm — เวลานัดหมาย next action
   participants?: string[];       // รายชื่อผู้เข้าร่วมนัดหมาย
-  reminder_before_days?: number; // แจ้งเตือนก่อนกี่วัน
+  reminder_before_days?: number; // แจ้งเตือนก่อนกี่วัน (ช่วงที่ 1)
+  reminder_before_mins?: number; // แจ้งเตือนก่อนกี่นาทีในวันนั้น (ช่วงที่ 2)
   invited_by?: string;           // ชื่อ Sales ที่สร้างนัดหมายนี้
   meeting_mode?: "onsite" | "online"; // รูปแบบการนัดหมาย
   rescheduled_reason?: string;   // เหตุผลที่เลื่อน

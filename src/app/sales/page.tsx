@@ -274,9 +274,12 @@ export default function SalesPage() {
   const [qrParticipants,     setQrParticipants]     = useState<string[]>([]);
   const [qrReminderDays,     setQrReminderDays]     = useState<number>(1);
   const [qrMeetingMode,     setQrMeetingMode]     = useState<"onsite"|"online">("onsite");
+  const [qrReminderMins,    setQrReminderMins]    = useState<number>(30);
   const [qrFiles,            setQrFiles]            = useState<QrFile[]>([]);
   const [qrLinkUrl,          setQrLinkUrl]          = useState("");
   const [qrLinkLabel,  setQrLinkLabel]  = useState("");
+
+  const [highlightItemId,   setHighlightItemId]   = useState<string|null>(null);
 
   // Derived calendar values — lifted out of IIFE so nav functions are cheap
   const [calY, calM] = useMemo(() => calNavDate.split("-").map(Number), [calNavDate]);
@@ -684,6 +687,7 @@ export default function SalesPage() {
         upd.next_action_time = qrNextTime || "";
         upd.participants = qrParticipants;
         upd.reminder_before_days = qrReminderDays;
+        upd.reminder_before_mins = qrReminderMins;
         upd.meeting_mode = qrMeetingMode;
       }
       if (newAttachments.length > 0) {
@@ -719,6 +723,7 @@ export default function SalesPage() {
             invited_by: inviter,
             meeting_mode: qrMeetingMode,
             reminder_before_days: qrReminderDays,
+            reminder_before_mins: qrReminderMins,
           } as unknown as Record<string, unknown>);
         }
         // Notify all participants via inAppNotification
@@ -731,6 +736,7 @@ export default function SalesPage() {
           recipients: allParticipants,
           read_by: [],
           created_at: new Date().toISOString(),
+          metadata: { plan_date: qrNextDate },
         } as unknown as Record<string, unknown>);
       }
 
@@ -1063,7 +1069,24 @@ export default function SalesPage() {
                                 await fs.inAppNotifications.update(n.id!, { read_by: [...n.read_by, myName] });
                               }
                               setShowNotifPanel(false);
-                              setTab("requests");
+                              // Navigate to correct tab from link field
+                              const linkTab = (() => {
+                                const m = (n.link || "").match(/[?&]tab=([^&]+)/);
+                                return m ? m[1] as TabId : null;
+                              })();
+                              if (linkTab) setTab(linkTab);
+                              // Highlight the specific item
+                              const highlightId = (n.metadata?.activity_id || n.metadata?.plan_id) as string | undefined;
+                              if (highlightId) {
+                                setHighlightItemId(highlightId);
+                                setTimeout(() => setHighlightItemId(null), 4000);
+                              }
+                              // If workplan, navigate calendar to the event's month
+                              const planDate = n.metadata?.plan_date as string | undefined;
+                              if (planDate) {
+                                setCalNavDate(planDate.slice(0, 7));
+                              }
+                              // Legacy: presale task_id
                               if (n.metadata?.task_id) {
                                 const task = presaleReqs.find(p => p.id === String(n.metadata!.task_id));
                                 if (task) setSelectedPresaleDetail(task);
@@ -1322,7 +1345,7 @@ export default function SalesPage() {
               onDragStart={e => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", plan.id!); setDraggingPlanId(plan.id!); }}
               onDragEnd={() => { setDraggingPlanId(null); setDragOverDate(null); }}
               onClick={e => { e.stopPropagation(); setCalPopupPlan(plan); }}
-              className={`w-full flex items-stretch text-left rounded overflow-hidden border border-border/50 bg-card hover:bg-card-hover transition-all cursor-grab active:cursor-grabbing select-none ${isDragging ? "opacity-40 scale-95" : ""}`}>
+              className={`w-full flex items-stretch text-left rounded overflow-hidden border bg-card hover:bg-card-hover transition-all cursor-grab active:cursor-grabbing select-none ${isDragging ? "opacity-40 scale-95" : ""} ${highlightItemId === plan.id ? "border-accent shadow-[0_0_0_2px] shadow-accent/40 animate-pulse" : "border-border/50"}`}>
               <div className={`w-[3px] shrink-0 ${done ? "bg-green-500 opacity-40" : ovd ? "bg-red-600" : pc}`} />
               <div className={`flex-1 px-1 py-0.5 min-w-0 ${done ? "opacity-50" : ""}`}>
                 <span className={`text-[9px] font-bold truncate leading-tight block ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>
@@ -1357,7 +1380,7 @@ export default function SalesPage() {
               onDragStart={e => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", plan.id!); setDraggingPlanId(plan.id!); }}
               onDragEnd={() => { setDraggingPlanId(null); setDragOverDate(null); }}
               onClick={() => setCalPopupPlan(plan)}
-              className={`w-full flex items-stretch text-left rounded-lg overflow-hidden border bg-card hover:shadow-sm transition-all cursor-grab active:cursor-grabbing select-none ${ovd ? "border-red-500/40" : "border-border/60"} ${done ? "opacity-50" : ""} ${isDragging ? "opacity-40 scale-95" : ""}`}>
+              className={`w-full flex items-stretch text-left rounded-lg overflow-hidden border bg-card hover:shadow-sm transition-all cursor-grab active:cursor-grabbing select-none ${highlightItemId === plan.id ? "border-accent shadow-[0_0_0_2px] shadow-accent/40 animate-pulse" : ovd ? "border-red-500/40" : "border-border/60"} ${done ? "opacity-50" : ""} ${isDragging ? "opacity-40 scale-95" : ""}`}>
               <div className={`w-1 shrink-0 ${done ? "bg-green-500 opacity-60" : ovd ? "bg-red-600" : pc}`} />
               <div className="flex-1 px-2 py-1.5 min-w-0">
                 {shortName && <p className={`text-[9px] font-bold leading-tight truncate mb-0.5 ${done ? "text-muted" : "text-muted/60"}`}>
@@ -2984,6 +3007,21 @@ export default function SalesPage() {
                         </div>
                       )}
 
+                      {/* ── Reminders (read-only) ── */}
+                      {((plan as unknown as Record<string,unknown>).reminder_before_days != null || (plan as unknown as Record<string,unknown>).reminder_before_mins != null) && (
+                        <div className="flex gap-2 text-[10px] text-muted">
+                          {(plan as unknown as Record<string,unknown>).reminder_before_days != null && (
+                            <span className="bg-background border border-border/50 rounded px-1.5 py-0.5">
+                              🔔 {(plan as unknown as Record<string,unknown>).reminder_before_days === 0 ? "วันเดียวกัน" : `${(plan as unknown as Record<string,unknown>).reminder_before_days} วันล่วงหน้า`}
+                            </span>
+                          )}
+                          {!!((plan as unknown as Record<string,unknown>).reminder_before_mins) && (
+                            <span className="bg-background border border-border/50 rounded px-1.5 py-0.5">
+                              ⏱ {String((plan as unknown as Record<string,unknown>).reminder_before_mins)} นาทีก่อน
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {/* ── Objective (read-only) ── */}
                       {(plan.objective as string) && (
                         <p className="text-[11px] text-muted/70 italic leading-snug">🎯 {plan.objective as string}</p>
@@ -3475,7 +3513,7 @@ export default function SalesPage() {
           <div className="space-y-1.5">{filteredActs.map(a => {
             const isOverdue = (a.next_follow_up && a.next_follow_up < today || a.next_action_date && a.next_action_date < today) && a.status !== "done";
             return (
-              <div key={a.id} className={`rounded-xl bg-card border p-3 cursor-pointer hover:border-accent/30 transition-all ${isOverdue ? "border-red-800/50 hover:border-red-700/60" : "border-border"}`} onClick={() => setSelectedActivity(a)}>
+              <div key={a.id} className={`rounded-xl bg-card border p-3 cursor-pointer hover:border-accent/30 transition-all ${highlightItemId === a.id ? "border-accent shadow-[0_0_0_2px] shadow-accent/40 animate-pulse" : isOverdue ? "border-red-800/50 hover:border-red-700/60" : "border-border"}`} onClick={() => { setSelectedActivity(a); if (highlightItemId === a.id) setHighlightItemId(null); }}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5 flex-wrap">
@@ -4381,14 +4419,31 @@ export default function SalesPage() {
                                 </div>
                               </div>
                               <div>
-                                <label className="text-[9px] text-muted block mb-1">🔔 แจ้งเตือนก่อน</label>
-                                <select value={qrReminderDays} onChange={e => setQrReminderDays(Number(e.target.value))}
-                                  className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent">
-                                  <option value={0}>วันเดียวกัน</option>
-                                  <option value={1}>1 วันล่วงหน้า</option>
-                                  <option value={3}>3 วันล่วงหน้า</option>
-                                  <option value={7}>1 สัปดาห์ล่วงหน้า</option>
-                                </select>
+                                <label className="text-[9px] text-muted block mb-1">🔔 แจ้งเตือนล่วงหน้า</label>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <div>
+                                    <label className="text-[8px] text-muted/70 block mb-0.5">ช่วงที่ 1 — วัน</label>
+                                    <select value={qrReminderDays} onChange={e => setQrReminderDays(Number(e.target.value))}
+                                      className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent">
+                                      <option value={0}>วันเดียวกัน</option>
+                                      <option value={1}>1 วัน</option>
+                                      <option value={3}>3 วัน</option>
+                                      <option value={7}>1 สัปดาห์</option>
+                                      <option value={14}>2 สัปดาห์</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-[8px] text-muted/70 block mb-0.5">ช่วงที่ 2 — นาที (วันนั้น)</label>
+                                    <select value={qrReminderMins} onChange={e => setQrReminderMins(Number(e.target.value))}
+                                      className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent">
+                                      <option value={0}>ตรงเวลา</option>
+                                      <option value={15}>15 นาที</option>
+                                      <option value={30}>30 นาที</option>
+                                      <option value={60}>1 ชั่วโมง</option>
+                                      <option value={120}>2 ชั่วโมง</option>
+                                    </select>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           )}
