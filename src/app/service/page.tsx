@@ -909,6 +909,9 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                 const isPending  = r.status === "pending";
                 const isAccepted = r.status === "accepted";
                 const isRejected = r.status === "rejected";
+                const acceptedTime = r.accepted_at
+                  ? new Date(r.accepted_at).toLocaleString("th-TH", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+                  : null;
                 return (
                   <div key={r.id} className={`rounded-lg border p-3 ${isPending ? "border-rose-800/50 bg-rose-900/10" : isAccepted ? "border-green-800/30 bg-green-900/5" : "border-border bg-background/50 opacity-60"}`}>
                     <div className="flex items-start justify-between gap-3">
@@ -925,32 +928,63 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                           <span>จาก: <span className="text-foreground">{r.request_from}</span></span>
                           {r.customer_name && <span>ลูกค้า: <span className="text-foreground">{r.customer_name}</span></span>}
                           {r.due_date && <span>กำหนด: <span className="text-foreground">{r.due_date}</span></span>}
-                          {r.assigned_to && <span>มอบหมาย: <span className="text-green-400">{r.assigned_to}</span></span>}
                           {isRejected && r.reject_reason && <span className="text-red-400">เหตุผล: {r.reject_reason}</span>}
                           {isAccepted && r.accept_note && <span className="text-muted">หมายเหตุ: {r.accept_note}</span>}
                         </div>
+                        {/* Accepted stamp — visible to all */}
+                        {isAccepted && r.accepted_by && (
+                          <div className="mt-1.5 flex items-center gap-1.5 rounded-md bg-green-900/20 border border-green-800/30 px-2.5 py-1 w-fit">
+                            <span className="text-[10px] text-green-400 font-semibold">✅ รับงานโดย:</span>
+                            <span className="text-[10px] text-green-300 font-bold">{r.accepted_by}</span>
+                            {acceptedTime && <span className="text-[10px] text-muted">· {acceptedTime}</span>}
+                          </div>
+                        )}
                       </div>
                       {isPending && (
-                        <div className="flex flex-col gap-1.5 shrink-0">
-                          <select id={`svc-assign-${r.id}`} defaultValue="" className="rounded bg-background border border-border px-2 py-1 text-xs">
-                            <option value="">-- มอบหมายช่าง --</option>
-                            {svcUsers.map(u => <option key={u.id} value={u.name}>{u.nickname || u.name}</option>)}
-                          </select>
-                          <div className="flex gap-1">
-                            <button onClick={async () => {
-                              const assignTo = (document.getElementById(`svc-assign-${r.id}`) as HTMLSelectElement)?.value;
-                              const note = prompt("หมายเหตุรับงาน (ไม่บังคับ)") || "";
-                              const { jobRequests } = await import("@/lib/firestore");
-                              await jobRequests.update(r.id!, { status: "accepted", assigned_to: assignTo, accept_note: note });
-                            }} className="flex-1 text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ รับงาน</button>
-                            <button onClick={async () => {
-                              const reason = prompt("เหตุผลที่ปฏิเสธ:");
-                              if (!reason) return;
-                              const { jobRequests } = await import("@/lib/firestore");
-                              await jobRequests.update(r.id!, { status: "rejected", reject_reason: reason });
-                            }} className="flex-1 text-[10px] bg-red-800/50 text-red-400 rounded px-2 py-1 hover:bg-red-800">✗ ปฏิเสธ</button>
+                        isTechView ? (
+                          /* Tech: รับงานตัวเองเท่านั้น ไม่มี dropdown / ปฏิเสธ */
+                          <button onClick={async () => {
+                            const myName = currentUser?.name || currentUser?.email || "";
+                            const { jobRequests } = await import("@/lib/firestore");
+                            await jobRequests.update(r.id!, {
+                              status: "accepted",
+                              assigned_to: myName,
+                              accepted_by: myName,
+                              accepted_at: new Date().toISOString(),
+                            });
+                          }} className="shrink-0 text-[11px] font-semibold bg-green-800/60 text-green-300 rounded-lg px-3 py-1.5 hover:bg-green-700/70 border border-green-700/40">
+                            ✓ รับงาน
+                          </button>
+                        ) : (
+                          /* Manager: มี dropdown มอบหมาย + รับ + ปฏิเสธ */
+                          <div className="flex flex-col gap-1.5 shrink-0">
+                            <select id={`svc-assign-${r.id}`} defaultValue="" className="rounded bg-background border border-border px-2 py-1 text-xs">
+                              <option value="">-- มอบหมายช่าง --</option>
+                              {svcUsers.map(u => <option key={u.id} value={u.name}>{u.nickname || u.name}</option>)}
+                            </select>
+                            <div className="flex gap-1">
+                              <button onClick={async () => {
+                                const assignTo = (document.getElementById(`svc-assign-${r.id}`) as HTMLSelectElement)?.value;
+                                const note = prompt("หมายเหตุรับงาน (ไม่บังคับ)") || "";
+                                const myName = currentUser?.name || currentUser?.email || "";
+                                const { jobRequests } = await import("@/lib/firestore");
+                                await jobRequests.update(r.id!, {
+                                  status: "accepted",
+                                  assigned_to: assignTo || myName,
+                                  accept_note: note,
+                                  accepted_by: myName,
+                                  accepted_at: new Date().toISOString(),
+                                });
+                              }} className="flex-1 text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ รับงาน</button>
+                              <button onClick={async () => {
+                                const reason = prompt("เหตุผลที่ปฏิเสธ:");
+                                if (!reason) return;
+                                const { jobRequests } = await import("@/lib/firestore");
+                                await jobRequests.update(r.id!, { status: "rejected", reject_reason: reason });
+                              }} className="flex-1 text-[10px] bg-red-800/50 text-red-400 rounded px-2 py-1 hover:bg-red-800">✗ ปฏิเสธ</button>
+                            </div>
                           </div>
-                        </div>
+                        )
                       )}
                     </div>
                   </div>

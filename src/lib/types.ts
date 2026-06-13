@@ -294,6 +294,8 @@ export interface JobRequest {
   assigned_to: string;
   reject_reason: string;
   accept_note: string;
+  accepted_by?: string;
+  accepted_at?: string;
   attachments?: { type: "link" | "file"; name: string; url: string }[];
 }
 
