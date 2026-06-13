@@ -225,6 +225,7 @@ export default function DashboardPage() {
   const [jobRequests, setJobRequests] = useState<JobRequest[]>([]);
   const [showSalesBreakdown,  setShowSalesBreakdown]  = useState(false);
   const [showAchievBreakdown, setShowAchievBreakdown] = useState(false);
+  const [showGpBreakdown,     setShowGpBreakdown]     = useState(false);
   const [showPipeBreakdown,   setShowPipeBreakdown]   = useState(false);
   const [showOdBreakdown,     setShowOdBreakdown]     = useState(false);
   const [openOdPersons,  setOpenOdPersons]  = useState<Set<string>>(new Set());
@@ -1088,10 +1089,10 @@ export default function DashboardPage() {
               </div>
             </>);
           })() : (
-            /* ── Team 4-card view (manager/admin) ── */
-            <div className="grid grid-cols-2 @md:grid-cols-4 gap-3">
+            /* ── Team 5-card view (manager/admin) ── */
+            <div className="grid grid-cols-2 @md:grid-cols-3 @xl:grid-cols-5 gap-3">
               {/* ① ยอดขายรวม */}
-              <button onClick={()=>{setShowSalesBreakdown(v=>!v);setShowAchievBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
+              <button onClick={()=>{setShowSalesBreakdown(v=>!v);setShowAchievBreakdown(false);setShowGpBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
                 className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ยอดขายรวม</p>
@@ -1108,7 +1109,7 @@ export default function DashboardPage() {
                 const pctCol=targetPct>=80?"text-emerald-500":targetPct>=50?"text-amber-500":target>0?"text-orange-500":"text-muted";
                 const barCol=targetPct>=80?"bg-emerald-500":targetPct>=50?"bg-amber-500":target>0?"bg-orange-500":"bg-muted/20";
                 return (
-                  <button onClick={()=>{setShowAchievBreakdown(v=>!v);setShowSalesBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
+                  <button onClick={()=>{setShowAchievBreakdown(v=>!v);setShowSalesBreakdown(false);setShowGpBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
                     className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
@@ -1122,11 +1123,32 @@ export default function DashboardPage() {
                   </button>
                 );
               })()}
-              {/* ③ Pipeline รวม */}
+              {/* ③ GP% รวม */}
+              {(()=>{
+                const totalPft = actualProfit;
+                const teamGpPct = actual>0?Math.round(totalPft/actual*100):0;
+                const gpCol=teamGpPct>=20?"text-emerald-500":teamGpPct>=10?"text-amber-500":totalPft>0?"text-foreground/70":"text-muted";
+                const gpBar=teamGpPct>=20?"bg-emerald-500":teamGpPct>=10?"bg-amber-500":"bg-muted/20";
+                return (
+                  <button onClick={()=>{setShowGpBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
+                    className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">GP% รวม</p>
+                      <span className="text-[10px] text-accent font-bold">{showGpBreakdown?"▲":"▼"}</span>
+                    </div>
+                    <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${gpCol}`}>{actual>0?`${teamGpPct}%`:"—"}</p>
+                    <div>
+                      {actual>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className={`h-full rounded-full ${gpBar} transition-all`} style={{width:`${Math.min(teamGpPct*2,100)}%`}}/></div>}
+                      <p className="text-[9px] text-muted/60 mt-0.5">{totalPft>0?`GP ${Math.round(totalPft/1000)}K`:"ยังไม่มีข้อมูล"}</p>
+                    </div>
+                  </button>
+                );
+              })()}
+              {/* ④ Pipeline รวม */}
               {(()=>{
                 const pipM=pipeline>=1e6?`${(pipeline/1e6).toFixed(1)}M`:pipeline>0?`${Math.round(pipeline/1000)}K`:"—";
                 return (
-                  <button onClick={()=>{setShowPipeBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowOdBreakdown(false);}}
+                  <button onClick={()=>{setShowPipeBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowGpBreakdown(false);setShowOdBreakdown(false);}}
                     className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">PIPELINE รวม</p>
@@ -1137,12 +1159,12 @@ export default function DashboardPage() {
                   </button>
                 );
               })()}
-              {/* ④ Follow-up ค้าง + Plan ค้าง */}
+              {/* ⑤ Follow-up ค้าง + Plan ค้าง */}
               {(()=>{
                 const totalAlerts=salesOverdue.length+salesPlanOverdue.length;
                 const hasAlert=totalAlerts>0;
                 return (
-                  <button onClick={()=>{setShowOdBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowPipeBreakdown(false);}}
+                  <button onClick={()=>{setShowOdBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowGpBreakdown(false);setShowPipeBreakdown(false);}}
                     className={`text-left rounded-xl bg-card border flex flex-col justify-between p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] transition-all hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-none ${hasAlert?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">งานค้าง</p>
@@ -1237,7 +1259,49 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* ③ Pipeline by stage */}
+          {/* ③ GP% รายบุคคล */}
+          {canSeeTeam&&showGpBreakdown&&(
+            <div className="rounded-xl border border-border/60 bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-card-hover/50">
+                <p className="text-xs font-semibold">GP% รายบุคคล — {filterLabel}</p>
+                <p className="text-[10px] text-muted">ทีม {actual>0?`${Math.round(actualProfit/actual*100)}%`:"—"} · GP {Math.round(actualProfit/1000)}K</p>
+              </div>
+              {breakdownRows.filter(p=>p.act>0||p.pft>0).length===0?<p className="text-xs text-muted px-4 py-4 text-center">ยังไม่มีข้อมูล GP</p>:(
+                <div className="divide-y divide-border/30">
+                  {[...breakdownRows].sort((a,b)=>{
+                    const gpA=a.act>0?a.pft/a.act:0;
+                    const gpB=b.act>0?b.pft/b.act:0;
+                    return gpB-gpA;
+                  }).map(p=>{
+                    const gpPctP=p.act>0?Math.round(p.pft/p.act*100):0;
+                    const gpKP=Math.round(p.pft/1000);
+                    const gpColP=gpPctP>=20?"text-emerald-500":gpPctP>=10?"text-amber-500":p.pft>0?"text-foreground/70":"text-muted";
+                    const gpBarP=gpPctP>=20?"bg-emerald-500":gpPctP>=10?"bg-amber-500":p.pft>0?"bg-foreground/20":"bg-muted/10";
+                    const actM=p.act>=1e6?`${(p.act/1e6).toFixed(2)}M`:p.act>0?`${Math.round(p.act/1000)}K`:"—";
+                    return (
+                      <div key={p.name} className="flex items-center gap-3 px-4 py-2.5 hover:bg-card-hover transition-colors">
+                        <div className="w-20 shrink-0"><p className="text-xs font-semibold truncate">{p.short||p.name}</p></div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-2 rounded-full bg-border/40 overflow-hidden">
+                              <div className={`h-full rounded-full transition-all ${gpBarP}`} style={{width:`${Math.min(gpPctP*2,100)}%`}}/>
+                            </div>
+                            <span className={`text-xs font-bold w-10 text-right tabular-nums ${gpColP}`}>{p.act>0?`${gpPctP}%`:"—"}</span>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 w-24 text-[10px] text-muted">
+                          <span className={`font-medium ${gpColP}`}>{gpKP>0?`${gpKP.toLocaleString()}K`:"—"}</span>
+                          <span className="ml-1 text-muted/60">/ {actM}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ④ Pipeline by stage */}
           {showPipeBreakdown&&(()=>{
             const stageList=[
               {key:"lead",        label:"Lead",        sub:"ลีด",          colCls:"text-blue-500",   bgCls:"bg-blue-500/10 border-blue-500/25"   },
@@ -2389,6 +2453,7 @@ export default function DashboardPage() {
     jobRequests, contracts, canSeeFinanceDash, hasPermission, sc.service,
     showSalesBreakdown, setShowSalesBreakdown,
     showAchievBreakdown, setShowAchievBreakdown,
+    showGpBreakdown, setShowGpBreakdown,
     showPipeBreakdown, setShowPipeBreakdown,
     showOdBreakdown, setShowOdBreakdown,
     activeSalesData, users, myName, salesPlanOverdue,
