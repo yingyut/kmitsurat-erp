@@ -3771,8 +3771,14 @@ export default function SalesPage() {
           const visibleApprovalReqs = canApproveReq
             ? approvalReqs
             : approvalReqs.filter(r => r.request_from === myNameR);
+          const tsMs = (v: unknown): number => {
+            if (!v) return 0;
+            if (typeof v === "string") return new Date(v).getTime() || 0;
+            if (typeof (v as {seconds?: number}).seconds === "number") return (v as {seconds: number}).seconds * 1000;
+            return 0;
+          };
           const visibleReqs = [...visibleJobReqs, ...visibleApprovalReqs]
-            .sort((a,b) => ((b as unknown as Record<string,string>).created_at || "").localeCompare((a as unknown as Record<string,string>).created_at || ""));
+            .sort((a,b) => tsMs((b as unknown as Record<string,unknown>).created_at) - tsMs((a as unknown as Record<string,unknown>).created_at));
 
           const APPROVAL_TYPE_LABEL: Record<string, string> = { purchase: "🛒 ซื้อของ", ot: "⏰ OT", resource: "👥 ขอบุคลากร", other: "📄 อื่นๆ" };
 
