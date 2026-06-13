@@ -872,7 +872,7 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
       await jobRequests.update(r.id!, {
         status: "accepted",
         assigned_to: tech,
-        accept_note: acceptNote || undefined,
+        ...(acceptNote ? { accept_note: acceptNote } : {}),
         accepted_by: myName,
         accepted_at: now,
       });
