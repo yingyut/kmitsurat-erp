@@ -233,6 +233,13 @@ export default function CustomersPage() {
   }
 
   // ── Hover popup data ──────────────────────────────────────────────────────
+  function tsToMs(obj: unknown): number | null {
+    const ts = (obj as { created_at?: { toMillis?: () => number; seconds?: number } }).created_at;
+    if (!ts) return null;
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts.seconds === "number") return ts.seconds * 1000;
+    return null;
+  }
   function getCustomerSummary(c: Customer) {
     const custProjects = projects.filter(p => p.customer_id === c.id || p.customer_name === c.company_name);
     const custQuots    = quotations.filter(q => q.customer_id === c.id || q.customer_name === c.company_name);
@@ -241,7 +248,12 @@ export default function CustomersPage() {
     const quotValue    = custQuots.reduce((s, q) => s + (q.total_selling || 0), 0);
     const pmJobs       = custService.filter(s => s.type === "pm_service").length;
     const openJobs     = custService.filter(s => !["resolved","closed"].includes(s.status)).length;
-    return { projects: custProjects.length, totalValue, quotations: custQuots.length, quotValue, serviceTotal: custService.length, pmJobs, openJobs };
+    // last contact = most recent quotation or service ticket creation date
+    const dates = [...custQuots.map(tsToMs), ...custService.map(tsToMs)].filter((d): d is number => d !== null);
+    const lastContactDays = dates.length > 0
+      ? Math.floor((Date.now() - Math.max(...dates)) / 86400000)
+      : null;
+    return { projects: custProjects.length, totalValue, quotations: custQuots.length, quotValue, serviceTotal: custService.length, pmJobs, openJobs, lastContactDays };
   }
 
   function handleMouseEnter(e: React.MouseEvent, c: Customer) {
@@ -521,6 +533,7 @@ export default function CustomersPage() {
       <Suspense fallback={<div className="h-[500px] rounded-xl bg-card border border-border flex items-center justify-center"><p className="text-muted text-sm">Loading map...</p></div>}>
         <ThailandMap
           customers={list}
+          myCustomers={list.filter(isMine)}
           selectedProvince={provinceFilter}
           onSelectProvince={setProvinceFilter}
           getCustomerSummary={getCustomerSummary}
