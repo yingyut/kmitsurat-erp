@@ -185,6 +185,7 @@ export interface Customer {
   notes: string;
   assigned_to?: string;   // primary owner (user.name)
   co_owners?: string[];   // shared CRM ownership
+  created_by?: string;    // user.name ที่สร้าง record
   // Social / contact channels
   tax_id?: string;        // เลขที่ผู้เสียภาษี
   phone2?: string;        // เบอร์สำรอง

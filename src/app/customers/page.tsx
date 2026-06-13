@@ -112,10 +112,13 @@ export default function CustomersPage() {
 
   // ── Ownership helpers ────────────────────────────────────────────────────
   function isMine(c: Customer): boolean {
-    if (c.assigned_to === currentUser?.name) return true;
-    if ((c.co_owners ?? []).includes(currentUser?.name ?? "")) return true;
-    // Cross-sale: if I have a project for this customer (even if another person owns the customer)
-    return projects.some(p => (p.customer_id === c.id || p.customer_name === c.company_name) && p.assigned_to === currentUser?.name);
+    const me = currentUser?.name ?? "";
+    if (!me) return false;
+    if (c.assigned_to === me) return true;
+    if (c.created_by === me) return true;
+    if ((c.co_owners ?? []).includes(me)) return true;
+    // Cross-sale: project assigned to me for this customer
+    return projects.some(p => (p.customer_id === c.id || p.customer_name === c.company_name) && p.assigned_to === me);
   }
 
   function isTeam(c: Customer): boolean {
@@ -199,7 +202,7 @@ export default function CustomersPage() {
     setSaving(true);
     const fs = await import("@/lib/firestore");
     try {
-      const saveData = {
+      const saveData: Record<string, unknown> = {
         company_name: form.company_name, contact_name: form.contact_name,
         phone: form.phone, phone2: form.phone2, email: form.email, address: form.address,
         province: form.province, org_type: form.org_type, notes: form.notes,
@@ -208,10 +211,11 @@ export default function CustomersPage() {
         assigned_to: form.assigned_to || (!canViewAll ? (currentUser?.name ?? "") : ""),
         co_owners: form.co_owners.filter(Boolean),
       };
+      if (!editId) saveData.created_by = currentUser?.name ?? "";
       if (editId) {
-        await fs.customers.update(editId, saveData as unknown as Record<string, unknown>);
+        await fs.customers.update(editId, saveData);
       } else {
-        const docRef = await fs.customers.add(saveData as unknown as Record<string, unknown>);
+        const docRef = await fs.customers.add(saveData);
         try {
           const { logActivity } = await import("@/lib/firestore");
           await logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "create", module: "customers", resource_id: (docRef as { id?: string }).id, resource_name: form.company_name, details: `สร้างลูกค้า: ${form.company_name}` });
@@ -422,7 +426,7 @@ export default function CustomersPage() {
                   Type {sortBy==="org_type"?"▲":""}
                 </th>
                 {showOwnerCol && <th className="px-4 py-2.5">Owner</th>}
-                <th className="px-4 py-2.5 w-28">Actions</th>
+                <th className="px-4 py-2.5 w-32">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -461,11 +465,22 @@ export default function CustomersPage() {
                         )}
                       </td>
                     )}
-                    <td className="px-4 py-2.5">
-                      <div className="flex gap-2 items-center">
-                        <Link href={`/customers/${c.id}`} className="text-xs text-blue-400 hover:underline">📋 ประวัติ</Link>
-                        <button onClick={() => openEdit(c)} className="text-xs text-accent hover:underline">แก้ไข</button>
-                        {canViewAll && <button onClick={() => handleDelete(c.id!, c.company_name)} className="text-xs text-danger hover:underline">ลบ</button>}
+                    <td className="px-3 py-2">
+                      <div className="flex gap-1 items-center flex-wrap">
+                        <Link href={`/customers/${c.id}`}
+                          className="inline-flex items-center gap-0.5 rounded-md border border-border/60 bg-card-hover px-2 py-1 text-[11px] font-medium text-muted hover:text-accent hover:border-accent/40 transition-colors whitespace-nowrap">
+                          📋 ประวัติ
+                        </Link>
+                        <button onClick={() => openEdit(c)}
+                          className="inline-flex items-center rounded-md border border-border/60 bg-card-hover px-2 py-1 text-[11px] font-medium text-muted hover:text-accent hover:border-accent/40 transition-colors whitespace-nowrap">
+                          ✏️ แก้ไข
+                        </button>
+                        {canViewAll && (
+                          <button onClick={() => handleDelete(c.id!, c.company_name)}
+                            className="inline-flex items-center rounded-md border border-red-500/20 bg-red-500/5 px-2 py-1 text-[11px] font-medium text-red-400 hover:bg-red-500/10 hover:border-red-500/40 transition-colors whitespace-nowrap">
+                            🗑
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
