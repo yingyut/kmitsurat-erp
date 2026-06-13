@@ -1060,7 +1060,15 @@ export default function SalesPage() {
         <button onClick={() => setTab("requests")} title="ขอช่วย Presale/Service"
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${tab === "requests" ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>
           Requests
-          {jobReqs.filter(r => r.status === "pending").length > 0 && <span className="rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold">{jobReqs.filter(r => r.status === "pending").length}</span>}
+          {(() => {
+              const myRole2 = currentUser?.role ?? "";
+              const filtered = ["service","Service Technician","Service Manager"].includes(myRole2)
+                ? jobReqs.filter(r => r.request_to_team === "service" && r.status === "pending")
+                : ["presale","Presale Engineer","Presale Manager"].includes(myRole2)
+                ? jobReqs.filter(r => r.request_to_team === "presale" && r.status === "pending")
+                : jobReqs.filter(r => r.status === "pending");
+              return filtered.length > 0 ? <span className="rounded-full bg-red-500 text-white text-[10px] px-1.5 py-0.5 font-bold">{filtered.length}</span> : null;
+            })()}
         </button>
       </div>
 
@@ -3550,8 +3558,17 @@ export default function SalesPage() {
           </div>
         )}
 
-        {jobReqs.length === 0 ? <p className="text-muted text-sm">ไม่มี Request</p> : (
-          <div className="space-y-2">{jobReqs.map(r => {
+        {(() => {
+          const myRole = currentUser?.role ?? "";
+          const isServiceRole = ["service", "Service Technician", "Service Manager"].includes(myRole);
+          const isPresaleRole = ["presale", "Presale Engineer", "Presale Manager"].includes(myRole);
+          const visibleReqs = isServiceRole
+            ? jobReqs.filter(r => r.request_to_team === "service")
+            : isPresaleRole
+            ? jobReqs.filter(r => r.request_to_team === "presale")
+            : jobReqs;
+          return visibleReqs.length === 0 ? <p className="text-muted text-sm">ไม่มี Request</p> : (
+          <div className="space-y-2">{visibleReqs.map(r => {
             const pt = r.request_to_team === "presale" ? findPresaleTask(r, presaleReqs) : null;
             const estComp = pt ? getEstCompletion(pt.work_steps || []) : null;
             const currentStep = pt?.work_steps?.find(s => s.status === "in_progress") || pt?.work_steps?.find(s => s.status === "pending");
@@ -3625,7 +3642,8 @@ export default function SalesPage() {
             </div>
             );
           })}</div>
-        )}
+          );
+        })()}
 
         {/* Presale task detail panel */}
         {selectedPresaleDetail && (() => {
