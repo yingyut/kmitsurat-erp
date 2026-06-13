@@ -262,31 +262,19 @@ export default function ProjectsPage() {
     setSaving(true);
     const fs = await import("@/lib/firestore");
     try {
-      const status = canManage ? "approved" : "pending";
-      await fs.projectTypes.add({ name: newTypeName.trim(), description: "", status, requested_by: currentUser?.name || "" });
-      if (canManage) {
-        setForm({ ...form, job_types: [...(form.job_types || []), newTypeName.trim()] });
-      }
+      const name = newTypeName.trim();
+      await fs.projectTypes.add({ name, description: "", status: "approved" });
+      setForm(f => ({ ...f, job_types: [...(f.job_types || []), name] }));
       setNewTypeName("");
       await load();
     } catch (e) { console.error(e); } finally { setSaving(false); }
-  }
-
-  async function approveJobType(t: ProjectType) {
-    const fs = await import("@/lib/firestore");
-    await fs.projectTypes.update(t.id!, { status: "approved" } as Record<string, unknown>);
-  }
-
-  async function rejectJobType(t: ProjectType) {
-    if (!confirm(`ปฏิเสธและลบ "${t.name}" ?`)) return;
-    const fs = await import("@/lib/firestore");
-    await fs.projectTypes.remove(t.id!);
   }
 
   async function deleteJobType(t: ProjectType) {
     if (!confirm(`ลบประเภทงาน "${t.name}" ออกจากระบบ?\n(โปรเจคที่ใช้อยู่จะไม่ได้รับผลกระทบ)`)) return;
     const fs = await import("@/lib/firestore");
     await fs.projectTypes.remove(t.id!);
+    await load();
   }
 
   function toggleJobType(typeName: string) {
@@ -795,7 +783,7 @@ export default function ProjectsPage() {
                   ))}
                 </div>
               )}
-              {/* Checkbox grid — approved types only */}
+              {/* Checkbox grid */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 mt-1 p-2 rounded-lg bg-background border border-border max-h-[120px] overflow-y-auto">
                 {pTypes.filter(t => !t.status || t.status === "approved").map(t => (
                   <div key={t.id} className="flex items-center gap-1 group hover:bg-card-hover rounded px-1.5 py-1">
@@ -803,53 +791,28 @@ export default function ProjectsPage() {
                       <input type="checkbox" checked={(form.job_types || []).includes(t.name)} onChange={() => toggleJobType(t.name)} />
                       <span className="truncate">{t.name}</span>
                     </label>
-                    {canManage && (
-                      <button type="button" onClick={() => deleteJobType(t)}
-                        className="opacity-0 group-hover:opacity-100 text-[10px] text-rose-400 hover:text-rose-300 leading-none shrink-0 transition-opacity"
-                        title={`ลบ "${t.name}"`}>✕</button>
-                    )}
+                    <button type="button" onClick={() => deleteJobType(t)}
+                      className="opacity-0 group-hover:opacity-100 text-[10px] text-rose-400 hover:text-rose-300 leading-none shrink-0 transition-opacity"
+                      title={`ลบ "${t.name}"`}>✕</button>
                   </div>
                 ))}
               </div>
 
-              {/* Pending approval — manager sees approve/reject; sale sees own pending */}
-              {(() => {
-                const pending = pTypes.filter(t => t.status === "pending");
-                const myPending = pending.filter(t => t.requested_by === currentUser?.name);
-                if (canManage && pending.length > 0) return (
-                  <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5">
-                    <p className="text-[10px] text-amber-400 font-semibold mb-1.5">⏳ รออนุมัติ ({pending.length})</p>
-                    <div className="space-y-1">
-                      {pending.map(t => (
-                        <div key={t.id} className="flex items-center justify-between gap-2">
-                          <span className="text-xs flex-1 min-w-0 truncate">{t.name} <span className="text-muted text-[10px]">โดย {t.requested_by || "—"}</span></span>
-                          <div className="flex gap-1 shrink-0">
-                            <button type="button" onClick={() => approveJobType(t)} className="text-[10px] bg-green-800/60 text-green-300 rounded px-2 py-0.5 hover:bg-green-800">✓ อนุมัติ</button>
-                            <button type="button" onClick={() => rejectJobType(t)} className="text-[10px] bg-rose-900/50 text-rose-400 rounded px-2 py-0.5 hover:bg-rose-900">✕ ปฏิเสธ</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-                if (!canManage && myPending.length > 0) return (
-                  <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-2">
-                    <p className="text-[10px] text-amber-400">⏳ รออนุมัติ: {myPending.map(t => t.name).join(", ")}</p>
-                  </div>
-                );
-                return null;
-              })()}
-
-              {/* Inline add new type — all roles can request */}
+              {/* Inline add + manage link */}
               <div className="flex gap-1.5 mt-1.5">
-                <input placeholder={canManage ? "เพิ่มประเภทใหม่..." : "ขอเพิ่มประเภทใหม่ (รออนุมัติ)..."}
+                <input placeholder="เพิ่มประเภทใหม่..."
                   value={newTypeName} onChange={e => setNewTypeName(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); quickAddJobType(); }}}
                   className="flex-1 rounded-lg bg-background border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent" />
-                <button type="button" onClick={quickAddJobType} disabled={!newTypeName.trim()}
+                <button type="button" onClick={quickAddJobType} disabled={!newTypeName.trim() || saving}
                   className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white hover:bg-accent-hover disabled:opacity-50">
-                  {canManage ? "+ เพิ่ม" : "ส่งขออนุมัติ"}
+                  + เพิ่ม
                 </button>
+                <a href="/settings/project-types" target="_blank" rel="noopener noreferrer"
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-card-hover hover:text-foreground transition-colors whitespace-nowrap"
+                  title="เปิดหน้าจัดการประเภทงาน (เพิ่ม / แก้ไข / ลบ)">
+                  ⚙ จัดการ
+                </a>
               </div>
             </div>
             <div><label className="text-[10px] text-muted">มูลค่า (THB)</label><input type="number" placeholder="เช่น 500000" value={form.value || ""} onChange={e => setForm({ ...form, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
