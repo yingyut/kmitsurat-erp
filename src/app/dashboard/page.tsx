@@ -1030,7 +1030,7 @@ export default function DashboardPage() {
           {/* Personal 6-card view (non-manager) OR Team 4-card view (manager/admin) */}
           {!canSeeTeam ? (()=>{
             const myPersonRow = activeSalesData.find(p => p.name === myName);
-            if (!myPersonRow || (myPersonRow.act === 0 && myPersonRow.acts === 0 && myPersonRow.pipVal === 0)) return null;
+            if (!myPersonRow || (myPersonRow.tgt === 0 && myPersonRow.act === 0 && myPersonRow.acts === 0 && myPersonRow.pipVal === 0)) return null;
             const profitK = Math.round((myPersonRow?.pft ?? 0) / 1000);
             const gpPctMe = actual > 0 ? Math.round((myPersonRow?.pft ?? 0) / actual * 100) : 0;
             const gpColor = gpPctMe>=20?"text-emerald-500":gpPctMe>=10?"text-amber-500":profitK>0?"text-foreground/70":"text-muted";
