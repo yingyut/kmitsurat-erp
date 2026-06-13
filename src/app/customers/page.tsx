@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, lazy, Suspense } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Customer, Project, Quotation, ServiceTicket, User } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
@@ -71,6 +72,7 @@ const emptyForm = {
 };
 
 export default function CustomersPage() {
+  const router = useRouter();
   const { currentUser, hasPermission } = useCurrentUser();
   const [list, setList]                 = useState<Customer[]>([]);
   const [projects, setProjects]         = useState<Project[]>([]);
@@ -97,20 +99,6 @@ export default function CustomersPage() {
   const [nameDropOpen, setNameDropOpen] = useState(false);
   const [dupMatch, setDupMatch] = useState<Customer | null>(null); // exact duplicate found
 
-  // Industry management (Firestore)
-  const [newIndustryLabel, setNewIndustryLabel] = useState("");
-  async function addIndustry(label: string) {
-    const t = label.trim();
-    if (!t || industries.some(i => i.label === t)) return;
-    const fs = await import("@/lib/firestore");
-    await fs.customerIndustries.add({ label: t, sector: form.org_sector || "all", order: 99, active: true } as Record<string, unknown>);
-    setForm(f => ({ ...f, org_type: t }));
-    setNewIndustryLabel("");
-  }
-  async function deleteIndustry(id: string) {
-    const fs = await import("@/lib/firestore");
-    await fs.customerIndustries.remove(id);
-  }
 
   // Hover popup
   const [hoverCust, setHoverCust] = useState<Customer | null>(null);
@@ -512,28 +500,17 @@ export default function CustomersPage() {
             </select>
 
             {/* Industry (from Firestore) */}
-            <div className="space-y-1.5">
-              <select value={form.org_type}
-                onChange={e => { if (e.target.value !== "__add__") setForm({...form, org_type: e.target.value}); else setNewIndustryLabel(""); }}
-                className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-                <option value="">-- กลุ่มธุรกิจ --</option>
-                {industries.filter(i => !i.sector || i.sector === "all" || i.sector === form.org_sector)
-                  .map(i => <option key={i.id} value={i.label}>{i.label}</option>)}
-                <option value="__add__">+ เพิ่มกลุ่มธุรกิจใหม่…</option>
-              </select>
-              {(form.org_type === "__add__" || (form.org_type === "" && newIndustryLabel !== "")) && (
-                <div className="flex gap-1">
-                  <input value={newIndustryLabel} onChange={e => setNewIndustryLabel(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addIndustry(newIndustryLabel); }}}
-                    placeholder="ชื่อกลุ่มธุรกิจใหม่…"
-                    autoFocus
-                    className="flex-1 rounded-lg bg-background border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
-                  <button type="button" onClick={() => addIndustry(newIndustryLabel)}
-                    disabled={!newIndustryLabel.trim()}
-                    className="px-3 rounded-lg bg-accent text-white text-sm disabled:opacity-40 hover:bg-accent-hover">+</button>
-                </div>
-              )}
-            </div>
+            <select value={form.org_type}
+              onChange={e => {
+                if (e.target.value === "__manage__") { router.push("/settings/customer-industries"); return; }
+                setForm({...form, org_type: e.target.value});
+              }}
+              className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+              <option value="">-- กลุ่มธุรกิจ --</option>
+              {industries.filter(i => !i.sector || i.sector === "all" || i.sector === form.org_sector)
+                .map(i => <option key={i.id} value={i.label}>{i.label}</option>)}
+              <option value="__manage__">⚙️ จัดการกลุ่มธุรกิจ…</option>
+            </select>
             <input placeholder="เลขที่ผู้เสียภาษี" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <input placeholder="เว็บไซต์" value={form.website} onChange={e => setForm({...form, website: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
 
