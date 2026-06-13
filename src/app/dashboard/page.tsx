@@ -1027,70 +1027,50 @@ export default function DashboardPage() {
         .sort((a,b) => b.act - a.act);
       return (
         <div className="space-y-3">
-          {/* 4 KPI cards — ทุกใบกดเพื่อดู breakdown ด้านล่าง */}
-          <div className="grid grid-cols-2 @md:grid-cols-4 gap-3">
-            {/* ① ยอดขายรวม */}
-            <button onClick={()=>{if(!canSeeTeam)return;setShowSalesBreakdown(v=>!v);setShowAchievBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
-              className={`text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] transition-all duration-150 ${canSeeTeam?"hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none":""}`}>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">{canSeeTeam?"ยอดขายรวม":"ยอดขายของฉัน"}</p>
-                {canSeeTeam&&<span className="text-[10px] text-accent font-bold">{showSalesBreakdown?"▲":"▼"}</span>}
-              </div>
-              <p className="text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
-              <div>
-                {targetPct>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
-                <p className="text-[9px] text-muted/60 mt-0.5">{filterLabel}</p>
-              </div>
-            </button>
-
-            {/* ② Achievement % */}
-            {(()=>{
-              const pctCol=targetPct>=80?"text-emerald-500":targetPct>=50?"text-amber-500":target>0?"text-orange-500":"text-muted";
-              const barCol=targetPct>=80?"bg-emerald-500":targetPct>=50?"bg-amber-500":target>0?"bg-orange-500":"bg-muted/20";
-              return (
-                <button onClick={()=>{if(!canSeeTeam)return;setShowAchievBreakdown(v=>!v);setShowSalesBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
-                  className={`text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] transition-all duration-150 ${canSeeTeam?"hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none":""}`}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
-                    {canSeeTeam&&<span className="text-[10px] text-accent font-bold">{showAchievBreakdown?"▲":"▼"}</span>}
-                  </div>
+          {/* Personal 6-card view (non-manager) OR Team 4-card view (manager/admin) */}
+          {!canSeeTeam ? (()=>{
+            const myPersonRow = activeSalesData.find(p => p.name === myName);
+            const profitK = Math.round((myPersonRow?.pft ?? 0) / 1000);
+            const gpPctMe = actual > 0 ? Math.round((myPersonRow?.pft ?? 0) / actual * 100) : 0;
+            const gpColor = gpPctMe>=20?"text-emerald-500":gpPctMe>=10?"text-amber-500":profitK>0?"text-foreground/70":"text-muted";
+            const myActs = myPersonRow?.acts ?? 0;
+            const myProj = myPersonRow?.activeProj ?? 0;
+            const pctCol = targetPct>=80?"text-emerald-500":targetPct>=50?"text-amber-500":target>0?"text-orange-500":"text-muted";
+            const barCol = targetPct>=80?"bg-emerald-500":targetPct>=50?"bg-amber-500":target>0?"bg-orange-500":"bg-muted/20";
+            const pipM = pipeline>=1e6?`${(pipeline/1e6).toFixed(1)}M`:pipeline>0?`${Math.round(pipeline/1000)}K`:"—";
+            const totalAlerts = salesOverdue.length+salesPlanOverdue.length;
+            return (<>
+              <div className="grid grid-cols-2 @md:grid-cols-3 @xl:grid-cols-6 gap-3">
+                <div className="rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)]">
+                  <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ยอดขาย</p>
+                  <p className="text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
+                  <div>{targetPct>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}<p className="text-[9px] text-muted/60 mt-0.5">{filterLabel}</p></div>
+                </div>
+                <div className="rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)]">
+                  <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
                   <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${pctCol}`}>{target>0?`${targetPct.toFixed(0)}%`:"—"}</p>
-                  <div>
-                    {target>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className={`h-full rounded-full ${barCol} transition-all`} style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
-                    <p className="text-[9px] text-muted/60 mt-0.5">{target>0?`${Math.round(actual/1000)}K / ${mgTgtM}`:"ยังไม่มีเป้า"}</p>
-                  </div>
-                </button>
-              );
-            })()}
-
-            {/* ③ Pipeline รวม */}
-            {(()=>{
-              const pipM=pipeline>=1e6?`${(pipeline/1e6).toFixed(1)}M`:pipeline>0?`${Math.round(pipeline/1000)}K`:"—";
-              return (
-                <button onClick={()=>{setShowPipeBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowOdBreakdown(false);}}
-                  className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">PIPELINE รวม</p>
-                    <span className="text-[10px] text-accent font-bold">{showPipeBreakdown?"▲":"▼"}</span>
-                  </div>
+                  <div>{target>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className={`h-full rounded-full ${barCol} transition-all`} style={{width:`${Math.min(targetPct,100)}%`}}/></div>}<p className="text-[9px] text-muted/60 mt-0.5">{target>0?`${Math.round(actual/1000)}K / ${mgTgtM}`:"ยังไม่มีเป้า"}</p></div>
+                </div>
+                <div className="rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)]">
+                  <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">กำไร GP</p>
+                  <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${gpColor}`}>{profitK>0?`${profitK.toLocaleString()}K`:"—"}</p>
+                  <p className="text-[9px] text-muted/60 mt-0.5">{gpPctMe>0?`${gpPctMe}% margin`:"ยังไม่มีข้อมูล"}</p>
+                </div>
+                <div className={`rounded-xl bg-card border p-3 @md:p-4 min-h-[95px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] ${salesOverdue.length>0?"border-orange-600/40":"border-border/60"}`}>
+                  <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">Follow-up ค้าง</p>
+                  <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${salesOverdue.length>0?"text-orange-500":"text-muted"}`}>{salesOverdue.length}</p>
+                  <p className="text-[9px] text-muted/60 mt-0.5">{salesOverdue.length>0?"ต้องติดตาม":"ทุกงานปกติ"}</p>
+                </div>
+                <button onClick={()=>{setShowPipeBreakdown(v=>!v);setShowOdBreakdown(false);setShowSalesBreakdown(false);setShowAchievBreakdown(false);}}
+                  className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                  <div className="flex items-center justify-between"><p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">PIPELINE</p><span className="text-[10px] text-accent font-bold">{showPipeBreakdown?"▲":"▼"}</span></div>
                   <p className="text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none text-violet-500">{pipM}</p>
                   <p className="text-[9px] text-muted/60 mt-0.5">{totalDeals} ดีล · Win {convRate.toFixed(0)}%</p>
                 </button>
-              );
-            })()}
-
-            {/* ④ Follow-up ค้าง + Plan ค้าง */}
-            {(()=>{
-              const totalAlerts=salesOverdue.length+salesPlanOverdue.length;
-              const hasAlert=totalAlerts>0;
-              return (
                 <button onClick={()=>{setShowOdBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowPipeBreakdown(false);}}
-                  className={`text-left rounded-xl bg-card border flex flex-col justify-between p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] transition-all hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-none ${hasAlert?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">งานค้าง</p>
-                    <span className="text-[10px] text-accent font-bold">{showOdBreakdown?"▲":"▼"}</span>
-                  </div>
-                  <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${hasAlert?"text-orange-500":"text-muted"}`}>{totalAlerts}</p>
+                  className={`text-left rounded-xl bg-card border flex flex-col justify-between p-3 @md:p-4 min-h-[95px] transition-all hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-none ${totalAlerts>0?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
+                  <div className="flex items-center justify-between"><p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">งานค้าง</p><span className="text-[10px] text-accent font-bold">{showOdBreakdown?"▲":"▼"}</span></div>
+                  <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${totalAlerts>0?"text-orange-500":"text-muted"}`}>{totalAlerts}</p>
                   <div className="flex gap-1.5 mt-0.5">
                     {salesOverdue.length>0&&<span className="text-[9px] text-orange-400">FU {salesOverdue.length}</span>}
                     {salesOverdue.length>0&&salesPlanOverdue.length>0&&<span className="text-[9px] text-muted/40">·</span>}
@@ -1098,9 +1078,87 @@ export default function DashboardPage() {
                     {totalAlerts===0&&<span className="text-[9px] text-muted/60">ทุกงานปกติ</span>}
                   </div>
                 </button>
-              );
-            })()}
-          </div>
+              </div>
+              <div className="flex items-center gap-5 px-1 pt-1 border-t border-border/30">
+                <div className="flex items-baseline gap-1.5"><span className="text-sm font-semibold">{myActs}</span><span className="text-[11px] text-muted/60">Activity</span></div>
+                <div className="w-px h-3 bg-border/40"/>
+                <div className="flex items-baseline gap-1.5"><span className="text-sm font-semibold">{myProj}</span><span className="text-[11px] text-muted/60">โปรเจค active</span></div>
+                <span className="ml-auto text-[11px] text-muted/40">{filterLabel}</span>
+              </div>
+            </>);
+          })() : (
+            /* ── Team 4-card view (manager/admin) ── */
+            <div className="grid grid-cols-2 @md:grid-cols-4 gap-3">
+              {/* ① ยอดขายรวม */}
+              <button onClick={()=>{setShowSalesBreakdown(v=>!v);setShowAchievBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
+                className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ยอดขายรวม</p>
+                  <span className="text-[10px] text-accent font-bold">{showSalesBreakdown?"▲":"▼"}</span>
+                </div>
+                <p className="text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
+                <div>
+                  {targetPct>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
+                  <p className="text-[9px] text-muted/60 mt-0.5">{filterLabel}</p>
+                </div>
+              </button>
+              {/* ② Achievement % */}
+              {(()=>{
+                const pctCol=targetPct>=80?"text-emerald-500":targetPct>=50?"text-amber-500":target>0?"text-orange-500":"text-muted";
+                const barCol=targetPct>=80?"bg-emerald-500":targetPct>=50?"bg-amber-500":target>0?"bg-orange-500":"bg-muted/20";
+                return (
+                  <button onClick={()=>{setShowAchievBreakdown(v=>!v);setShowSalesBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
+                    className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
+                      <span className="text-[10px] text-accent font-bold">{showAchievBreakdown?"▲":"▼"}</span>
+                    </div>
+                    <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${pctCol}`}>{target>0?`${targetPct.toFixed(0)}%`:"—"}</p>
+                    <div>
+                      {target>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className={`h-full rounded-full ${barCol} transition-all`} style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
+                      <p className="text-[9px] text-muted/60 mt-0.5">{target>0?`${Math.round(actual/1000)}K / ${mgTgtM}`:"ยังไม่มีเป้า"}</p>
+                    </div>
+                  </button>
+                );
+              })()}
+              {/* ③ Pipeline รวม */}
+              {(()=>{
+                const pipM=pipeline>=1e6?`${(pipeline/1e6).toFixed(1)}M`:pipeline>0?`${Math.round(pipeline/1000)}K`:"—";
+                return (
+                  <button onClick={()=>{setShowPipeBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowOdBreakdown(false);}}
+                    className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">PIPELINE รวม</p>
+                      <span className="text-[10px] text-accent font-bold">{showPipeBreakdown?"▲":"▼"}</span>
+                    </div>
+                    <p className="text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none text-violet-500">{pipM}</p>
+                    <p className="text-[9px] text-muted/60 mt-0.5">{totalDeals} ดีล · Win {convRate.toFixed(0)}%</p>
+                  </button>
+                );
+              })()}
+              {/* ④ Follow-up ค้าง + Plan ค้าง */}
+              {(()=>{
+                const totalAlerts=salesOverdue.length+salesPlanOverdue.length;
+                const hasAlert=totalAlerts>0;
+                return (
+                  <button onClick={()=>{setShowOdBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowPipeBreakdown(false);}}
+                    className={`text-left rounded-xl bg-card border flex flex-col justify-between p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] transition-all hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-none ${hasAlert?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">งานค้าง</p>
+                      <span className="text-[10px] text-accent font-bold">{showOdBreakdown?"▲":"▼"}</span>
+                    </div>
+                    <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${hasAlert?"text-orange-500":"text-muted"}`}>{totalAlerts}</p>
+                    <div className="flex gap-1.5 mt-0.5">
+                      {salesOverdue.length>0&&<span className="text-[9px] text-orange-400">FU {salesOverdue.length}</span>}
+                      {salesOverdue.length>0&&salesPlanOverdue.length>0&&<span className="text-[9px] text-muted/40">·</span>}
+                      {salesPlanOverdue.length>0&&<span className="text-[9px] text-violet-400">Plan {salesPlanOverdue.length}</span>}
+                      {totalAlerts===0&&<span className="text-[9px] text-muted/60">ทุกงานปกติ</span>}
+                    </div>
+                  </button>
+                );
+              })()}
+            </div>
+          )}
 
           {/* ── Breakdown panels ── */}
 
@@ -1380,64 +1438,7 @@ export default function DashboardPage() {
         return p.act > 0 || p.pipVal > 0 || p.acts > 0; // ซ่อน card ที่ไม่มีข้อมูลเลย
       }).sort((a,b) => b.pct - a.pct); // เรียงตาม achievement มากไปน้อย
       // Personal card — show only when non-admin sales user sees their own row
-      if (!seeAll) {
-        const p = myCards[0];
-        if (!p) return <p className="text-xs text-muted py-4">ยังไม่มีข้อมูล</p>;
-        const myOverdue = salesOverdue.filter(a=>a.assigned_to===p.name).length;
-        const profitK = Math.round(p.pft/1000);
-        const gpPctMe = p.act>0?Math.round(p.pft/p.act*100):0;
-        const pctColor = p.pct>=80?"text-emerald-500":p.pct>=50?"text-amber-500":p.tgt>0?"text-orange-500":"text-muted";
-        const barColor = p.pct>=80?"bg-emerald-500":p.pct>=50?"bg-amber-500":"bg-orange-500";
-        const gpColor  = gpPctMe>=20?"text-emerald-500":gpPctMe>=10?"text-amber-500":profitK>0?"text-foreground/70":"text-muted";
-        return (
-          <Section title={`📊 ผลงานของฉัน · ${filterLabel}`} defaultOpen={false}>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 @md:grid-cols-4 gap-3">
-              {/* Achievement */}
-              <div className="rounded-xl bg-background border border-border/60 p-4 flex flex-col justify-between min-h-[110px]">
-                <p className="text-[11px] text-muted/60 truncate leading-tight">Achievement</p>
-                <p className={`text-xl font-bold leading-none ${pctColor}`}>{p.tgt>0?`${p.pct}%`:"—"}</p>
-                <div className="space-y-1 overflow-hidden">
-                  {p.tgt>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className={`h-full ${barColor}`} style={{width:`${Math.min(p.pct,100)}%`}}/></div>}
-                  <p className="text-[10px] text-muted/50 truncate">{p.actualK>0?`${p.actualK.toLocaleString()}K`:"-"} / {p.targetK>0?`${p.targetK.toLocaleString()}K`:"-"}</p>
-                </div>
-              </div>
-              {/* ยอดขาย */}
-              <Link href="/sales" className="rounded-xl bg-background border border-border/60 p-4 flex flex-col justify-between min-h-[110px] hover:border-border/90 transition-colors">
-                <p className="text-[11px] text-muted/60 truncate leading-tight">ยอดขาย</p>
-                <p className="text-xl font-bold leading-none text-emerald-500">{p.actualK>0?`${p.actualK.toLocaleString()}K`:"—"}</p>
-                <p className="text-[10px] text-muted/50 truncate">THB · {filterLabel}</p>
-              </Link>
-              {/* GP */}
-              <Link href="/reports" className="rounded-xl bg-background border border-border/60 p-4 flex flex-col justify-between min-h-[110px] hover:border-border/90 transition-colors">
-                <p className="text-[11px] text-muted/60 truncate leading-tight">กำไร GP</p>
-                <p className={`text-xl font-bold leading-none ${gpColor}`}>{profitK>0?`${profitK.toLocaleString()}K`:"—"}</p>
-                <p className="text-[10px] text-muted/50 truncate">{gpPctMe>0?`${gpPctMe}% margin`:"ยังไม่มีข้อมูล"}</p>
-              </Link>
-              {/* Follow-up ค้าง */}
-              <Link href="/sales" className={`rounded-xl border p-4 flex flex-col justify-between min-h-[110px] transition-colors ${myOverdue>0?"bg-orange-950/10 border-orange-600/30 hover:border-orange-500/50":"bg-background border-border/60 hover:border-border/90"}`}>
-                <p className="text-[11px] text-muted/60 truncate leading-tight">Follow-up</p>
-                <p className={`text-xl font-bold leading-none ${myOverdue>0?"text-orange-500":"text-muted"}`}>{myOverdue}</p>
-                <p className="text-[10px] text-muted/50 truncate">{myOverdue>0?"งานต้องติดตาม":"ทุกงานปกติ"}</p>
-              </Link>
-            </div>
-            {/* Activity row */}
-            <div className="flex items-center gap-5 px-1 pt-1 border-t border-border/30">
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-sm font-semibold">{p.acts}</span>
-                <span className="text-[11px] text-muted/60">Activity</span>
-              </div>
-              <div className="w-px h-3 bg-border/40"/>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-sm font-semibold">{p.activeProj}</span>
-                <span className="text-[11px] text-muted/60">โปรเจค active</span>
-              </div>
-              <span className="ml-auto text-[11px] text-muted/40">{p.short||p.name} · {filterLabel}</span>
-            </div>
-          </div>
-          </Section>
-        );
-      }
+      if (!seeAll) return null; // data now shown in sales-manager-kpis
       // Admin / seeAll: team cards view
       const onTarget   = myCards.filter(p => p.tgt > 0 && p.pct >= 80).length;
       const belowTarget = myCards.filter(p => p.tgt > 0 && p.pct < 80).length;
