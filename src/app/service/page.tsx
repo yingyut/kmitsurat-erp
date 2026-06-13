@@ -459,7 +459,8 @@ export default function ServicePage() {
 
   const ownTicketsOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_tickets");
   const isTechView = ownTicketsOnly;
-  const baseTickets = ownTicketsOnly ? list.filter(t => t.technician === currentUser?.name) : list;
+  const myIdent = currentUser?.name || currentUser?.email || "";
+  const baseTickets = ownTicketsOnly ? list.filter(t => t.technician === myIdent) : list;
   const canSeeFinance = hasPermission("view_finance");
   const custMap = new Map(custs.map(c => [c.id, c]));
 
@@ -990,7 +991,7 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                       </div>
                     </div>
                     {isTechView ? (
-                      <button onClick={() => acceptReq(r, currentUser?.name || currentUser?.email || "", "")}
+                      <button onClick={() => acceptReq(r, myIdent, "")}
                         className="shrink-0 text-[11px] font-semibold bg-green-800/60 text-green-300 rounded-lg px-3 py-1.5 hover:bg-green-700/70 border border-green-700/40">
                         ✓ รับงาน
                       </button>
@@ -1004,7 +1005,7 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                           <button onClick={async () => {
                             const assignTo = (document.getElementById(`svc-assign-${r.id}`) as HTMLSelectElement)?.value;
                             const note = prompt("หมายเหตุรับงาน (ไม่บังคับ)") || "";
-                            const techName = assignTo || currentUser?.name || currentUser?.email || "";
+                            const techName = assignTo || myIdent;
                             await acceptReq(r, techName, note);
                           }} className="flex-1 text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ รับงาน</button>
                           <button onClick={async () => {
