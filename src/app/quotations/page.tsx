@@ -78,6 +78,16 @@ export default function QuotationsPage() {
   useEffect(() => {
     try { setProjTemplates(JSON.parse(localStorage.getItem("kmit_proj_templates") || "[]")); } catch { /* */ }
   }, []);
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const cid = p.get("customer_id"); const cname = p.get("customer_name");
+    const pid = p.get("project_id");  const pname = p.get("project_name");
+    if (cid || cname) {
+      setCustId(cid || ""); setCustName(cname || "");
+      setProjId(pid || ""); setProjName(pname || "");
+      setShowForm(true);
+    }
+  }, []);
   function saveProjTemplate(name: string) {
     const trimmed = name.trim();
     if (!trimmed) return;

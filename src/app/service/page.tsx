@@ -304,6 +304,15 @@ export default function ServicePage() {
   const [form, setForm]               = useState(empty);
   const [saving, setSaving]           = useState(false);
   const [mounted, setMounted]         = useState(false);
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const cid = p.get("customer_id"); const cname = p.get("customer_name");
+    const pid = p.get("project_id");  const pname = p.get("project_name");
+    if (cid || cname) {
+      setForm(f => ({ ...f, customer_id: cid||"", customer_name: cname||"", project_id: pid||"", project_name: pname||"" }));
+      setShowForm(true);
+    }
+  }, []);
   // visibility toggles — ห้ามลบ, ใช้เปิด/ปิดใน config อนาคต
   const [showRevenue, setShowRevenue]       = useState(false);
   const [showSlaDetail, setShowSlaDetail]   = useState(false);

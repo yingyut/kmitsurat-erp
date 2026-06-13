@@ -46,6 +46,7 @@ const resultColor: Record<string, string> = { success: "bg-green-900/50 text-bad
 const stages = ["lead","opportunity","proposal","negotiation","won","lost"] as const;
 const pureSalesRoles = ["sale","Sales Executive","Sales Manager","Branch Manager"];
 const stageColor: Record<string, string> = { lead: "bg-zinc-700/80 text-badge", opportunity: "bg-blue-900/50 text-badge", proposal: "bg-purple-900/50 text-badge", negotiation: "bg-amber-900/50 text-badge", won: "bg-green-900/50 text-badge", lost: "bg-red-900/50 text-badge" };
+const stageTh: Record<string, string> = { lead: "สนใจ", opportunity: "มีโอกาส", proposal: "เสนอราคา", negotiation: "เจรจา", won: "ปิดดีล ✓", lost: "ไม่ผ่าน" };
 
 const today = new Date().toISOString().slice(0, 10);
 const currentMonth = new Date().toISOString().slice(0, 7);
@@ -3352,15 +3353,15 @@ export default function SalesPage() {
                   </td>
                   <td className="px-4 py-2.5 text-muted text-xs">{p.customer_name}</td>
                   <td className="px-4 py-2.5 text-right">{(p.value||0).toLocaleString()}</td>
-                  <td className="px-4 py-2.5"><select value={p.status} onChange={e => updateProjectStatus(p.id!, e.target.value)} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${stageColor[p.status] || "bg-gray-700"}`}>{stages.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
+                  <td className="px-4 py-2.5"><select value={p.status} onChange={e => updateProjectStatus(p.id!, e.target.value)} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${stageColor[p.status] || "bg-gray-700"}`}>{stages.map(s => <option key={s} value={s}>{stageTh[s] || s}</option>)}</select></td>
                   <td className="px-4 py-2.5 text-xs text-muted">{p.probability || "—"}%</td>
                   <td className="px-4 py-2.5 text-xs text-muted">{p.expected_close_date || "—"}</td>
                   <td className="px-4 py-2.5 text-xs text-muted">{p.next_action || "—"}{p.next_action_date && <span className="text-[9px] ml-1">({p.next_action_date})</span>}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1">
-                      <Link href="/quotations" title="สร้างใบเสนอราคา" className="text-[9px] bg-amber-800/50 text-amber-400 rounded px-1.5 py-0.5 hover:bg-amber-800">QT</Link>
-                      <Link href="/presale" title="ขอ Presale" className="text-[9px] bg-purple-800/50 text-purple-400 rounded px-1.5 py-0.5 hover:bg-purple-800">PS</Link>
-                      <Link href="/service" title="สร้าง Service" className="text-[9px] bg-rose-800/50 text-rose-400 rounded px-1.5 py-0.5 hover:bg-rose-800">SV</Link>
+                      <Link href={`/quotations?customer_id=${encodeURIComponent(p.customer_id||"")}&customer_name=${encodeURIComponent(p.customer_name||"")}&project_id=${encodeURIComponent(p.id||"")}&project_name=${encodeURIComponent(p.name||"")}`} title="สร้างใบเสนอราคา" className="text-[9px] bg-amber-800/50 text-amber-400 rounded px-1.5 py-0.5 hover:bg-amber-800">QT</Link>
+                      <Link href={`/presale?customer_id=${encodeURIComponent(p.customer_id||"")}&customer_name=${encodeURIComponent(p.customer_name||"")}&project_id=${encodeURIComponent(p.id||"")}&project_name=${encodeURIComponent(p.name||"")}`} title="ขอ Presale" className="text-[9px] bg-purple-800/50 text-purple-400 rounded px-1.5 py-0.5 hover:bg-purple-800">PS</Link>
+                      <Link href={`/service?customer_id=${encodeURIComponent(p.customer_id||"")}&customer_name=${encodeURIComponent(p.customer_name||"")}&project_id=${encodeURIComponent(p.id||"")}&project_name=${encodeURIComponent(p.name||"")}`} title="สร้าง Service" className="text-[9px] bg-rose-800/50 text-rose-400 rounded px-1.5 py-0.5 hover:bg-rose-800">SV</Link>
                     </div>
                   </td>
                 </tr>
