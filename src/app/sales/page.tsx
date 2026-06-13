@@ -273,6 +273,7 @@ export default function SalesPage() {
   const [qrNextTime,         setQrNextTime]         = useState("");
   const [qrParticipants,     setQrParticipants]     = useState<string[]>([]);
   const [qrReminderDays,     setQrReminderDays]     = useState<number>(1);
+  const [qrMeetingMode,     setQrMeetingMode]     = useState<"onsite"|"online">("onsite");
   const [qrFiles,            setQrFiles]            = useState<QrFile[]>([]);
   const [qrLinkUrl,          setQrLinkUrl]          = useState("");
   const [qrLinkLabel,  setQrLinkLabel]  = useState("");
@@ -683,6 +684,7 @@ export default function SalesPage() {
         upd.next_action_time = qrNextTime || "";
         upd.participants = qrParticipants;
         upd.reminder_before_days = qrReminderDays;
+        upd.meeting_mode = qrMeetingMode;
       }
       if (newAttachments.length > 0) {
         upd.attachments = [...(a.attachments || []), ...newAttachments];
@@ -693,7 +695,8 @@ export default function SalesPage() {
       if (qrNextDate && qrNextAction.trim()) {
         const tid = (currentUser as unknown as Record<string,string>)?.tenant_id || "";
         const eventTitle = `${qrNextAction.trim()}${a.customer_name ? ` — ${a.customer_name}` : ""}`;
-        const allParticipants = Array.from(new Set([a.assigned_to || currentUser?.name || "", ...qrParticipants].filter(Boolean)));
+        const inviter = a.assigned_to || currentUser?.name || "";
+        const allParticipants = Array.from(new Set([inviter, ...qrParticipants].filter(Boolean)));
         // Create one plan activity per participant so it shows in each person's calendar
         for (const person of allParticipants) {
           await salesActivities.add({
@@ -713,6 +716,8 @@ export default function SalesPage() {
             plan_time: qrNextTime || "",
             plan_status: "planned",
             participants: allParticipants,
+            invited_by: inviter,
+            meeting_mode: qrMeetingMode,
             reminder_before_days: qrReminderDays,
           } as unknown as Record<string, unknown>);
         }
@@ -1308,6 +1313,9 @@ export default function SalesPage() {
           const done     = plan.status === "done";
           const shortName = (plan.assigned_to || "").split(" ")[0].slice(0, 7) || "—";
           const isDragging = draggingPlanId === plan.id;
+          const invBy = (plan as unknown as Record<string,unknown>).invited_by as string | undefined;
+          const isInvited = invBy && invBy !== plan.assigned_to;
+          const mmode = (plan as unknown as Record<string,unknown>).meeting_mode as string | undefined;
           return (
             <div key={plan.id}
               draggable
@@ -1319,10 +1327,16 @@ export default function SalesPage() {
               <div className={`flex-1 px-1 py-0.5 min-w-0 ${done ? "opacity-50" : ""}`}>
                 <span className={`text-[9px] font-bold truncate leading-tight block ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>
                   {shortName}{(plan.plan_time as string) ? <span className="font-normal opacity-60 ml-0.5">{plan.plan_time as string}</span> : null}
+                  {mmode && <span className="ml-0.5 opacity-70">{mmode === "online" ? "💻" : "🤝"}</span>}
                 </span>
                 <span className="text-[9px] text-muted/70 truncate leading-tight block">
                   {plan.customer_name?.slice(0, 12) || plan.expected_outcome?.slice(0, 12) || "—"}
                 </span>
+                {isInvited && (
+                  <span className="text-[8px] text-blue-400/80 truncate leading-tight block">
+                    📩 {(invBy as string).split(" ")[0]}
+                  </span>
+                )}
               </div>
             </div>
           );
@@ -1334,6 +1348,9 @@ export default function SalesPage() {
           const done      = plan.status === "done";
           const shortName = (plan.assigned_to || "").split(" ")[0].slice(0, 8);
           const isDragging = draggingPlanId === plan.id;
+          const invBy = (plan as unknown as Record<string,unknown>).invited_by as string | undefined;
+          const isInvited = invBy && invBy !== plan.assigned_to;
+          const mmode = (plan as unknown as Record<string,unknown>).meeting_mode as string | undefined;
           return (
             <div key={plan.id}
               draggable
@@ -1343,11 +1360,15 @@ export default function SalesPage() {
               className={`w-full flex items-stretch text-left rounded-lg overflow-hidden border bg-card hover:shadow-sm transition-all cursor-grab active:cursor-grabbing select-none ${ovd ? "border-red-500/40" : "border-border/60"} ${done ? "opacity-50" : ""} ${isDragging ? "opacity-40 scale-95" : ""}`}>
               <div className={`w-1 shrink-0 ${done ? "bg-green-500 opacity-60" : ovd ? "bg-red-600" : pc}`} />
               <div className="flex-1 px-2 py-1.5 min-w-0">
-                {shortName && <p className={`text-[9px] font-bold leading-tight truncate mb-0.5 ${done ? "text-muted" : "text-muted/60"}`}>{shortName}{(plan.plan_time as string) ? <span className="font-normal opacity-60 ml-1">{plan.plan_time as string}</span> : null}</p>}
+                {shortName && <p className={`text-[9px] font-bold leading-tight truncate mb-0.5 ${done ? "text-muted" : "text-muted/60"}`}>
+                  {shortName}{(plan.plan_time as string) ? <span className="font-normal opacity-60 ml-1">{plan.plan_time as string}</span> : null}
+                  {mmode && <span className="ml-1 opacity-70">{mmode === "online" ? "💻" : "🤝"}</span>}
+                </p>}
                 <p className={`text-[11px] truncate font-semibold leading-tight ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>
                   {plan.expected_outcome?.slice(0, 22) || plan.description?.slice(0, 22) || "—"}
                 </p>
                 {plan.customer_name && <p className={`text-[9px] truncate mt-0.5 ${ovd ? "text-red-500/70" : "text-muted"}`}>{plan.customer_name}</p>}
+                {isInvited && <p className="text-[8px] text-blue-400/80 truncate">📩 {(invBy as string).split(" ")[0]}</p>}
               </div>
             </div>
           );
@@ -2874,6 +2895,9 @@ export default function SalesPage() {
               const plan = calPopupPlan;
               const pc   = personColorMap.get(plan.assigned_to || "") ?? "bg-muted";
               const tc   = TC[plan.type] ?? {icon:"📌",label:"งาน"};
+              const popInvBy = (plan as unknown as Record<string,unknown>).invited_by as string | undefined;
+              const popIsInvited = popInvBy && popInvBy !== plan.assigned_to;
+              const popMmode = (plan as unknown as Record<string,unknown>).meeting_mode as string | undefined;
               const statusOpts = [
                 { v:"planned",     label:"○ วางแผน",  cls:"border-blue-500/40 text-blue-500 bg-blue-500/10"   },
                 { v:"in_progress", label:"▷ กำลังทำ", cls:"border-amber-500/40 text-amber-500 bg-amber-500/10" },
@@ -2905,6 +2929,16 @@ export default function SalesPage() {
                               </span>
                             )}
                             <span className="text-[10px] text-muted/60 border border-border/50 rounded px-1.5 py-0.5">{tc.icon} {tc.label}</span>
+                            {popMmode && (
+                              <span className={`text-[10px] font-semibold border rounded px-1.5 py-0.5 ${popMmode === "online" ? "border-blue-500/40 text-blue-500 bg-blue-500/10" : "border-green-500/40 text-green-500 bg-green-500/10"}`}>
+                                {popMmode === "online" ? "💻 Online" : "🤝 Onsite"}
+                              </span>
+                            )}
+                            {popIsInvited && (
+                              <span className="text-[10px] text-blue-400/90 border border-blue-400/30 rounded px-1.5 py-0.5">
+                                📩 {(popInvBy as string).split(" ")[0]}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <button onClick={() => setCalPopupPlan(null)}
@@ -4319,6 +4353,18 @@ export default function SalesPage() {
                           {qrNextDate && (
                             <div className="rounded-lg border border-accent/20 bg-accent/5 p-2.5 space-y-2">
                               <p className="text-[10px] font-semibold text-accent">📅 สร้างนัดในปฎิทิน</p>
+                              <div>
+                                <label className="text-[9px] text-muted block mb-1">📍 รูปแบบการนัดหมาย</label>
+                                <div className="flex gap-1.5">
+                                  {(["onsite","online"] as const).map(m => (
+                                    <button key={m} type="button"
+                                      onClick={() => setQrMeetingMode(m)}
+                                      className={`flex-1 rounded-lg px-3 py-1.5 text-[11px] font-semibold border transition-colors ${qrMeetingMode === m ? (m === "online" ? "bg-blue-500/15 border-blue-500/50 text-blue-500" : "bg-green-500/15 border-green-500/50 text-green-500") : "border-border text-muted hover:bg-card-hover"}`}>
+                                      {m === "online" ? "💻 Online" : "🤝 Onsite"}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
                               <div>
                                 <label className="text-[9px] text-muted block mb-1">👥 ผู้เข้าร่วม (เลือกได้หลายคน)</label>
                                 <div className="flex flex-wrap gap-1">
