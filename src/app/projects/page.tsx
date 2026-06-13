@@ -269,6 +269,12 @@ export default function ProjectsPage() {
     } catch (e) { console.error(e); } finally { setSaving(false); }
   }
 
+  async function deleteJobType(t: ProjectType) {
+    if (!confirm(`ลบประเภทงาน "${t.name}" ออกจากระบบ?\n(โปรเจคที่ใช้อยู่จะไม่ได้รับผลกระทบ)`)) return;
+    const fs = await import("@/lib/firestore");
+    await fs.projectTypes.remove(t.id!);
+  }
+
   function toggleJobType(typeName: string) {
     const arr = form.job_types || [];
     setForm({ ...form, job_types: arr.includes(typeName) ? arr.filter(t => t !== typeName) : [...arr, typeName] });
@@ -778,17 +784,28 @@ export default function ProjectsPage() {
               {/* Checkbox grid */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 mt-1 p-2 rounded-lg bg-background border border-border max-h-[120px] overflow-y-auto">
                 {pTypes.map(t => (
-                  <label key={t.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-card-hover rounded px-1.5 py-1">
-                    <input type="checkbox" checked={(form.job_types || []).includes(t.name)} onChange={() => toggleJobType(t.name)} />
-                    {t.name}
-                  </label>
+                  <div key={t.id} className="flex items-center gap-1 group hover:bg-card-hover rounded px-1.5 py-1">
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer flex-1 min-w-0">
+                      <input type="checkbox" checked={(form.job_types || []).includes(t.name)} onChange={() => toggleJobType(t.name)} />
+                      <span className="truncate">{t.name}</span>
+                    </label>
+                    {canManage && (
+                      <button type="button" onClick={() => deleteJobType(t)}
+                        className="opacity-0 group-hover:opacity-100 text-[10px] text-rose-400 hover:text-rose-300 leading-none shrink-0 transition-opacity"
+                        title={`ลบ "${t.name}"`}>✕</button>
+                    )}
+                  </div>
                 ))}
               </div>
               {/* Inline add new type */}
-              <div className="flex gap-1.5 mt-1.5">
-                <input placeholder="เพิ่มประเภทใหม่..." value={newTypeName} onChange={e => setNewTypeName(e.target.value)} className="flex-1 rounded-lg bg-background border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent" />
-                <button type="button" onClick={quickAddJobType} disabled={!newTypeName.trim()} className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white hover:bg-accent-hover disabled:opacity-50">+ เพิ่ม</button>
-              </div>
+              {canManage && (
+                <div className="flex gap-1.5 mt-1.5">
+                  <input placeholder="เพิ่มประเภทใหม่..." value={newTypeName} onChange={e => setNewTypeName(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); quickAddJobType(); }}}
+                    className="flex-1 rounded-lg bg-background border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent" />
+                  <button type="button" onClick={quickAddJobType} disabled={!newTypeName.trim()} className="rounded-lg bg-accent px-3 py-1.5 text-xs text-white hover:bg-accent-hover disabled:opacity-50">+ เพิ่ม</button>
+                </div>
+              )}
             </div>
             <div><label className="text-[10px] text-muted">มูลค่า (THB)</label><input type="number" placeholder="เช่น 500000" value={form.value || ""} onChange={e => setForm({ ...form, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
             <div><label className="text-[10px] text-muted">สถานะ</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as Project["status"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">{statuses.map(s => <option key={s} value={s}>{statusLabels[s]}</option>)}</select></div>
