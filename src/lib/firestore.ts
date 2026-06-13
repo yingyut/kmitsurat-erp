@@ -8,7 +8,7 @@ import { db } from "./firebase";
 // Import types for generic params
 import type {
   User, Team, Customer, CustomerIndustry, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
-  ServiceTicket, ServiceContract, ServiceCost, ServiceAttachment, ServiceCostPreset, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
+  ServiceTicket, ServiceContract, ServiceCost, ServiceAttachment, ServiceCostPreset, ServiceFollowup, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow,
   PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem, PresalePreset,
   ActivityLog, Asset, CompanySettings, Todo, PresaleApprovalSettings, QuotationDocument, InAppNotification,
@@ -155,6 +155,7 @@ export const inAppNotifications = svc<InAppNotification>("notifications");
 export const serviceCosts = svc<ServiceCost>("service_costs");
 export const serviceAttachments = svc<ServiceAttachment>("service_attachments");
 export const serviceCostPresets = svc<ServiceCostPreset>("service_cost_presets");
+export const serviceFollowups = svc<ServiceFollowup>("service_followups");
 
 export async function logActivity(entry: Omit<ActivityLog, "id" | "tenant_id" | "created_at">) {
   try { await activityLogs.add(entry as Record<string, unknown>); } catch { /* non-blocking */ }

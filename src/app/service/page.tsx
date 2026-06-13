@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import type { ServiceTicket, ServiceStatus, Customer, Project, JobRequest, User, Asset, InAppNotification } from "@/lib/types";
+import type { ServiceTicket, ServiceStatus, ServiceFollowup, Customer, Project, JobRequest, User, Asset, InAppNotification } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
 import Link from "next/link";
@@ -120,6 +120,78 @@ function getQuickActions(status: ServiceStatus): Array<{ status: ServiceStatus; 
                                   { status: "acknowledged",  label: "📅 นัดหมายใหม่",   primary: false, isReschedule: true }];
     default:              return [];
   }
+}
+
+// ─── Admin Final Close Modal ─────────────────────────────────────────────────
+
+function AdminFinalCloseModal({
+  ticket, onConfirm, onCancel,
+}: {
+  ticket: ServiceTicket;
+  onConfirm: (note: string, shortDays: number, longDays: number) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [note, setNote] = useState("");
+  const [shortDays, setShortDays] = useState(3);
+  const [longDays, setLongDays] = useState(45);
+  const [saving, setSaving] = useState(false);
+
+  async function confirm() {
+    setSaving(true);
+    try { await onConfirm(note.trim(), shortDays, longDays); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-card border border-border shadow-xl p-5 space-y-4">
+        <div>
+          <h3 className="text-base font-bold">✅ ปิดงานสมบูรณ์โดยธุรการ</h3>
+          <p className="text-xs text-muted mt-0.5">{ticket.customer_name} · {ticket.issue?.slice(0, 60)}</p>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-semibold text-muted uppercase tracking-widest block mb-1">📝 หมายเหตุ (ไม่บังคับ)</label>
+          <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+            placeholder="บันทึกการปิดงาน..."
+            className="w-full rounded-xl bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none" />
+        </div>
+
+        <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-3 space-y-3">
+          <p className="text-[10px] font-semibold text-blue-400 uppercase tracking-widest">📅 ตั้งเวลาโทรสอบถามความพึงพอใจ</p>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-[10px] text-muted block mb-1">ติดตามครั้งที่ 1 (วันหลังปิด)</label>
+              <div className="flex items-center gap-2">
+                <input type="range" min={1} max={5} value={shortDays} onChange={e => setShortDays(+e.target.value)}
+                  className="flex-1 accent-blue-500" />
+                <span className="text-sm font-bold text-blue-400 w-8 text-center">{shortDays}</span>
+              </div>
+              <p className="text-[10px] text-muted">โทรภายใน {shortDays} วัน</p>
+            </div>
+            <div className="flex-1">
+              <label className="text-[10px] text-muted block mb-1">ติดตามครั้งที่ 2 (วันหลังปิด)</label>
+              <div className="flex items-center gap-2">
+                <input type="range" min={30} max={60} value={longDays} onChange={e => setLongDays(+e.target.value)}
+                  className="flex-1 accent-purple-500" />
+                <span className="text-sm font-bold text-purple-400 w-8 text-center">{longDays}</span>
+              </div>
+              <p className="text-[10px] text-muted">โทรภายใน {longDays} วัน</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button onClick={onCancel} disabled={saving}
+            className="flex-1 rounded-xl border border-border py-2 text-sm hover:bg-muted/10">ยกเลิก</button>
+          <button onClick={confirm} disabled={saving}
+            className="flex-1 rounded-xl bg-green-700 hover:bg-green-600 text-white py-2 text-sm font-semibold disabled:opacity-50">
+            {saving ? "กำลังบันทึก..." : "✅ ปิดงานสมบูรณ์"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Status Update Modal ─────────────────────────────────────────────────────
@@ -408,6 +480,8 @@ export default function ServicePage() {
   const [pendingChange, setPendingChange] = useState<{ ticket: ServiceTicket; newStatus: ServiceStatus } | null>(null);
   const [myNotifs, setMyNotifs] = useState<InAppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [followups, setFollowups] = useState<ServiceFollowup[]>([]);
+  const [finalCloseModal, setFinalCloseModal] = useState<ServiceTicket | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(() => typeof window !== "undefined" ? localStorage.getItem("svc_notif_sound") !== "off" : true);
   const prevUnreadRef = useRef(0);
   const [openSect, setOpenSect] = useState<Record<string,boolean>>({});
@@ -470,6 +544,7 @@ export default function ServicePage() {
         }),
         fs.assets.subscribe(data => setAssetList(data)),
         fs.inAppNotifications.subscribe(data => setMyNotifs(data.filter(n => n.module === "service"))),
+        fs.serviceFollowups.subscribe(data => setFollowups(data)),
       );
     })();
     return () => unsubs.forEach(u => u());
@@ -490,11 +565,17 @@ export default function ServicePage() {
     ? list.filter(t => myAllIdents.includes(t.technician || "") || (t.job_request_id && allAcceptedReqIds.has(t.job_request_id)))
     : list;
   const canSeeFinance = hasPermission("view_finance");
+  const isAdminRole = ["admin","Administrator","avenger","ธุรการ","Branch Manager"].some(r => (currentUser?.role ?? "").includes(r));
   const custMap = new Map(custs.map(c => [c.id, c]));
 
   const today  = todayStr();
   const nowMs  = Date.now();
   const isActive = (st: ServiceStatus) => !["resolved","closed","cancelled"].includes(st);
+
+  // tickets ที่ช่างปิดแล้ว รอธุรการ stamp ปิดสมบูรณ์
+  const pendingAdminClose = list.filter(t => t.status === "closed" && !t.admin_closed_by);
+  // follow-up calls ที่รอดำเนินการ
+  const pendingFollowups = followups.filter(f => f.status === "pending").sort((a, b) => a.followup_date.localeCompare(b.followup_date));
 
   const viewBase = (() => {
     switch (activeView) {
@@ -858,6 +939,26 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
     setPendingChange(null);
   }
 
+  async function adminCloseTicket(ticket: ServiceTicket, note: string, shortDays: number, longDays: number) {
+    const { serviceTickets, serviceFollowups } = await import("@/lib/firestore");
+    const myName = currentUser?.name || currentUser?.email || "";
+    const now = new Date().toISOString();
+    const addDays = (d: number) => { const dt = new Date(); dt.setDate(dt.getDate() + d); return dt.toISOString().slice(0, 10); };
+    await serviceTickets.update(ticket.id!, {
+      admin_closed_by: myName,
+      admin_closed_at: now,
+      ...(note ? { admin_close_note: note } : {}),
+    });
+    await serviceFollowups.add({ ticket_id: ticket.id!, customer_id: ticket.customer_id, customer_name: ticket.customer_name, technician: ticket.technician, issue: ticket.issue, followup_type: "short", followup_date: addDays(shortDays), status: "pending", admin_closed_at: now } as Record<string, unknown>);
+    await serviceFollowups.add({ ticket_id: ticket.id!, customer_id: ticket.customer_id, customer_name: ticket.customer_name, technician: ticket.technician, issue: ticket.issue, followup_type: "long",  followup_date: addDays(longDays),  status: "pending", admin_closed_at: now } as Record<string, unknown>);
+    setFinalCloseModal(null);
+  }
+
+  async function markFollowupDone(f: ServiceFollowup, doneNote: string) {
+    const { serviceFollowups } = await import("@/lib/firestore");
+    await serviceFollowups.update(f.id!, { status: "done", done_by: currentUser?.name || "", done_at: new Date().toISOString(), ...(doneNote ? { done_note: doneNote } : {}) });
+  }
+
   function selectCust(id: string) { const c = custs.find((x) => x.id === id); setForm(f => ({ ...f, customer_id: id, customer_name: c?.company_name || "", asset_id: "", km_number: "" })); }
   function selectProj(id: string) { const p = projs.find((x) => x.id === id); setForm(f => ({ ...f, project_id: id, project_name: p?.name || "" })); }
   function selectAsset(id: string) {
@@ -1190,6 +1291,81 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
               📥 Export CSV
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── ธุรการ Panel: รอปิดสมบูรณ์ + ตารางโทร ── */}
+      {!loading && !isTechView && isAdminRole && managerSection === "tickets" && (pendingAdminClose.length > 0 || pendingFollowups.length > 0) && (
+        <div className="space-y-3 mb-4">
+
+          {/* Section A — รอปิดงานสมบูรณ์ */}
+          {pendingAdminClose.length > 0 && (
+            <div className="rounded-xl border border-green-700/40 bg-green-900/8 overflow-hidden">
+              <button onClick={() => toggleSect("admin_close")}
+                className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-green-900/10">
+                <span className="text-sm font-semibold text-green-400">🔒 รอปิดงานสมบูรณ์ · {pendingAdminClose.length} งาน</span>
+                <span className="text-muted text-xs">{sectOpen("admin_close") ? "▲" : "▼"}</span>
+              </button>
+              {sectOpen("admin_close") && (
+                <div className="divide-y divide-border/40">
+                  {pendingAdminClose.map(t => (
+                    <div key={t.id} className="flex items-center gap-3 px-4 py-2.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{t.customer_name}</p>
+                        <p className="text-[11px] text-muted truncate">{t.issue} · ช่าง: {t.technician}</p>
+                        {t.closure_link && (
+                          <a href={t.closure_link} target="_blank" rel="noopener noreferrer"
+                            className="text-[10px] text-blue-400 hover:underline truncate block">🔗 {t.closure_link}</a>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-muted shrink-0">{(t.closed_at || "").slice(0, 10)}</div>
+                      <button onClick={() => setFinalCloseModal(t)}
+                        className="shrink-0 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs px-3 py-1.5 font-semibold">
+                        ✅ ปิดสมบูรณ์
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Section B — ตารางโทรสอบถาม */}
+          {pendingFollowups.length > 0 && (
+            <div className="rounded-xl border border-blue-700/40 bg-blue-900/8 overflow-hidden">
+              <button onClick={() => toggleSect("admin_followup")}
+                className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-blue-900/10">
+                <span className="text-sm font-semibold text-blue-400">📞 ตารางโทรสอบถาม · {pendingFollowups.length} รายการ</span>
+                <span className="text-muted text-xs">{sectOpen("admin_followup") ? "▲" : "▼"}</span>
+              </button>
+              {sectOpen("admin_followup") && (
+                <div className="divide-y divide-border/40">
+                  {pendingFollowups.map(f => {
+                    const isOverdue = f.followup_date < today;
+                    const isToday = f.followup_date === today;
+                    return (
+                      <div key={f.id} className="flex items-center gap-3 px-4 py-2.5">
+                        <div className={`shrink-0 text-xs font-bold w-20 text-center rounded-lg py-1 ${isOverdue ? "bg-red-900/30 text-red-400" : isToday ? "bg-amber-900/30 text-amber-400" : "bg-blue-900/20 text-blue-400"}`}>
+                          {isOverdue ? "⚠ เลยกำหนด" : isToday ? "📅 วันนี้" : f.followup_date.slice(5)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{f.customer_name}</p>
+                          <p className="text-[11px] text-muted truncate">
+                            {f.followup_type === "short" ? "ครั้งที่ 1 (หลังปิดงาน)" : "ครั้งที่ 2 (ติดตามผล)"}
+                            {f.issue ? ` · ${f.issue.slice(0, 40)}` : ""}
+                          </p>
+                        </div>
+                        <button onClick={() => { const note = window.prompt("บันทึกผลการโทร (ไม่บังคับ):") ?? ""; markFollowupDone(f, note); }}
+                          className="shrink-0 rounded-lg bg-blue-700 hover:bg-blue-600 text-white text-xs px-3 py-1.5 font-semibold">
+                          📞 โทรแล้ว
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -2343,6 +2519,14 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
           newStatus={pendingChange.newStatus}
           onConfirm={confirmStatusChange}
           onCancel={() => setPendingChange(null)}
+        />
+      )}
+
+      {finalCloseModal && (
+        <AdminFinalCloseModal
+          ticket={finalCloseModal}
+          onConfirm={(note, shortDays, longDays) => adminCloseTicket(finalCloseModal, note, shortDays, longDays)}
+          onCancel={() => setFinalCloseModal(null)}
         />
       )}
 

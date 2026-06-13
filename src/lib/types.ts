@@ -567,6 +567,29 @@ export interface ServiceTicket {
   km_number?: string;
   // Source reference (when created from a Sales job request)
   job_request_id?: string;
+  // Link attached on close (Google Form / report / doc)
+  closure_link?: string;
+  // ธุรการ final close stamp
+  admin_closed_by?: string;
+  admin_closed_at?: string;
+  admin_close_note?: string;
+}
+
+export interface ServiceFollowup {
+  id?: string;
+  tenant_id: string;
+  ticket_id: string;
+  customer_id: string;
+  customer_name: string;
+  technician: string;
+  issue?: string;
+  followup_type: "short" | "long";
+  followup_date: string;
+  status: "pending" | "done" | "skipped";
+  done_by?: string;
+  done_at?: string;
+  done_note?: string;
+  admin_closed_at?: string;
 }
 
 export interface Vendor {
