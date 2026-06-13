@@ -3717,7 +3717,13 @@ export default function SalesPage() {
                       <p className="text-sm font-bold text-violet-300">📋 รายละเอียด Presale</p>
                       <p className="text-xs font-medium text-foreground mt-0.5 truncate">{pt.customer_name}{pt.project_name ? ` · ${pt.project_name}` : ""}</p>
                     </div>
-                    <button onClick={() => setSelectedPresaleDetail(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover shrink-0">✕</button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <a href={`/presale?open=${pt.id}`} target="_blank" rel="noopener noreferrer"
+                        className="rounded-lg bg-violet-900/40 border border-violet-500/30 px-2.5 py-1 text-[10px] text-violet-300 hover:bg-violet-900/60 transition-colors font-medium">
+                        เปิดใน Presale ↗
+                      </a>
+                      <button onClick={() => setSelectedPresaleDetail(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover">✕</button>
+                    </div>
                   </div>
                   {/* Status + people */}
                   <div className="flex flex-wrap gap-1.5 mt-2">
@@ -3733,12 +3739,16 @@ export default function SalesPage() {
                       <p className="text-[9px] text-muted mb-1.5">พบ {selectedPresaleMatches.length} งาน Presale — เลือกดู:</p>
                       <div className="flex flex-col gap-1">
                         {selectedPresaleMatches.map((m, i) => (
-                          <button key={m.id || i} onClick={() => setSelectedPresaleDetail(m)}
-                            className={`text-left rounded-lg px-2.5 py-1.5 text-[10px] border transition-colors ${pt.id === m.id ? "bg-violet-900/30 border-violet-500/40 text-violet-300 font-medium" : "bg-card-hover border-border text-muted hover:text-foreground"}`}>
-                            {m.project_name || m.requirement?.slice(0, 40) || `งาน #${i+1}`}
-                            {(m.work_steps || []).some(s => !!s.start_date) && <span className="ml-1.5 text-[9px] text-green-400">📊 มี Gantt</span>}
-                            {(m.work_steps || []).length > 0 && !(m.work_steps || []).some(s => !!s.start_date) && <span className="ml-1.5 text-[9px] text-amber-400">📋 มีแผนงาน</span>}
-                          </button>
+                          <div key={m.id || i} className={`flex items-center gap-1 rounded-lg border transition-colors ${pt.id === m.id ? "bg-violet-900/30 border-violet-500/40" : "bg-card-hover border-border"}`}>
+                            <button onClick={() => setSelectedPresaleDetail(m)}
+                              className={`flex-1 text-left px-2.5 py-1.5 text-[10px] ${pt.id === m.id ? "text-violet-300 font-medium" : "text-muted hover:text-foreground"}`}>
+                              {m.project_name || m.requirement?.slice(0, 40) || `งาน #${i+1}`}
+                              {(m.work_steps || []).some(s => !!s.start_date) && <span className="ml-1.5 text-[9px] text-green-400">📊 มี Gantt</span>}
+                              {(m.work_steps || []).length > 0 && !(m.work_steps || []).some(s => !!s.start_date) && <span className="ml-1.5 text-[9px] text-amber-400">📋 มีแผนงาน</span>}
+                            </button>
+                            <a href={`/presale?open=${m.id}`} target="_blank" rel="noopener noreferrer"
+                              className="px-2 py-1.5 text-[9px] text-violet-400/70 hover:text-violet-300 shrink-0" title="เปิดใน Presale">↗</a>
+                          </div>
                         ))}
                       </div>
                     </div>

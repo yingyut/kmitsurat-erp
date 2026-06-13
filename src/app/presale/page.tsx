@@ -313,6 +313,7 @@ export default function PresalePage() {
   const [reviewSummary, setReviewSummary] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [formCoWorkers, setFormCoWorkers] = useState<string[]>([]);
+  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const cid = p.get("customer_id"); const cname = p.get("customer_name");
@@ -321,6 +322,8 @@ export default function PresalePage() {
       setForm(f => ({ ...f, customer_id: cid||"", customer_name: cname||"", project_id: pid||"", project_name: pname||"" }));
       setShowForm(true);
     }
+    const openId = p.get("open");
+    if (openId) setPendingOpenId(openId);
   }, []);
 
   // Approval settings
@@ -370,7 +373,17 @@ export default function PresalePage() {
       unsubs.push(
         fs.presaleRequests.subscribe(data => {
           setList(data);
-          if (firstSnap) { setLoading(false); firstSnap = false; }
+          if (firstSnap) {
+            setLoading(false); firstSnap = false;
+            // Auto-open task if ?open=ID was in URL
+            setPendingOpenId(pid => {
+              if (pid) {
+                const found = data.find(r => r.id === pid);
+                if (found) { setTimeout(() => hydrateDetail(found), 0); }
+              }
+              return null;
+            });
+          }
         }),
         fs.customers.subscribe(data => setCusts(data)),
         fs.projects.subscribe(data => setProjs(data)),
