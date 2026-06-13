@@ -347,6 +347,10 @@ export default function PresalePage() {
   const [workSteps, setWorkSteps] = useState<PresaleWorkStep[]>([]);
   const [addingStep, setAddingStep] = useState(false);
   const [newStep, setNewStep] = useState<Omit<PresaleWorkStep,"id">>({ type: "research", label: "ค้นหาข้อมูล", start_date: todayStr(), duration_days: 3, status: "pending", assignee: "", notes: "" });
+  const [savedWorkplan, setSavedWorkplan] = useState(false);
+  const [showProgressForm, setShowProgressForm] = useState(false);
+  const [progressEmail, setProgressEmail] = useState("");
+  const [progressSending, setProgressSending] = useState(false);
   const [solutionSummary, setSolutionSummary] = useState("");
   const [artifactSearch, setArtifactSearch] = useState("");
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
@@ -704,7 +708,7 @@ export default function PresalePage() {
     setSaving(true);
     const fs = await import("@/lib/firestore");
     try {
-      await fs.presaleRequests.update(detail.id!, {
+      const updates = {
         solution_summary: solutionSummary,
         bom_links: bomLinks,
         bom_items: bomItems,
@@ -715,50 +719,65 @@ export default function PresalePage() {
         boq_gp_percent: boqTotals.gpPercent,
         attachments,
         work_steps: workSteps,
-      } as unknown as Record<string, unknown>);
-      await load();
+      };
+      await fs.presaleRequests.update(detail.id!, updates as unknown as Record<string, unknown>);
+      setDetail(d => d ? { ...d, ...updates } as PresaleRequest : d);
+      setSavedWorkplan(true);
+      setTimeout(() => setSavedWorkplan(false), 2500);
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
   }
 
   async function sendProgressNotification() {
     if (!detail) return;
-    const doneCount = workSteps.filter(s => s.status === "done").length;
-    const currentStep = workSteps.find(s => s.status === "in_progress") || workSteps.find(s => s.status === "pending");
-    const totalDays = workSteps.reduce((s, x) => s + x.duration_days, 0);
-    const doneDays = workSteps.filter(s => s.status === "done").reduce((s, x) => s + x.duration_days, 0);
-    const requesterName = detail.created_by || "";
-    if (!requesterName) { alert("ไม่พบชื่อผู้ขอ (created_by)"); return; }
-    const title = `📋 ความคืบหน้า Presale: ${detail.customer_name}`;
-    const body = [
-      `ความคืบหน้าคำขอ ${typeLabels[detail.type]}`,
-      `ลูกค้า: ${detail.customer_name}${detail.project_name ? ` · ${detail.project_name}` : ""}`,
-      `───────────────────────────`,
-      workSteps.length > 0 ? `เสร็จแล้ว: ${doneCount}/${workSteps.length} ขั้นตอน (${doneDays}/${totalDays} วัน)` : "",
-      currentStep ? `ขั้นตอนปัจจุบัน: ${STEP_META[currentStep.type].icon} ${currentStep.label}` : "",
-      totalDays > 0 ? `ระยะเวลาทั้งหมด: ~${totalDays} วัน` : "",
-      `───────────────────────────`,
-      workSteps.map((s, i) => `${i+1}. ${STEP_META[s.type].icon} ${s.label} (${s.duration_days} วัน) — ${STEP_STATUS_LABEL[s.status]}`).join("\n"),
-    ].filter(Boolean).join("\n");
+    setProgressSending(true);
+    try {
+      const doneCount = workSteps.filter(s => s.status === "done").length;
+      const currentStep = workSteps.find(s => s.status === "in_progress") || workSteps.find(s => s.status === "pending");
+      const totalDays = workSteps.reduce((s, x) => s + x.duration_days, 0);
+      const doneDays = workSteps.filter(s => s.status === "done").reduce((s, x) => s + x.duration_days, 0);
+      const requesterName = detail.created_by || "";
+      const title = `📋 ความคืบหน้า Presale: ${detail.customer_name}`;
+      const body = [
+        `ความคืบหน้าคำขอ ${typeLabels[detail.type]}`,
+        `ลูกค้า: ${detail.customer_name}${detail.project_name ? ` · ${detail.project_name}` : ""}`,
+        `───────────────────────────`,
+        workSteps.length > 0 ? `เสร็จแล้ว: ${doneCount}/${workSteps.length} ขั้นตอน (${doneDays}/${totalDays} วัน)` : "",
+        currentStep ? `ขั้นตอนปัจจุบัน: ${STEP_META[currentStep.type].icon} ${currentStep.label}` : "",
+        totalDays > 0 ? `ระยะเวลาทั้งหมด: ~${totalDays} วัน` : "",
+        `───────────────────────────`,
+        workSteps.map((s, i) => `${i+1}. ${STEP_META[s.type].icon} ${s.label} (${s.duration_days} วัน) — ${STEP_STATUS_LABEL[s.status]}${s.assignee ? ` · ${s.assignee}` : ""}`).join("\n"),
+        `───────────────────────────`,
+        `รายงานโดย: ${myName} · ${todayStr()}`,
+      ].filter(Boolean).join("\n");
 
-    const { inAppNotifications } = await import("@/lib/firestore");
-    await inAppNotifications.add({
-      tenant_id: "kmitsurat", module: "presale", trigger: "presale_status_changed",
-      title, body, link: "/presale",
-      metadata: { task_id: detail.id },
-      recipients: [requesterName], read_by: [],
-    } as Record<string, unknown>);
+      const { inAppNotifications } = await import("@/lib/firestore");
 
-    const requesterUser = allUsers.find(u => u.name === requesterName);
-    if (requesterUser?.email) {
-      const emailChannel = notifChannels.find(c => c.type === "email" && c.active);
-      if (emailChannel) {
-        fetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channel: emailChannel, to_emails: [requesterUser.email], subject: title, body }),
-        }).catch(() => {});
+      // In-app notification → goes to Sales page bell (module: "sales")
+      if (requesterName) {
+        await inAppNotifications.add({
+          tenant_id: "kmitsurat", module: "sales", trigger: "presale_status_changed",
+          title, body, link: "/sales",
+          metadata: { task_id: detail.id },
+          recipients: [requesterName], read_by: [],
+        } as Record<string, unknown>);
       }
-    }
-    alert(`ส่งแจ้งเตือนถึง ${requesterName} แล้ว`);
+
+      // Email — use typed address
+      const toEmail = progressEmail.trim();
+      if (toEmail) {
+        const emailChannel = notifChannels.find(c => c.type === "email" && c.active);
+        if (emailChannel) {
+          fetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channel: emailChannel, to_emails: [toEmail], subject: title, body }),
+          }).catch(() => {});
+        }
+      }
+
+      setShowProgressForm(false);
+      setProgressEmail("");
+    } catch (e) { console.error(e); }
+    finally { setProgressSending(false); }
   }
 
   // === Sample loaders ===
@@ -1591,7 +1610,9 @@ export default function PresalePage() {
                           </span>
                         )}
                       </div>
-                      {step.notes && <p className="text-[11px] text-muted mt-0.5 italic">{step.notes}</p>}
+                      <input value={step.notes || ""} onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, notes: e.target.value} : s))}
+                        placeholder="หมายเหตุ / กำลังทำอะไรอยู่... เช่น ขอราคา, เช็คผู้ผลิต"
+                        className="w-full text-[11px] bg-transparent border-0 border-b border-transparent hover:border-border focus:border-accent focus:outline-none italic text-muted placeholder:text-muted/40 placeholder:not-italic mt-1 transition-colors" />
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <select value={step.status} onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, status: e.target.value as PresaleWorkStep["status"]} : s))}
@@ -1673,13 +1694,39 @@ export default function PresalePage() {
                 </button>
               )}
 
-              {/* Notify Sales button */}
-              {workSteps.length > 0 && detail?.created_by && (
-                <div className="pt-2 border-t border-border flex items-center justify-between">
-                  <p className="text-[11px] text-muted">แจ้งความคืบหน้าไปยัง <span className="text-accent">{detail.created_by}</span></p>
-                  <button onClick={sendProgressNotification} className="rounded-lg bg-blue-700/60 text-blue-200 px-3 py-1.5 text-xs hover:bg-blue-700">
-                    📤 ส่งแจ้งเตือนความคืบหน้า
-                  </button>
+              {/* Notify Sales — expandable email form */}
+              {workSteps.length > 0 && (
+                <div className="pt-2 border-t border-border">
+                  {!showProgressForm ? (
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-muted">แจ้งความคืบหน้าไปยัง{detail?.created_by ? <span className="text-accent"> {detail.created_by}</span> : " Sales"}</p>
+                      <button onClick={() => {
+                        const reqEmail = allUsers.find(u => u.name === detail?.created_by)?.email || "";
+                        setProgressEmail(reqEmail);
+                        setShowProgressForm(true);
+                      }} className="rounded-lg bg-blue-700/60 text-blue-200 px-3 py-1.5 text-xs hover:bg-blue-700">
+                        📤 ส่งแจ้งเตือนความคืบหน้า
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-blue-800/30 bg-blue-900/10 p-3 space-y-2">
+                      <p className="text-xs font-medium text-blue-300">📤 ส่งรายงานความคืบหน้าให้ Sales</p>
+                      <div>
+                        <label className="text-[10px] text-muted block mb-0.5">อีเมล์ผู้รับ <span className="text-red-400">*</span></label>
+                        <input type="email" value={progressEmail} onChange={e => setProgressEmail(e.target.value)}
+                          placeholder="email@example.com"
+                          className="w-full rounded-lg bg-background border border-border px-2.5 py-1.5 text-xs focus:outline-none focus:border-accent hover:border-accent/50" />
+                        <p className="text-[10px] text-muted mt-1">📱 แจ้งเตือนใน app จะส่งถึง <span className="text-accent">{detail?.created_by || "—"}</span> ที่หน้า Sales โดยอัตโนมัติ</p>
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => setShowProgressForm(false)} className="rounded-lg border border-border px-3 py-1 text-xs text-muted hover:bg-card-hover">ยกเลิก</button>
+                        <button onClick={sendProgressNotification} disabled={progressSending}
+                          className="rounded-lg bg-blue-700 text-white px-4 py-1 text-xs hover:bg-blue-600 disabled:opacity-50">
+                          {progressSending ? "กำลังส่ง..." : "📤 ส่งแจ้งเตือน"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2059,7 +2106,8 @@ export default function PresalePage() {
             </div>
           )}
           {detailTab === "workplan" && (
-            <div className="mt-4 pt-3 border-t border-border flex justify-end">
+            <div className="mt-4 pt-3 border-t border-border flex items-center justify-end gap-3">
+              {savedWorkplan && <span className="text-xs text-green-400">✓ บันทึกแล้ว</span>}
               <button onClick={saveArtifacts} disabled={saving} className="rounded-lg bg-accent text-white px-4 py-1.5 text-xs hover:bg-accent-hover disabled:opacity-50">
                 {saving ? "กำลังบันทึก..." : "💾 บันทึกแผนงาน"}
               </button>
