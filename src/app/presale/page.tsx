@@ -298,6 +298,10 @@ export default function PresalePage() {
   const [viewFilter, setViewFilter] = useState<"all" | "my" | "overdue" | "today" | "in_progress" | "waiting" | "completed" | "cancelled">("all");
   const [typeFilter, setTypeFilter] = useState<"" | PresaleRequest["type"]>("");
   const [personFilter, setPersonFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [valueMin, setValueMin] = useState<number | "">("");
+  const [valueMax, setValueMax] = useState<number | "">("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -439,6 +443,10 @@ export default function PresalePage() {
     const s = search.toLowerCase();
     if (s && !r.requirement.toLowerCase().includes(s) && !r.customer_name.toLowerCase().includes(s) &&
         !(r.project_name || "").toLowerCase().includes(s) && !(r.assigned_to || "").toLowerCase().includes(s)) return false;
+    if (dateFrom && (!r.due_date || r.due_date < dateFrom)) return false;
+    if (dateTo && (!r.due_date || r.due_date > dateTo)) return false;
+    if (valueMin !== "" && (r.value || 0) < valueMin) return false;
+    if (valueMax !== "" && (r.value || 0) > valueMax) return false;
     if (viewFilter === "my") return r.assigned_to === myName || (r.co_workers || []).includes(myName);
     if (viewFilter === "overdue") return !!(r.due_date && r.due_date < today && r.status !== "completed" && r.status !== "cancelled");
     if (viewFilter === "today") return r.due_date === today && r.status !== "completed" && r.status !== "cancelled";
@@ -1989,6 +1997,27 @@ export default function PresalePage() {
           )}
           <input placeholder="🔍 ค้นหา requirement / ลูกค้า / โปรเจค..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-40 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
           <p className="text-xs text-muted shrink-0">{filtered.length} รายการ</p>
+        </div>
+        {/* Advanced filters — date range & value range */}
+        <div className="flex gap-2 flex-wrap items-center mt-2 pt-2 border-t border-border/40">
+          <span className="text-xs text-muted shrink-0">📅 กำหนดส่ง:</span>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            className="rounded-lg bg-card border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" title="วันที่เริ่มต้น" />
+          <span className="text-xs text-muted">—</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            className="rounded-lg bg-card border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" title="วันที่สิ้นสุด" />
+          <span className="text-xs text-muted ml-3 shrink-0">💰 มูลค่า (THB):</span>
+          <input type="number" min={0} value={valueMin} onChange={e => setValueMin(e.target.value === "" ? "" : Number(e.target.value))}
+            className="w-28 rounded-lg bg-card border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" placeholder="ขั้นต่ำ" />
+          <span className="text-xs text-muted">—</span>
+          <input type="number" min={0} value={valueMax} onChange={e => setValueMax(e.target.value === "" ? "" : Number(e.target.value))}
+            className="w-28 rounded-lg bg-card border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" placeholder="สูงสุด" />
+          {(dateFrom || dateTo || valueMin !== "" || valueMax !== "") && (
+            <button onClick={() => { setDateFrom(""); setDateTo(""); setValueMin(""); setValueMax(""); }}
+              className="text-xs text-danger border border-red-900/50 rounded-lg px-2.5 py-1.5 hover:bg-red-900/20 transition-colors">
+              × ล้างตัวกรอง
+            </button>
+          )}
         </div>
       </div>
 
