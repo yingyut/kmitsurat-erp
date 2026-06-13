@@ -119,17 +119,27 @@ function getEstCompletion(steps: PresaleWorkStep[]): string | null {
   return maxEnd > 0 ? new Date(maxEnd).toISOString().slice(0, 10) : null;
 }
 
+function findPresaleMatches(jr: JobRequest, presales: PresaleRequest[]): PresaleRequest[] {
+  if (!jr.customer_name) return [];
+  return presales
+    .filter(p =>
+      p.customer_name === jr.customer_name &&
+      (!jr.project_name || !p.project_name || p.project_name === jr.project_name)
+    )
+    .sort((a, b) => {
+      // Prefer tasks with Gantt-ready steps (start_date set), then with any steps, then by recency
+      const hasGantt = (p: PresaleRequest) => (p.work_steps || []).some(s => !!s.start_date);
+      const hasSteps = (p: PresaleRequest) => (p.work_steps || []).length > 0;
+      if (hasGantt(b) !== hasGantt(a)) return hasGantt(b) ? 1 : -1;
+      if (hasSteps(b) !== hasSteps(a)) return hasSteps(b) ? 1 : -1;
+      const ms = (x: unknown) => x && typeof x === "object" && typeof (x as {toMillis?:()=>number}).toMillis === "function" ? (x as {toMillis:()=>number}).toMillis() : 0;
+      return ms(b.created_at) - ms(a.created_at);
+    });
+}
+
 function findPresaleTask(jr: JobRequest, presales: PresaleRequest[]): PresaleRequest | null {
-  if (!jr.customer_name) return null;
-  const matches = presales.filter(p =>
-    p.customer_name === jr.customer_name &&
-    (!jr.project_name || !p.project_name || p.project_name === jr.project_name)
-  );
-  if (matches.length === 0) return null;
-  return matches.sort((a, b) => {
-    const ms = (x: unknown) => x && typeof x === "object" && typeof (x as {toMillis?: ()=>number}).toMillis === "function" ? (x as {toMillis:()=>number}).toMillis() : 0;
-    return ms(b.created_at) - ms(a.created_at);
-  })[0];
+  const m = findPresaleMatches(jr, presales);
+  return m[0] ?? null;
 }
 
 export default function SalesPage() {
@@ -160,6 +170,7 @@ export default function SalesPage() {
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [presaleReqs, setPresaleReqs] = useState<PresaleRequest[]>([]);
   const [selectedPresaleDetail, setSelectedPresaleDetail] = useState<PresaleRequest | null>(null);
+  const [selectedPresaleMatches, setSelectedPresaleMatches] = useState<PresaleRequest[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("sales_notif_sound") !== "off";
@@ -3563,7 +3574,7 @@ export default function SalesPage() {
                             🗓 ประมาณเสร็จ: {estComp}
                           </span>
                         )}
-                        <button onClick={() => setSelectedPresaleDetail(pt)}
+                        <button onClick={() => { const all = findPresaleMatches(r, presaleReqs); setSelectedPresaleMatches(all); setSelectedPresaleDetail(pt); }}
                           className="ml-auto text-[10px] text-violet-400 hover:text-violet-300 hover:underline font-medium">
                           ดูรายละเอียด →
                         </button>
@@ -3702,11 +3713,11 @@ export default function SalesPage() {
                 {/* Header */}
                 <div className="px-4 py-3 border-b border-violet-500/30 bg-violet-900/10 shrink-0">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-violet-300">📋 รายละเอียด Presale</p>
-                      <p className="text-xs font-medium text-foreground mt-0.5">{pt.customer_name}{pt.project_name ? ` · ${pt.project_name}` : ""}</p>
+                      <p className="text-xs font-medium text-foreground mt-0.5 truncate">{pt.customer_name}{pt.project_name ? ` · ${pt.project_name}` : ""}</p>
                     </div>
-                    <button onClick={() => setSelectedPresaleDetail(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover">✕</button>
+                    <button onClick={() => setSelectedPresaleDetail(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover shrink-0">✕</button>
                   </div>
                   {/* Status + people */}
                   <div className="flex flex-wrap gap-1.5 mt-2">
@@ -3716,6 +3727,22 @@ export default function SalesPage() {
                     {pt.assigned_to && <span className="rounded-full px-2.5 py-0.5 text-[10px] bg-card-hover text-muted">👤 {pt.assigned_to}</span>}
                     {(pt.co_workers || []).map(cw => <span key={cw} className="rounded-full px-2.5 py-0.5 text-[10px] bg-card-hover text-muted">👤 {cw}</span>)}
                   </div>
+                  {/* Task switcher when multiple presale tasks match */}
+                  {selectedPresaleMatches.length > 1 && (
+                    <div className="mt-2.5">
+                      <p className="text-[9px] text-muted mb-1.5">พบ {selectedPresaleMatches.length} งาน Presale — เลือกดู:</p>
+                      <div className="flex flex-col gap-1">
+                        {selectedPresaleMatches.map((m, i) => (
+                          <button key={m.id || i} onClick={() => setSelectedPresaleDetail(m)}
+                            className={`text-left rounded-lg px-2.5 py-1.5 text-[10px] border transition-colors ${pt.id === m.id ? "bg-violet-900/30 border-violet-500/40 text-violet-300 font-medium" : "bg-card-hover border-border text-muted hover:text-foreground"}`}>
+                            {m.project_name || m.requirement?.slice(0, 40) || `งาน #${i+1}`}
+                            {(m.work_steps || []).some(s => !!s.start_date) && <span className="ml-1.5 text-[9px] text-green-400">📊 มี Gantt</span>}
+                            {(m.work_steps || []).length > 0 && !(m.work_steps || []).some(s => !!s.start_date) && <span className="ml-1.5 text-[9px] text-amber-400">📋 มีแผนงาน</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex-1 px-4 py-4 space-y-5 overflow-y-auto">
@@ -3739,24 +3766,36 @@ export default function SalesPage() {
                   {/* Gantt chart */}
                   {ganttJsx}
 
-                  {/* Work steps list (fallback when no dates) */}
-                  {steps.length > 0 && stepsWithDate.length === 0 && (
+                  {/* Work steps — show list always; Gantt is shown above when dates exist */}
+                  {steps.length > 0 && (
                     <div>
-                      <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-2">แผนงาน ({steps.filter(s => s.status === "done").length}/{steps.length} เสร็จ)</p>
+                      <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-2">
+                        แผนงาน ({steps.filter(s => s.status === "done").length}/{steps.length} เสร็จ)
+                        {stepsWithDate.length === 0 && <span className="ml-2 text-amber-400 font-normal">— ยังไม่กำหนดวันที่</span>}
+                      </p>
                       <div className="space-y-1.5">
                         {steps.map((s, i) => (
                           <div key={s.id || i} className={`rounded-lg px-3 py-2 border text-xs ${s.status === "done" ? "bg-green-900/10 border-green-500/20" : s.status === "in_progress" ? "bg-amber-900/10 border-amber-500/20" : "bg-card-hover border-border"}`}>
                             <div className="flex items-center gap-1.5">
                               <span>{STEP_META[s.type].icon}</span>
                               <span className="flex-1 font-medium">{s.label}</span>
-                              <span className={`text-[9px] rounded-full px-1.5 py-0.5 ${PRESALE_STEP_STATUS_TH[s.status] ? (s.status === "done" ? "bg-green-900/50 text-green-300" : s.status === "in_progress" ? "bg-amber-900/50 text-amber-300" : "bg-slate-700/60 text-slate-400") : ""}`}>
+                              {s.start_date && <span className="text-[9px] text-muted shrink-0">{s.start_date} · {s.duration_days}วัน</span>}
+                              <span className={`text-[9px] rounded-full px-1.5 py-0.5 shrink-0 ${s.status === "done" ? "bg-green-900/50 text-green-300" : s.status === "in_progress" ? "bg-amber-900/50 text-amber-300" : "bg-slate-700/60 text-slate-400"}`}>
                                 {PRESALE_STEP_STATUS_TH[s.status] || s.status}
                               </span>
                             </div>
+                            {s.assignee && <p className="text-[10px] text-muted mt-0.5 pl-5">👤 {s.assignee}</p>}
                             {s.notes && <p className="text-[10px] text-muted mt-0.5 pl-5 italic">{s.notes}</p>}
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+                  {steps.length === 0 && (
+                    <div className="rounded-lg border border-border bg-card-hover px-4 py-5 text-center">
+                      <p className="text-2xl mb-2">📋</p>
+                      <p className="text-xs text-muted">ยังไม่มีแผนงาน</p>
+                      <p className="text-[10px] text-muted/60 mt-1">ทีม Presale ยังไม่ได้กำหนดขั้นตอนการทำงาน</p>
                     </div>
                   )}
 
