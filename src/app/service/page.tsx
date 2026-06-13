@@ -885,33 +885,81 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
   return (
     <div className="p-6">
 
-      {/* ── Job Requests from Sales (manager only) ── */}
-      {!isTechView && incomingReqs.filter(r => r.status === "pending").length > 0 && (
-        <div className="rounded-xl bg-rose-900/10 border border-rose-800/50 p-4 mb-4">
-          <h3 className="text-sm font-semibold text-rose-400 mb-2">📥 Job Requests จากทีม Sales ({incomingReqs.filter(r => r.status === "pending").length} รายการรออนุมัติ)</h3>
-          <div className="space-y-2">
-            {incomingReqs.filter(r => r.status === "pending").map(r => (
-              <div key={r.id} className="rounded-lg bg-card border border-border p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{r.title}</p>
-                    <p className="text-xs text-muted mt-0.5">{r.description}</p>
-                    <p className="text-xs text-muted mt-1">จาก: {r.request_from} · ลูกค้า: {r.customer_name} · มูลค่า: {(r.value || 0).toLocaleString()} THB · กำหนด: {r.due_date || "-"}</p>
-                    <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${r.priority === "urgent" ? "bg-red-900/50 text-red-400" : r.priority === "high" ? "bg-amber-900/50 text-amber-400" : "bg-blue-900/50 text-blue-400"}`}>{r.priority}</span>
-                  </div>
-                  <div className="flex flex-col gap-1.5 shrink-0">
-                    <select id={`svc-assign-${r.id}`} defaultValue="" className="rounded bg-background border border-border px-2 py-1 text-xs"><option value="">-- มอบหมายช่าง --</option>{svcUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select>
-                    <div className="flex gap-1">
-                      <button onClick={async () => { const assignTo = (document.getElementById(`svc-assign-${r.id}`) as HTMLSelectElement)?.value; const note = prompt("หมายเหตุรับงาน (ไม่บังคับ)") || ""; const { jobRequests } = await import("@/lib/firestore"); await jobRequests.update(r.id!, { status: "accepted", assigned_to: assignTo, accept_note: note }); await load(); }} className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ รับงาน</button>
-                      <button onClick={async () => { const reason = prompt("เหตุผลที่ปฏิเสธ:"); if (!reason) return; const { jobRequests } = await import("@/lib/firestore"); await jobRequests.update(r.id!, { status: "rejected", reject_reason: reason }); await load(); }} className="text-[10px] bg-red-800/50 text-red-400 rounded px-2 py-1 hover:bg-red-800">✗ ปฏิเสธ</button>
+      {/* ── Job Requests from Sales (ทุก Role เห็นเหมือนกัน) ── */}
+      {incomingReqs.length > 0 && (() => {
+        const pending  = incomingReqs.filter(r => r.status === "pending");
+        const accepted = incomingReqs.filter(r => r.status === "accepted");
+        const rejected = incomingReqs.filter(r => r.status === "rejected");
+        const priorityStyle = (p: string) =>
+          p === "urgent" ? "bg-red-900/50 text-red-400" :
+          p === "high"   ? "bg-amber-900/50 text-amber-400" :
+                           "bg-blue-900/50 text-blue-400";
+        return (
+          <div className="rounded-xl border border-border bg-card p-4 mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">📥 Task จาก Sales ({incomingReqs.length} รายการ)</h3>
+              <div className="flex gap-2 text-[10px]">
+                {pending.length  > 0 && <span className="rounded-full bg-rose-900/40 text-rose-400 px-2 py-0.5">{pending.length} รออนุมัติ</span>}
+                {accepted.length > 0 && <span className="rounded-full bg-green-900/40 text-green-400 px-2 py-0.5">{accepted.length} รับแล้ว</span>}
+                {rejected.length > 0 && <span className="rounded-full bg-slate-700/50 text-slate-400 px-2 py-0.5">{rejected.length} ปฏิเสธ</span>}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {incomingReqs.sort((a, b) => (a.status === "pending" ? -1 : 1) - (b.status === "pending" ? -1 : 1)).map(r => {
+                const isPending  = r.status === "pending";
+                const isAccepted = r.status === "accepted";
+                const isRejected = r.status === "rejected";
+                return (
+                  <div key={r.id} className={`rounded-lg border p-3 ${isPending ? "border-rose-800/50 bg-rose-900/10" : isAccepted ? "border-green-800/30 bg-green-900/5" : "border-border bg-background/50 opacity-60"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <p className="text-sm font-medium">{r.title}</p>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${priorityStyle(r.priority || "medium")}`}>{r.priority}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${isPending ? "bg-rose-900/50 text-rose-400" : isAccepted ? "bg-green-900/50 text-green-400" : "bg-slate-700/50 text-slate-400"}`}>
+                            {isPending ? "รออนุมัติ" : isAccepted ? "รับแล้ว" : "ปฏิเสธ"}
+                          </span>
+                        </div>
+                        {r.description && <p className="text-xs text-muted mb-1 line-clamp-2">{r.description}</p>}
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted">
+                          <span>จาก: <span className="text-foreground">{r.request_from}</span></span>
+                          {r.customer_name && <span>ลูกค้า: <span className="text-foreground">{r.customer_name}</span></span>}
+                          {r.due_date && <span>กำหนด: <span className="text-foreground">{r.due_date}</span></span>}
+                          {r.assigned_to && <span>มอบหมาย: <span className="text-green-400">{r.assigned_to}</span></span>}
+                          {isRejected && r.reject_reason && <span className="text-red-400">เหตุผล: {r.reject_reason}</span>}
+                          {isAccepted && r.accept_note && <span className="text-muted">หมายเหตุ: {r.accept_note}</span>}
+                        </div>
+                      </div>
+                      {isPending && (
+                        <div className="flex flex-col gap-1.5 shrink-0">
+                          <select id={`svc-assign-${r.id}`} defaultValue="" className="rounded bg-background border border-border px-2 py-1 text-xs">
+                            <option value="">-- มอบหมายช่าง --</option>
+                            {svcUsers.map(u => <option key={u.id} value={u.name}>{u.nickname || u.name}</option>)}
+                          </select>
+                          <div className="flex gap-1">
+                            <button onClick={async () => {
+                              const assignTo = (document.getElementById(`svc-assign-${r.id}`) as HTMLSelectElement)?.value;
+                              const note = prompt("หมายเหตุรับงาน (ไม่บังคับ)") || "";
+                              const { jobRequests } = await import("@/lib/firestore");
+                              await jobRequests.update(r.id!, { status: "accepted", assigned_to: assignTo, accept_note: note });
+                            }} className="flex-1 text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ รับงาน</button>
+                            <button onClick={async () => {
+                              const reason = prompt("เหตุผลที่ปฏิเสธ:");
+                              if (!reason) return;
+                              const { jobRequests } = await import("@/lib/firestore");
+                              await jobRequests.update(r.id!, { status: "rejected", reject_reason: reason });
+                            }} className="flex-1 text-[10px] bg-red-800/50 text-red-400 rounded px-2 py-1 hover:bg-red-800">✗ ปฏิเสธ</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Header — role-aware ── */}
       {isTechView ? (
