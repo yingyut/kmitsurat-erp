@@ -454,7 +454,11 @@ export default function SalesPage() {
 
   // Plans & Activities — scoped to own data when ownSalesOnly
   const plans = activities.filter(a => a.is_plan && a.status !== "done" && (!ownSalesOnly || !a.assigned_to || isOwnRecord(a, currentUser)));
-  const realActivities = activities.filter(a => !a.is_plan && (!ownSalesOnly || !a.assigned_to || isOwnRecord(a, currentUser)));
+  // plan items ที่กำลังทำ (in_progress) จะปรากฏใน Activities ด้วย
+  const realActivities = activities.filter(a =>
+    (!a.is_plan || a.status === "in_progress") &&
+    (!ownSalesOnly || !a.assigned_to || isOwnRecord(a, currentUser))
+  );
   const overdueActs = realActivities.filter(a => (a.next_follow_up && a.next_follow_up < today || a.next_action_date && a.next_action_date < today) && a.status !== "done");
   const todayActs = realActivities.filter(a => a.next_follow_up === today || a.next_action_date === today);
 
@@ -3398,6 +3402,7 @@ export default function SalesPage() {
                     </div>
                     <div className="flex flex-wrap gap-1.5 mt-1.5 text-[10px] items-center">
                       <span className={`rounded px-1.5 py-0.5 font-medium ${typeColor[a.type] || "bg-card-hover text-foreground"}`}>{typeLabels[a.type]}</span>
+                      {a.is_plan && <span className="rounded bg-amber-900/50 text-amber-400 px-1.5 py-0.5 font-semibold">📋 กำลังทำตามแผน</span>}
                       {a.customer_type === "prospect" && (
                         <span className="rounded bg-orange-900/50 text-badge px-1.5 py-0.5">🔍 Prospect</span>
                       )}
