@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import type { ServiceTicket, ServiceStatus, Customer, Project, JobRequest, User, Asset } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
+import type { ServiceTicket, ServiceStatus, Customer, Project, JobRequest, User, Asset, InAppNotification } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
 import Link from "next/link";
@@ -288,6 +288,72 @@ function DocLinkAdder({ onAdd }: { onAdd: (link: { label: string; url: string })
   );
 }
 
+function NotifBell({ myName, notifs, show, setShow, soundEnabled, setSoundEnabled, playSound }: {
+  myName: string; notifs: InAppNotification[];
+  show: boolean; setShow: (v: boolean) => void;
+  soundEnabled: boolean; setSoundEnabled: (v: boolean) => void;
+  playSound: () => void;
+}) {
+  const mine = notifs.filter(n => n.recipients.includes(myName));
+  const unread = mine.filter(n => !n.read_by.includes(myName)).length;
+  return (
+    <div className="relative">
+      <button onClick={() => setShow(!show)}
+        className="relative w-9 h-9 flex items-center justify-center rounded-lg border border-border text-muted hover:bg-card-hover transition-colors">
+        🔔
+        {unread > 0 && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">{unread}</span>
+        )}
+      </button>
+      {show && (
+        <div className="absolute right-0 top-11 z-50 w-80 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
+            <p className="text-xs font-semibold">🔔 การแจ้งเตือน</p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { const next = !soundEnabled; setSoundEnabled(next); localStorage.setItem("svc_notif_sound", next ? "on" : "off"); if (next) playSound(); }}
+                title={soundEnabled ? "ปิดเสียงแจ้งเตือน" : "เปิดเสียงแจ้งเตือน"} className="text-sm text-muted hover:text-foreground">
+                {soundEnabled ? "🔊" : "🔇"}
+              </button>
+              {unread > 0 && (
+                <button onClick={async () => {
+                  const fs = await import("@/lib/firestore");
+                  await Promise.all(mine.filter(n => !n.read_by.includes(myName)).map(n =>
+                    fs.inAppNotifications.update(n.id!, { read_by: [...n.read_by, myName] })
+                  ));
+                }} className="text-[10px] text-accent hover:underline">อ่านทั้งหมด</button>
+              )}
+            </div>
+          </div>
+          <div className="max-h-80 overflow-y-auto divide-y divide-border">
+            {mine.length === 0 && <p className="text-xs text-muted text-center py-6">ไม่มีการแจ้งเตือน</p>}
+            {mine.slice(0, 20).map(n => {
+              const isRead = n.read_by.includes(myName);
+              return (
+                <div key={n.id} className={`px-3 py-2.5 hover:bg-card-hover transition-colors ${isRead ? "opacity-60" : "cursor-pointer"}`}
+                  onClick={async () => {
+                    if (!isRead && myName) {
+                      const fs = await import("@/lib/firestore");
+                      await fs.inAppNotifications.update(n.id!, { read_by: [...n.read_by, myName] });
+                    }
+                    setShow(false);
+                  }}>
+                  <div className="flex items-start gap-2">
+                    <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${isRead ? "" : "bg-accent"}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium leading-tight">{n.title}</p>
+                      <p className="text-[10px] text-muted mt-0.5 line-clamp-3">{n.body}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ServicePage() {
   const { currentUser, hasPermission } = useCurrentUser();
   const [list, setList]               = useState<ServiceTicket[]>([]);
@@ -324,6 +390,10 @@ export default function ServicePage() {
   const [rptTech,     setRptTech]     = useState("");
   const [rptStatus,   setRptStatus]   = useState("");
   const [pendingChange, setPendingChange] = useState<{ ticket: ServiceTicket; newStatus: ServiceStatus } | null>(null);
+  const [myNotifs, setMyNotifs] = useState<InAppNotification[]>([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => typeof window !== "undefined" ? localStorage.getItem("svc_notif_sound") !== "off" : true);
+  const prevUnreadRef = useRef(0);
   const [openSect, setOpenSect] = useState<Record<string,boolean>>({});
   function toggleSect(k: string) { setOpenSect(v => ({ ...v, [k]: !v[k] })); }
   function sectOpen(k: string, def = true) { return k in openSect ? openSect[k] : def; }
@@ -338,6 +408,28 @@ export default function ServicePage() {
   // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   async function load() {}
+
+  function playNotifSound() {
+    try {
+      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const osc = ctx.createOscillator(); const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.35);
+    } catch { /* ไม่รองรับ */ }
+  }
+
+  useEffect(() => {
+    const myName = currentUser?.name ?? "";
+    if (!myName) return;
+    const unread = myNotifs.filter(n => n.recipients.includes(myName) && !n.read_by.includes(myName)).length;
+    if (unread > prevUnreadRef.current && soundEnabled) playNotifSound();
+    prevUnreadRef.current = unread;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myNotifs]);
 
   useEffect(() => {
     setMounted(true);
@@ -358,6 +450,7 @@ export default function ServicePage() {
         fs.jobRequests.subscribe(data => setIncomingReqs(data.filter(j => j.request_to_team === "service"))),
         fs.users.subscribe(data => setSvcUsers(data.filter(x => x.active !== false && (x.role === "service" || x.role === "Service Technician" || x.role === "Service Manager")))),
         fs.assets.subscribe(data => setAssetList(data)),
+        fs.inAppNotifications.subscribe(data => setMyNotifs(data.filter(n => n.module === "service"))),
       );
     })();
     return () => unsubs.forEach(u => u());
@@ -828,9 +921,12 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
               <h1 className="text-xl font-bold">🔧 งานของฉัน</h1>
               <p className="text-xs text-muted">สวัสดี {currentUser?.nickname || currentUser?.name} · งาน Service ที่รับผิดชอบ</p>
             </div>
-            <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">
-              {showForm ? "Cancel" : "+ New Ticket"}
-            </button>
+            <div className="flex gap-2 items-center">
+              <NotifBell myName={currentUser?.name ?? ""} notifs={myNotifs} show={showNotifPanel} setShow={setShowNotifPanel} soundEnabled={soundEnabled} setSoundEnabled={setSoundEnabled} playSound={playNotifSound} />
+              <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">
+                {showForm ? "Cancel" : "+ New Ticket"}
+              </button>
+            </div>
           </div>
           {!loading && (() => {
             const myActive  = baseTickets.filter(t => isActive(t.status));
@@ -904,9 +1000,12 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
               <h1 className="text-xl font-bold">🎛️ Service Command Center</h1>
               <p className="text-xs text-muted">สวัสดี {currentUser?.nickname || currentUser?.name} · {new Date().toLocaleDateString("th-TH",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
             </div>
-            <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover shrink-0">
-              {showForm ? "Cancel" : "+ New Ticket"}
-            </button>
+            <div className="flex gap-2 items-center">
+              <NotifBell myName={currentUser?.name ?? ""} notifs={myNotifs} show={showNotifPanel} setShow={setShowNotifPanel} soundEnabled={soundEnabled} setSoundEnabled={setSoundEnabled} playSound={playNotifSound} />
+              <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover shrink-0">
+                {showForm ? "Cancel" : "+ New Ticket"}
+              </button>
+            </div>
           </div>
 
           {/* 8-card quick overview — always visible */}

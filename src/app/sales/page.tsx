@@ -829,9 +829,32 @@ export default function SalesPage() {
   async function saveRequest() {
     if (!reqForm.title.trim() || !reqForm.description.trim()) return;
     setSaving(true);
-    const { jobRequests } = await import("@/lib/firestore");
+    const { jobRequests, inAppNotifications } = await import("@/lib/firestore");
     try {
-      await jobRequests.add({ ...reqForm, request_from: reqForm.request_from || currentUser?.name || currentUser?.email || "", attachments: reqAttachments } as unknown as Record<string, unknown>);
+      const sender = reqForm.request_from || currentUser?.name || currentUser?.email || "";
+      await jobRequests.add({ ...reqForm, request_from: sender, attachments: reqAttachments } as unknown as Record<string, unknown>);
+
+      // Notify target team
+      const team = reqForm.request_to_team; // "presale" | "service"
+      const teamUsers = users.filter(u => {
+        if (team === "service") return ["service", "Service Technician", "Service Manager"].includes(u.role);
+        if (team === "presale") return ["presale", "Presale Engineer", "Presale Manager"].includes(u.role);
+        return false;
+      });
+      const recipients = teamUsers.map(u => u.name).filter(Boolean);
+      if (recipients.length > 0) {
+        await inAppNotifications.add({
+          module: team,
+          title: `📩 Job Request ใหม่: ${reqForm.title}`,
+          body: `จาก ${sender}${reqForm.customer_name ? ` · ${reqForm.customer_name}` : ""}${reqForm.description ? ` — ${reqForm.description.slice(0, 80)}` : ""}`,
+          link: `/${team}`,
+          recipients,
+          read_by: [],
+          created_at: new Date().toISOString(),
+          metadata: { customer_name: reqForm.customer_name },
+        } as unknown as Record<string, unknown>);
+      }
+
       setReqForm({ request_from: "", request_to_team: "presale", request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium", status: "pending", assigned_to: "", reject_reason: "", accept_note: "" });
       setReqAttachments([]); setReqLinkInput(""); setShowReqForm(false); await load();
     }
