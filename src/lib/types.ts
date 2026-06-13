@@ -331,6 +331,10 @@ export interface SalesActivity {
   attachments?: { name: string; url: string; type: "file" | "link"; uploaded_at: string; uploaded_by: string }[];
   archived?: boolean;          // จัดเก็บแล้ว — ซ่อนจากหน้าจอ
   archived_at?: string;        // ISO date ที่จัดเก็บ
+  reassigned_from?: string;    // ชื่อเซลล์ก่อนโยก
+  reassigned_by?: string;      // ผู้โยกงาน
+  reassigned_at?: string;      // วันที่โยก
+  reassign_note?: string;      // หมายเหตุการโยกงาน
 }
 
 export interface BomItem {

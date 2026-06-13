@@ -171,6 +171,10 @@ export default function SalesPage() {
   // Reschedule confirmation popup
   const [rescheduleTarget,  setRescheduleTarget]  = useState<{ planId: string; newDate: string; oldDate: string } | null>(null);
   const [rescheduleReason,  setRescheduleReason]  = useState("");
+  // Inline reassign panel (inside selectedActivity modal)
+  const [showReassignPanel, setShowReassignPanel] = useState(false);
+  const [reassignNote,      setReassignNote]      = useState("");
+
   // Inline quick-report state (inside selectedActivity modal)
   const [qrOpen,       setQrOpen]       = useState(false);
   const [qrOutcome,    setQrOutcome]    = useState("");
@@ -438,10 +442,11 @@ export default function SalesPage() {
     await salesActivities.update(id, data); await load();
   }
 
-  // Reset quick-report fields whenever a different activity is opened
+  // Reset quick-report & reassign fields whenever a different activity is opened
   useEffect(() => {
     setQrOpen(false); setQrOutcome(""); setQrStatus("completed");
     setQrNextAction(""); setQrNextDate(""); setQrFiles([]); setQrLinkUrl(""); setQrLinkLabel("");
+    setShowReassignPanel(false); setReassignNote(""); setReassignTarget("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedActivity?.id]);
 
@@ -540,14 +545,28 @@ export default function SalesPage() {
     const { salesActivities } = await import("@/lib/firestore"); await salesActivities.remove(id); await load();
   }
 
-  async function reassignActivity(id: string, newAssignee: string, oldAssignee: string) {
+  async function reassignActivity(id: string, newAssignee: string, oldAssignee: string, note = "") {
     if (!newAssignee) return;
     setSaving(true);
     try {
       const { salesActivities, logActivity } = await import("@/lib/firestore");
-      await salesActivities.update(id, { assigned_to: newAssignee });
-      await logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "update", module: "sales", resource_id: id, details: `โยกงานจาก ${oldAssignee || "ไม่ระบุ"} → ${newAssignee}` });
-      setReassigningId(null); setReassignTarget("");
+      await salesActivities.update(id, {
+        assigned_to: newAssignee,
+        reassigned_from: oldAssignee || "",
+        reassigned_by: currentUser?.name ?? "",
+        reassigned_at: today,
+        ...(note.trim() ? { reassign_note: note.trim() } : {}),
+      });
+      await logActivity({
+        user_name: currentUser?.name ?? "",
+        user_role: currentUser?.role ?? "",
+        action: "update",
+        module: "sales",
+        resource_id: id,
+        details: `โยกงานจาก ${oldAssignee || "ไม่ระบุ"} → ${newAssignee}${note.trim() ? ` | หมายเหตุ: ${note.trim()}` : ""}`,
+      });
+      setReassigningId(null); setReassignTarget(""); setReassignNote(""); setShowReassignPanel(false);
+      setSelectedActivity(null);
       await load();
     } catch (e) { console.error(e); } finally { setSaving(false); }
   }
@@ -3633,6 +3652,45 @@ export default function SalesPage() {
                     )}
                   </div>
                 )}
+                {/* Reassign panel */}
+                {showReassignPanel && canReassign && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                    <p className="text-xs font-semibold text-amber-400">↔ โยกงานให้เซลล์ท่านอื่น</p>
+                    <div>
+                      <label className="text-[10px] text-muted mb-1 block">เซลล์ที่รับงานต่อ *</label>
+                      <select value={reassignTarget} onChange={e => setReassignTarget(e.target.value)}
+                        className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-amber-500">
+                        <option value="">-- เลือกเซลล์ --</option>
+                        {users.filter(u => u.id !== currentUser?.id || reassignTarget === u.name).map(u => (
+                          <option key={u.id} value={u.name}>{u.name}{u.name === a.assigned_to ? " (ปัจจุบัน)" : ""}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted mb-1 block">หมายเหตุ / เหตุผลการโยก</label>
+                      <textarea value={reassignNote} onChange={e => setReassignNote(e.target.value)}
+                        rows={2} placeholder="เช่น ลูกค้าอยู่ในพื้นที่รับผิดชอบของทีม B, เซลล์เดิมลาออก..."
+                        className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-amber-500 resize-none" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => reassignActivity(a.id!, reassignTarget, a.assigned_to || "", reassignNote)}
+                        disabled={saving || !reassignTarget || reassignTarget === a.assigned_to}
+                        className="rounded-lg bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-40 transition-colors">
+                        {saving ? "กำลังบันทึก..." : "ยืนยันโยกงาน"}
+                      </button>
+                      <button onClick={() => { setShowReassignPanel(false); setReassignNote(""); setReassignTarget(""); }}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-card-hover">
+                        ยกเลิก
+                      </button>
+                      {a.reassigned_from && (
+                        <span className="self-center text-[10px] text-muted ml-auto">
+                          โยกล่าสุด: {a.reassigned_from} → {a.assigned_to} {a.reassigned_at ? `(${a.reassigned_at})` : ""}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
               </div>
 
               {/* Footer */}
@@ -3655,7 +3713,11 @@ export default function SalesPage() {
                   <button onClick={() => { setSelectedActivity(null); convertActivityToPipeline(a); }} className="rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-500 px-3 py-1.5 text-xs hover:bg-blue-500/20">→ สร้างดีล</button>
                 )}
                 {canReassign && (
-                  <button onClick={() => { setSelectedActivity(null); setReassigningId(a.id!); setReassignTarget(a.assigned_to || ""); setTab("activities"); }} className="rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-500 px-3 py-1.5 text-xs hover:bg-amber-500/20">โยกงาน</button>
+                  <button
+                    onClick={() => { setShowReassignPanel(p => !p); setReassignTarget(a.assigned_to || ""); setQrOpen(false); }}
+                    className={`rounded-lg px-3 py-1.5 text-xs border transition-colors ${showReassignPanel ? "bg-amber-500/20 border-amber-500/50 text-amber-400" : "bg-amber-500/10 border-amber-500/25 text-amber-500 hover:bg-amber-500/20"}`}>
+                    ↔ โยกงาน
+                  </button>
                 )}
                 <div className="flex-1" />
                 <button onClick={() => { setSelectedActivity(null); deleteActivity(a.id!); }} className="rounded-lg border border-red-500/30 text-red-500 px-3 py-1.5 text-xs hover:bg-red-500/10">ลบ</button>
