@@ -58,6 +58,8 @@ export interface ProjectType {
   tenant_id: string;
   name: string;
   description: string;
+  status?: "approved" | "pending"; // ไม่มี = approved (backward compatible)
+  requested_by?: string;           // ชื่อผู้ขอเพิ่ม
 }
 
 export interface IntegrationSetting {
