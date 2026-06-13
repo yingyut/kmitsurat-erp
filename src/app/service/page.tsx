@@ -862,6 +862,45 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
     } catch (e) { console.error(e); } finally { setSaving(false); }
   }
   async function handleDelete(id: string) { if (!confirm("Delete?")) return; const { serviceTickets } = await import("@/lib/firestore"); await serviceTickets.remove(id); await load(); }
+
+  async function acceptJobReq(r: JobRequest, techName: string, acceptNote: string) {
+    try {
+      const myName = currentUser?.name || currentUser?.email || "";
+      const tech = techName || myName || "service";
+      const now = new Date().toISOString();
+      const { jobRequests, serviceTickets } = await import("@/lib/firestore");
+      await jobRequests.update(r.id!, {
+        status: "accepted",
+        assigned_to: tech,
+        accept_note: acceptNote || undefined,
+        accepted_by: myName,
+        accepted_at: now,
+      });
+      const initHistory = [{ status: "open", timestamp: now, by: tech, note: `รับงานจาก Sales: ${r.title}${acceptNote ? ` · ${acceptNote}` : ""}` }];
+      await serviceTickets.add({
+        customer_id: r.customer_id || "", customer_name: r.customer_name || "",
+        project_id: r.project_id || "", project_name: r.project_name || "",
+        type: "after_sales",
+        issue: r.title + (r.description ? `\n${r.description}` : ""),
+        technician: tech,
+        service_date: new Date().toISOString().slice(0, 10),
+        status: "open",
+        priority: (r.priority === "urgent" || r.priority === "high") ? r.priority : "medium",
+        service_value: 0, service_cost: 0, gross_profit: 0, hours_spent: 0,
+        reported_by: r.request_from || "", report_date: now.slice(0, 10),
+        report_channel: "system", assignment_mode: "individual",
+        target_skill: "", target_area: "",
+        sla_response_hours: 4, sla_resolve_hours: 48,
+        asset_id: "", km_number: "",
+        opened_at: now, status_history: initHistory,
+        job_request_id: r.id || "",
+      } as unknown as Record<string, unknown>);
+      setActiveView("new");
+    } catch (err) {
+      console.error("acceptJobReq error:", err);
+      alert("เกิดข้อผิดพลาด: " + String(err));
+    }
+  }
   async function changeStatus(t: ServiceTicket, newStatus: ServiceStatus, who?: string, note?: string) {
     if (newStatus === t.status) return;
     const { serviceTickets } = await import("@/lib/firestore");
@@ -910,87 +949,25 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
   return (
     <div className="p-6">
 
-      {/* ── Job Requests from Sales (ทุก Role เห็นเหมือนกัน) ── */}
-      {incomingReqs.length > 0 && (() => {
-        const pending  = incomingReqs.filter(r => r.status === "pending");
-        const accepted = incomingReqs.filter(r => r.status === "accepted");
-        const rejected = incomingReqs.filter(r => r.status === "rejected");
-        const showDone = sectOpen("req_done", false);
+      {/* ── Job Requests from Sales — แสดงเฉพาะ pending เท่านั้น ── */}
+      {(() => {
+        const pending = incomingReqs.filter(r => r.status === "pending");
+        if (pending.length === 0) return null;
         const priorityStyle = (p: string) =>
           p === "urgent" ? "bg-red-900/50 text-red-400" :
           p === "high"   ? "bg-amber-900/50 text-amber-400" :
                            "bg-blue-900/50 text-blue-400";
-
-        async function acceptReq(r: JobRequest, techName: string, acceptNote: string) {
-          const myName = currentUser?.name || currentUser?.email || "";
-          const now = new Date().toISOString();
-          const { jobRequests, serviceTickets } = await import("@/lib/firestore");
-          await jobRequests.update(r.id!, {
-            status: "accepted",
-            assigned_to: techName,
-            accept_note: acceptNote || undefined,
-            accepted_by: myName,
-            accepted_at: now,
-          });
-          const initHistory = [{ status: "open", timestamp: now, by: myName, note: `รับงานจาก Sales: ${r.title}${acceptNote ? ` · ${acceptNote}` : ""}` }];
-          await serviceTickets.add({
-            customer_id: r.customer_id || "",
-            customer_name: r.customer_name || "",
-            project_id: r.project_id || "",
-            project_name: r.project_name || "",
-            type: "after_sales",
-            issue: r.title + (r.description ? `\n${r.description}` : ""),
-            technician: techName,
-            service_date: now.slice(0, 10),
-            status: "open",
-            priority: (r.priority === "urgent" || r.priority === "high") ? r.priority : "medium",
-            service_value: 0, service_cost: 0, gross_profit: 0, hours_spent: 0,
-            reported_by: r.request_from || "",
-            report_date: now.slice(0, 10),
-            report_channel: "system",
-            assignment_mode: "individual",
-            target_skill: "", target_area: "",
-            sla_response_hours: 4, sla_resolve_hours: 48,
-            asset_id: "", km_number: "",
-            opened_at: now,
-            status_history: initHistory,
-            job_request_id: r.id || "",
-          } as unknown as Record<string, unknown>);
-          // ไปที่ "งานใหม่" ทันที
-          setActiveView("new");
-        }
-
         return (
-          <div className="rounded-xl border border-border bg-card p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold">📥 Task จาก Sales ({pending.length} รอรับ)</h3>
-              <div className="flex gap-2 text-[10px] items-center">
-                {accepted.length > 0 && (
-                  <button onClick={() => toggleSect("req_done")} className="rounded-full bg-green-900/40 text-green-400 px-2 py-0.5 hover:bg-green-900/60">
-                    {accepted.length} รับแล้ว {showDone ? "▲" : "▼"}
-                  </button>
-                )}
-                {rejected.length > 0 && (
-                  <button onClick={() => toggleSect("req_done")} className="rounded-full bg-slate-700/50 text-slate-400 px-2 py-0.5 hover:bg-slate-700/70">
-                    {rejected.length} ปฏิเสธ {showDone ? "▲" : "▼"}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Pending only */}
-            {pending.length === 0 && (
-              <p className="text-xs text-muted text-center py-2">ไม่มีงานรอรับ</p>
-            )}
+          <div className="rounded-xl border border-rose-800/40 bg-rose-900/5 p-4 mb-4">
+            <h3 className="text-sm font-semibold mb-3">📥 งานจาก Sales รอรับ ({pending.length})</h3>
             <div className="space-y-2">
               {pending.map(r => (
-                <div key={r.id} className="rounded-lg border border-rose-800/50 bg-rose-900/10 p-3">
+                <div key={r.id} className="rounded-lg border border-rose-800/50 bg-card p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <p className="text-sm font-medium">{r.title}</p>
+                        <p className="text-sm font-semibold">{r.title}</p>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${priorityStyle(r.priority || "medium")}`}>{r.priority}</span>
-                        <span className="rounded-full px-2 py-0.5 text-[10px] font-medium bg-rose-900/50 text-rose-400">รอรับงาน</span>
                       </div>
                       {r.description && <p className="text-xs text-muted mb-1 line-clamp-2">{r.description}</p>}
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted">
@@ -1000,8 +977,8 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                       </div>
                     </div>
                     {isTechView ? (
-                      <button onClick={() => acceptReq(r, myIdent, "")}
-                        className="shrink-0 text-[11px] font-semibold bg-green-800/60 text-green-300 rounded-lg px-3 py-1.5 hover:bg-green-700/70 border border-green-700/40">
+                      <button onClick={() => acceptJobReq(r, myIdent, "")}
+                        className="shrink-0 text-[11px] font-semibold bg-green-700 text-white rounded-lg px-4 py-2 hover:bg-green-600 active:scale-95 transition-all">
                         ✓ รับงาน
                       </button>
                     ) : (
@@ -1014,9 +991,8 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                           <button onClick={async () => {
                             const assignTo = (document.getElementById(`svc-assign-${r.id}`) as HTMLSelectElement)?.value;
                             const note = prompt("หมายเหตุรับงาน (ไม่บังคับ)") || "";
-                            const techName = assignTo || myIdent;
-                            await acceptReq(r, techName, note);
-                          }} className="flex-1 text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ รับงาน</button>
+                            await acceptJobReq(r, assignTo || myIdent, note);
+                          }} className="flex-1 text-[10px] bg-green-700 text-white rounded px-2 py-1 hover:bg-green-600">✓ รับงาน</button>
                           <button onClick={async () => {
                             const reason = prompt("เหตุผลที่ปฏิเสธ:");
                             if (!reason) return;
@@ -1030,65 +1006,6 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                 </div>
               ))}
             </div>
-
-            {/* Accepted / Rejected — collapsed by default */}
-            {showDone && (accepted.length > 0 || rejected.length > 0) && (() => {
-              const ticketReqIds = new Set(list.map(t => t.job_request_id).filter(Boolean));
-              return (
-                <div className="mt-2 space-y-1.5 border-t border-border pt-2">
-                  {[...accepted, ...rejected].map(r => {
-                    const isAccepted = r.status === "accepted";
-                    const hasTicket = r.id && ticketReqIds.has(r.id);
-                    const acceptedTime = r.accepted_at
-                      ? new Date(r.accepted_at).toLocaleString("th-TH", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
-                      : null;
-                    return (
-                      <div key={r.id} className={`rounded-lg border p-2.5 ${isAccepted ? "border-green-800/30 bg-green-900/5" : "border-border bg-background/50 opacity-60"}`}>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-xs font-medium flex-1 min-w-0 truncate">{r.title}</p>
-                          {isAccepted ? (
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-[10px] text-green-400 font-semibold">✅ {r.accepted_by || "—"} {acceptedTime && `· ${acceptedTime}`}</span>
-                              {!hasTicket && (
-                                <button onClick={async () => {
-                                  const now = new Date().toISOString();
-                                  const techName = r.assigned_to || r.accepted_by || myIdent;
-                                  const { serviceTickets } = await import("@/lib/firestore");
-                                  const initHistory = [{ status: "open", timestamp: now, by: myIdent, note: `สร้างงานย้อนหลังจาก Sales: ${r.title}` }];
-                                  await serviceTickets.add({
-                                    customer_id: r.customer_id || "", customer_name: r.customer_name || "",
-                                    project_id: r.project_id || "", project_name: r.project_name || "",
-                                    type: "after_sales",
-                                    issue: r.title + (r.description ? `\n${r.description}` : ""),
-                                    technician: techName,
-                                    service_date: now.slice(0, 10),
-                                    status: "open",
-                                    priority: (r.priority === "urgent" || r.priority === "high") ? r.priority : "medium",
-                                    service_value: 0, service_cost: 0, gross_profit: 0, hours_spent: 0,
-                                    reported_by: r.request_from || "", report_date: now.slice(0, 10),
-                                    report_channel: "system", assignment_mode: "individual",
-                                    target_skill: "", target_area: "",
-                                    sla_response_hours: 4, sla_resolve_hours: 48,
-                                    asset_id: "", km_number: "",
-                                    opened_at: now, status_history: initHistory,
-                                    job_request_id: r.id || "",
-                                  } as unknown as Record<string, unknown>);
-                                  setActiveView("new");
-                                }} className="text-[10px] bg-amber-800/50 text-amber-300 rounded px-2 py-0.5 hover:bg-amber-700/60 border border-amber-700/40">
-                                  ⚠ สร้าง Ticket
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 shrink-0">✗ ปฏิเสธ{r.reject_reason ? ` · ${r.reject_reason}` : ""}</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
           </div>
         );
       })()}
