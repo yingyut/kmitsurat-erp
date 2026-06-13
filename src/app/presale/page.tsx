@@ -1424,6 +1424,115 @@ export default function PresalePage() {
                 );
               })()}
 
+              {/* Gantt Chart */}
+              {workSteps.length > 0 && (() => {
+                const parseD = (s: string) => new Date(s + "T00:00:00").getTime();
+                const DAY_MS = 86400000;
+                const stepEnds = workSteps.map(s => parseD(s.start_date) + (s.duration_days - 1) * DAY_MS);
+                const minTs = Math.min(...workSteps.map(s => parseD(s.start_date)));
+                const maxTs = Math.max(...stepEnds);
+                const totalDays = Math.ceil((maxTs - minTs) / DAY_MS) + 1;
+                const DAY_W = Math.max(20, Math.min(40, Math.floor(560 / Math.max(totalDays, 1))));
+                const LABEL_W = 148;
+                const chartW = LABEL_W + totalDays * DAY_W;
+                const todayTs = parseD(todayStr());
+                const todayOff = Math.floor((todayTs - minTs) / DAY_MS);
+                const showTodayLine = todayOff >= 0 && todayOff < totalDays;
+                const barColor: Record<string, string> = { pending: "bg-slate-600", in_progress: "bg-amber-500", done: "bg-green-500" };
+
+                // Build day header array
+                const dayHeaders: { idx: number; date: Date; isFirst: boolean }[] = [];
+                for (let i = 0; i < totalDays; i++) {
+                  const d = new Date(minTs + i * DAY_MS);
+                  dayHeaders.push({ idx: i, date: d, isFirst: d.getDate() === 1 });
+                }
+
+                return (
+                  <div className="rounded-lg border border-border bg-background overflow-hidden">
+                    <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+                      <p className="text-xs font-semibold">📊 Gantt Chart</p>
+                      <div className="flex gap-3 text-[9px] text-muted">
+                        <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2 rounded-sm bg-slate-600" /> รอ</span>
+                        <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2 rounded-sm bg-amber-500" /> กำลังทำ</span>
+                        <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2 rounded-sm bg-green-500" /> เสร็จ</span>
+                        {showTodayLine && <span className="flex items-center gap-1"><span className="inline-block w-0.5 h-3 bg-red-400" /> วันนี้</span>}
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <div style={{ width: chartW, minWidth: "100%" }}>
+                        {/* Header — dates */}
+                        <div className="flex border-b border-border/40" style={{ height: 28 }}>
+                          <div style={{ width: LABEL_W, flexShrink: 0 }} className="px-2 flex items-end pb-1">
+                            <span className="text-[9px] text-muted font-medium">ขั้นตอน</span>
+                          </div>
+                          <div className="relative flex-1" style={{ width: totalDays * DAY_W }}>
+                            {dayHeaders.map(({ idx, date, isFirst }) => {
+                              const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                              const showLabel = totalDays <= 14 || (totalDays <= 31 ? idx % 3 === 0 : idx % 7 === 0);
+                              return (
+                                <div key={idx}
+                                  className={`absolute top-0 bottom-0 border-r border-border/20 flex items-end justify-center pb-0.5 ${isWeekend ? "bg-slate-800/30" : ""}`}
+                                  style={{ left: idx * DAY_W, width: DAY_W }}>
+                                  {(showLabel || isFirst) && (
+                                    <span className={`text-[8px] leading-none ${isFirst ? "text-accent/70 font-medium" : "text-muted/60"}`}>
+                                      {isFirst ? `${date.toLocaleString("th-TH", { month: "short" })}` : date.getDate()}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {showTodayLine && (
+                              <div className="absolute top-0 bottom-0 w-px bg-red-400/60 z-20 pointer-events-none"
+                                style={{ left: (todayOff + 0.5) * DAY_W }} />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Step rows */}
+                        {workSteps.map((step, idx) => {
+                          const offsetDays = Math.floor((parseD(step.start_date) - minTs) / DAY_MS);
+                          const barLeft = offsetDays * DAY_W;
+                          const barW = step.duration_days * DAY_W;
+                          const isDone = step.status === "done";
+                          return (
+                            <div key={step.id} className={`flex items-center border-b border-border/20 last:border-0 ${idx % 2 === 1 ? "bg-card/20" : ""}`} style={{ height: 36 }}>
+                              {/* Label */}
+                              <div style={{ width: LABEL_W, flexShrink: 0 }} className="px-2 flex items-center gap-1.5 min-w-0">
+                                <span className="text-sm shrink-0">{STEP_META[step.type].icon}</span>
+                                <span className={`text-[11px] font-medium truncate ${isDone ? "line-through text-muted" : ""}`}>{step.label}</span>
+                              </div>
+                              {/* Timeline */}
+                              <div className="relative flex-1" style={{ width: totalDays * DAY_W, height: 36 }}>
+                                {/* Weekend shading */}
+                                {dayHeaders.filter(d => d.date.getDay() === 0 || d.date.getDay() === 6).map(({ idx: di }) => (
+                                  <div key={di} className="absolute top-0 bottom-0 bg-slate-800/20 pointer-events-none"
+                                    style={{ left: di * DAY_W, width: DAY_W }} />
+                                ))}
+                                {/* Today line */}
+                                {showTodayLine && (
+                                  <div className="absolute top-0 bottom-0 w-px bg-red-400/40 z-10 pointer-events-none"
+                                    style={{ left: (todayOff + 0.5) * DAY_W }} />
+                                )}
+                                {/* Bar */}
+                                <div
+                                  className={`absolute top-2 bottom-2 rounded ${barColor[step.status]} shadow-sm flex items-center overflow-hidden`}
+                                  style={{ left: barLeft, width: Math.max(barW, DAY_W * 0.8) }}
+                                  title={`${step.start_date} → ${addDays(step.start_date, step.duration_days)} · ${step.duration_days} วัน${step.assignee ? ` · ${step.assignee}` : ""}`}>
+                                  <span className="px-1.5 text-[9px] text-white font-medium whitespace-nowrap overflow-hidden">
+                                    {barW >= DAY_W * 2 && `${step.duration_days}d`}
+                                    {step.assignee && barW >= DAY_W * 4 && ` · ${step.assignee.split(" ")[0]}`}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Quick-add predefined steps */}
               <div className="flex flex-wrap gap-1.5 pb-1">
                 {Object.entries(STEP_META).map(([k, v]) => {
