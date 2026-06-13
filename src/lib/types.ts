@@ -369,6 +369,7 @@ export interface PresaleWorkStep {
   start_date: string;
   duration_days: number;
   status: "pending" | "in_progress" | "done";
+  assignee?: string;
   notes?: string;
 }
 
@@ -402,6 +403,8 @@ export interface PresaleRequest {
   converted_to_quotation_id?: string;
   converted_quotation_number?: string;
   converted_at?: string;
+  // Team collaboration
+  co_workers?: string[];
   // Work plan steps
   work_steps?: PresaleWorkStep[];
   // Submitter

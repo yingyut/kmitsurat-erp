@@ -307,6 +307,7 @@ export default function PresalePage() {
   const [reviewModal, setReviewModal] = useState<{ request: PresaleRequest; action: "approve" | "reject" } | null>(null);
   const [reviewSummary, setReviewSummary] = useState("");
   const [reviewNote, setReviewNote] = useState("");
+  const [formCoWorkers, setFormCoWorkers] = useState<string[]>([]);
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const cid = p.get("customer_id"); const cname = p.get("customer_name");
@@ -340,7 +341,7 @@ export default function PresalePage() {
   const [attachments, setAttachments] = useState<PresaleAttachment[]>([]);
   const [workSteps, setWorkSteps] = useState<PresaleWorkStep[]>([]);
   const [addingStep, setAddingStep] = useState(false);
-  const [newStep, setNewStep] = useState<Omit<PresaleWorkStep,"id">>({ type: "research", label: "ค้นหาข้อมูล", start_date: todayStr(), duration_days: 3, status: "pending", notes: "" });
+  const [newStep, setNewStep] = useState<Omit<PresaleWorkStep,"id">>({ type: "research", label: "ค้นหาข้อมูล", start_date: todayStr(), duration_days: 3, status: "pending", assignee: "", notes: "" });
   const [solutionSummary, setSolutionSummary] = useState("");
   const [artifactSearch, setArtifactSearch] = useState("");
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
@@ -438,7 +439,7 @@ export default function PresalePage() {
     const s = search.toLowerCase();
     if (s && !r.requirement.toLowerCase().includes(s) && !r.customer_name.toLowerCase().includes(s) &&
         !(r.project_name || "").toLowerCase().includes(s) && !(r.assigned_to || "").toLowerCase().includes(s)) return false;
-    if (viewFilter === "my") return r.assigned_to === myName;
+    if (viewFilter === "my") return r.assigned_to === myName || (r.co_workers || []).includes(myName);
     if (viewFilter === "overdue") return !!(r.due_date && r.due_date < today && r.status !== "completed" && r.status !== "cancelled");
     if (viewFilter === "today") return r.due_date === today && r.status !== "completed" && r.status !== "cancelled";
     if (viewFilter === "in_progress") return r.status === "in_progress";
@@ -488,7 +489,7 @@ export default function PresalePage() {
   function selectCust(id: string) { const c = custs.find((x) => x.id === id); setForm({ ...form, customer_id: id, customer_name: c?.company_name || "" }); }
   function selectProj(id: string) { const p = projs.find((x) => x.id === id); setForm({ ...form, project_id: id, project_name: p?.name || "" }); }
 
-  function openAdd() { setEditId(null); setForm(empty); setShowForm(true); closeDetail(); }
+  function openAdd() { setEditId(null); setForm(empty); setFormCoWorkers([]); setShowForm(true); closeDetail(); }
   function openEdit(r: PresaleRequest) {
     setEditId(r.id!);
     setForm({
@@ -498,6 +499,7 @@ export default function PresalePage() {
       due_date: r.due_date || "", status: r.status, value: r.value || 0,
       priority: (r.priority || "normal") as NonNullable<PresaleRequest["priority"]>,
     });
+    setFormCoWorkers(r.co_workers || []);
     setShowForm(true);
     closeDetail();
   }
@@ -507,7 +509,7 @@ export default function PresalePage() {
     const { presaleRequests, inAppNotifications } = await import("@/lib/firestore");
     try {
       if (editId) {
-        await presaleRequests.update(editId, form as unknown as Record<string, unknown>);
+        await presaleRequests.update(editId, { ...form, co_workers: formCoWorkers } as unknown as Record<string, unknown>);
       } else {
         const needsApproval = checkNeedsApproval(form.type, form.value || 0);
         const ref = await presaleRequests.add({
@@ -1215,6 +1217,25 @@ export default function PresalePage() {
                 <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
               </div>
             </div>
+            {editId && presaleUsers.filter(u => u.name !== form.assigned_to && u.name).length > 0 && (
+              <div>
+                <p className="text-xs text-muted mb-1.5 font-medium">ผู้ช่วย / Co-workers <span className="font-normal text-muted/60">(เลือกได้หลายคน)</span></p>
+                <div className="flex flex-wrap gap-2">
+                  {presaleUsers.filter(u => u.name !== form.assigned_to && u.name).map(u => {
+                    const isSel = formCoWorkers.includes(u.name);
+                    return (
+                      <button key={u.id} type="button"
+                        onClick={() => setFormCoWorkers(prev => isSel ? prev.filter(n => n !== u.name) : [...prev, u.name])}
+                        className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs border transition-colors ${isSel ? "bg-accent/20 border-accent text-accent" : "border-border text-muted hover:border-accent/50"}`}>
+                        <span className={`w-5 h-5 rounded-full ${avatarBg(u.name)} flex items-center justify-center text-[8px] font-bold text-white shrink-0`}>{u.name.slice(0,2).toUpperCase()}</span>
+                        {u.name}
+                        {isSel && <span className="text-[10px]">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <p className="text-xs text-muted mb-1.5 font-medium">Status</p>
@@ -1381,21 +1402,52 @@ export default function PresalePage() {
                 );
               })()}
 
+              {/* Quick-add predefined steps */}
+              <div className="flex flex-wrap gap-1.5 pb-1">
+                {Object.entries(STEP_META).map(([k, v]) => {
+                  const alreadyAdded = workSteps.some(s => s.type === k as PresaleWorkStep["type"]);
+                  return (
+                    <button key={k} type="button"
+                      onClick={() => {
+                        if (alreadyAdded) return;
+                        const t = k as PresaleWorkStep["type"];
+                        setWorkSteps(prev => [...prev, { id: `${Date.now()}-${Math.random().toString(36).slice(2,6)}`, type: t, label: v.label, start_date: todayStr(), duration_days: 3, status: "pending", assignee: "", notes: "" }]);
+                      }}
+                      className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] border transition-colors ${alreadyAdded ? "border-green-700/50 bg-green-900/20 text-green-400 cursor-default" : "border-border text-muted hover:border-accent hover:text-accent cursor-pointer"}`}
+                      title={alreadyAdded ? "เพิ่มแล้ว" : `+ ${v.label}`}>
+                      {alreadyAdded ? "✓" : "+"} {v.icon} {v.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Steps list */}
               <div className="space-y-2">
                 {workSteps.map((step, idx) => (
-                  <div key={step.id} className="rounded-lg border border-border bg-background px-3 py-2.5 flex items-start gap-3">
-                    <span className="text-lg shrink-0 mt-0.5">{STEP_META[step.type].icon}</span>
+                  <div key={step.id} className={`rounded-lg border bg-background px-3 py-2.5 flex items-start gap-3 transition-colors ${step.status === "done" ? "border-green-800/40 opacity-80" : "border-border"}`}>
+                    <button type="button"
+                      onClick={() => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, status: s.status === "done" ? "pending" : "done"} : s))}
+                      className={`w-5 h-5 rounded border-2 shrink-0 mt-0.5 flex items-center justify-center transition-colors ${step.status === "done" ? "bg-green-600 border-green-600 text-white" : "border-border hover:border-accent"}`}
+                      title={step.status === "done" ? "คลิกเพื่อยกเลิก" : "คลิกเมื่อเสร็จ"}>
+                      {step.status === "done" && <span className="text-[10px]">✓</span>}
+                    </button>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-base shrink-0">{STEP_META[step.type].icon}</span>
                         <input value={step.label} onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, label: e.target.value} : s))}
-                          className="text-sm font-medium bg-transparent border-0 focus:outline-none focus:border-b focus:border-accent min-w-0 flex-1" />
+                          className={`text-sm font-medium bg-transparent border-0 focus:outline-none focus:border-b focus:border-accent min-w-0 flex-1 ${step.status === "done" ? "line-through text-muted" : ""}`} />
                         <span className={`rounded-full px-2 py-0.5 text-[10px] shrink-0 ${STEP_STATUS_COLOR[step.status]}`}>{STEP_STATUS_LABEL[step.status]}</span>
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-[11px] text-muted flex-wrap">
                         <span>📅 {step.start_date}</span>
                         <span>⏱ {step.duration_days} วัน</span>
                         <span>→ สิ้นสุด {addDays(step.start_date, step.duration_days)}</span>
+                        {step.assignee && (
+                          <span className="flex items-center gap-1 rounded-full px-2 py-0.5 bg-card border border-border text-foreground">
+                            <span className={`w-3.5 h-3.5 rounded-full ${avatarBg(step.assignee)} flex items-center justify-center text-[7px] font-bold text-white`}>{step.assignee.slice(0,2).toUpperCase()}</span>
+                            {step.assignee}
+                          </span>
+                        )}
                       </div>
                       {step.notes && <p className="text-[11px] text-muted mt-0.5 italic">{step.notes}</p>}
                     </div>
@@ -1405,6 +1457,11 @@ export default function PresalePage() {
                         <option value="pending">รอ</option>
                         <option value="in_progress">กำลังทำ</option>
                         <option value="done">เสร็จ</option>
+                      </select>
+                      <select value={step.assignee || ""} onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, assignee: e.target.value} : s))}
+                        className="rounded px-2 py-0.5 text-[10px] bg-card border border-border focus:outline-none cursor-pointer max-w-[100px] truncate" title="ผู้รับผิดชอบ">
+                        <option value="">— ผู้รับผิดชอบ —</option>
+                        {presaleUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
                       </select>
                       <input type="number" min={1} value={step.duration_days} onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, duration_days: Number(e.target.value)||1} : s))}
                         className="w-12 text-center text-xs rounded bg-card border border-border px-1 py-0.5 focus:outline-none focus:border-accent" title="จำนวนวัน" />
@@ -1446,7 +1503,15 @@ export default function PresalePage() {
                       <input type="number" min={1} value={newStep.duration_days} onChange={e => setNewStep(s => ({...s, duration_days: Number(e.target.value)||1}))}
                         className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent mt-0.5" />
                     </div>
-                    <div className="col-span-2">
+                    <div>
+                      <label className="text-[10px] text-muted">ผู้รับผิดชอบ</label>
+                      <select value={newStep.assignee||""} onChange={e => setNewStep(s => ({...s, assignee: e.target.value}))}
+                        className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent mt-0.5">
+                        <option value="">— ไม่ระบุ —</option>
+                        {presaleUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
                       <label className="text-[10px] text-muted">หมายเหตุ (ไม่บังคับ)</label>
                       <input value={newStep.notes||""} onChange={e => setNewStep(s => ({...s, notes: e.target.value}))}
                         className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent mt-0.5" />
@@ -1457,7 +1522,7 @@ export default function PresalePage() {
                     <button onClick={() => {
                       if (!newStep.label.trim()) return;
                       setWorkSteps(prev => [...prev, { ...newStep, id: `${Date.now()}-${Math.random().toString(36).slice(2,6)}` }]);
-                      setNewStep({ type: "research", label: "ค้นหาข้อมูล", start_date: todayStr(), duration_days: 3, status: "pending", notes: "" });
+                      setNewStep({ type: "research", label: "ค้นหาข้อมูล", start_date: todayStr(), duration_days: 3, status: "pending", assignee: "", notes: "" });
                       setAddingStep(false);
                     }} className="rounded-lg bg-accent px-3 py-1 text-xs text-white hover:bg-accent-hover">+ เพิ่ม</button>
                   </div>
@@ -1982,6 +2047,15 @@ export default function PresalePage() {
                   ? <Link href={`/projects/${r.project_id}`} className="hover:text-accent hover:underline" onClick={e => e.stopPropagation()}>📁 {r.project_name}</Link>
                   : r.project_name ? <span>📁 {r.project_name}</span> : null}
                 {r.assigned_to && <span>👤 {r.assigned_to}</span>}
+                {(r.co_workers || []).length > 0 && (
+                  <span className="flex items-center gap-0.5 ml-0.5" title={`ผู้ช่วย: ${(r.co_workers || []).join(", ")}`}>
+                    <span className="text-muted/60">+</span>
+                    {(r.co_workers || []).slice(0,3).map(name => (
+                      <span key={name} className={`w-4 h-4 rounded-full ${avatarBg(name)} flex items-center justify-center text-[7px] font-bold text-white`}>{name.slice(0,2).toUpperCase()}</span>
+                    ))}
+                    {(r.co_workers || []).length > 3 && <span className="text-[10px] text-muted">+{(r.co_workers || []).length - 3}</span>}
+                  </span>
+                )}
                 {r.due_date && <span className={isOverdue ? "text-red-400 font-medium" : isDueToday ? "text-amber-400" : ""}>📅 {r.due_date}</span>}
                 {(r.value || 0) > 0 && <span>💰 {(r.value || 0).toLocaleString()} THB</span>}
               </div>
@@ -1997,8 +2071,8 @@ export default function PresalePage() {
                 <div className="flex gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                   {canReview && !["approved","rejected"].includes(r.approval_status || "") && (
                     <>
-                      <button onClick={e => { e.stopPropagation(); openReviewModal(r, "approve"); }} className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✅</button>
-                      <button onClick={e => { e.stopPropagation(); openReviewModal(r, "reject"); }} className="text-[10px] bg-amber-800/50 text-amber-400 rounded px-2 py-1 hover:bg-amber-800">📋</button>
+                      <button onClick={e => { e.stopPropagation(); openReviewModal(r, "approve"); }} className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✅ ส่งผลอนุมัติ</button>
+                      <button onClick={e => { e.stopPropagation(); openReviewModal(r, "reject"); }} className="text-[10px] bg-amber-800/50 text-amber-400 rounded px-2 py-1 hover:bg-amber-800">📋 ส่งกลับ</button>
                     </>
                   )}
                   {!r.approval_status && checkNeedsApproval(r.type, r.value || 0) && (
@@ -2006,7 +2080,7 @@ export default function PresalePage() {
                   )}
                   <button onClick={() => isOpen ? closeDetail() : hydrateDetail(r)} className="text-[10px] rounded border border-border px-2 py-1 text-accent hover:bg-card-hover">{isOpen ? "ปิด" : "📋 Artifacts"}</button>
                   <button onClick={() => openEdit(r)} className="text-[10px] rounded border border-border px-2 py-1 text-muted hover:bg-card-hover">✏ แก้ไข</button>
-                  <button onClick={() => handleDelete(r.id!)} className="text-[10px] rounded border border-red-900/50 px-2 py-1 text-danger hover:bg-red-900/20">🗑</button>
+                  <button onClick={() => handleDelete(r.id!)} className="text-[10px] rounded border border-red-900/50 px-2 py-1 text-danger hover:bg-red-900/20">🗑 ลบ</button>
                 </div>
               </div>
             </div>
