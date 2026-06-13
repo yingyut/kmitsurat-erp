@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCurrentUser } from "@/lib/UserContext";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { isNewRole } from "@/lib/rbac";
 import { users } from "@/lib/firestore";
@@ -42,7 +42,7 @@ const SECTIONS: SectionDef[] = [
       { href: "/projects",             label: "Pipeline",    thai: "โอกาสขาย / Sales Pipeline",      icon: "🎯" },
       { href: "/quotations",           label: "Quotations",  thai: "ใบเสนอราคา",                      icon: "💰" },
       { href: "/sales-plan",           label: "Sales Plan",  thai: "แผนยอดขาย / Quota",              icon: "📈" },
-      { href: "/sales?tab=requests",   label: "Requests",    thai: "Job Requests / งานที่ส่งเข้ามา",  icon: "🙋" },
+      { href: "/sales?tab=requests",   label: "Requests",    thai: "Job Requests / งานที่ส่งเข้ามา",  icon: "🙋", badgeKey: "salesNotifs" },
     ],
   },
   {
@@ -150,54 +150,70 @@ const PRESALE_ROLES_SET = new Set(["presale", "Presales Manager", "Presales Engi
 const SERVICE_ROLES_SET = new Set(["service", "Service Manager", "Service Technician", "Operations Coordinator"]);
 
 function useBadges(userName: string | undefined, role: string | undefined): Record<string, number> {
-  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [raw, setRaw] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!userName) return;
-    let alive = true;
-    const openStatuses = ["new", "open", "in_progress"];
     const r = role ?? "";
     const isPrivileged = MANAGER_ROLES.has(r) || ["admin", "Administrator", "avenger"].includes(r);
+    const isPresale = PRESALE_ROLES_SET.has(r) || isPrivileged;
+    const isService = SERVICE_ROLES_SET.has(r) || isPrivileged;
+    const openStatuses = ["new", "open", "in_progress"];
+    const unsubs: (() => void)[] = [];
+    const live: Record<string, number> = {};
+    const uName = userName;
 
-    (async () => {
-      try {
-        const newCounts: Record<string, number> = {};
+    function flush() { setRaw({ ...live }); }
 
-        // ── Service tickets (เดิม) ──────────────────────────────────────────────
-        const qT = isPrivileged
-          ? query(collection(db, "service_tickets"), where("tenant_id", "==", "kmitsurat"), where("status", "in", openStatuses))
-          : query(collection(db, "service_tickets"), where("tenant_id", "==", "kmitsurat"), where("technician", "==", userName), where("status", "in", openStatuses));
-        const snapT = await getDocs(qT);
-        newCounts.tickets = snapT.size;
+    // ── Service tickets ────────────────────────────────────────────────────
+    const qT = isPrivileged
+      ? query(collection(db, "service_tickets"), where("tenant_id", "==", "kmitsurat"), where("status", "in", openStatuses))
+      : query(collection(db, "service_tickets"), where("tenant_id", "==", "kmitsurat"), where("technician", "==", uName), where("status", "in", openStatuses));
+    unsubs.push(onSnapshot(qT, s => { live.tickets = s.size; flush(); }, () => {}));
 
-        // ── Job Requests pending → Presale ──────────────────────────────────────
-        if (PRESALE_ROLES_SET.has(r) || isPrivileged) {
-          const qPre = query(collection(db, "job_requests"),
-            where("tenant_id", "==", "kmitsurat"),
-            where("request_to_team", "==", "presale"),
-            where("status", "==", "pending"));
-          const snapPre = await getDocs(qPre);
-          newCounts.jobReqPresale = snapPre.size;
-        }
+    // ── Job Requests → Presale + new presale tasks ─────────────────────────
+    if (isPresale) {
+      const qPre = query(collection(db, "job_requests"),
+        where("tenant_id", "==", "kmitsurat"),
+        where("request_to_team", "==", "presale"),
+        where("status", "==", "pending"));
+      unsubs.push(onSnapshot(qPre, s => { live.jobReqPresale = s.size; flush(); }, () => {}));
 
-        // ── Job Requests pending → Service (รวมกับ tickets badge) ──────────────
-        if (SERVICE_ROLES_SET.has(r) || isPrivileged) {
-          const qSvc = query(collection(db, "job_requests"),
-            where("tenant_id", "==", "kmitsurat"),
-            where("request_to_team", "==", "service"),
-            where("status", "==", "pending"));
-          const snapSvc = await getDocs(qSvc);
-          newCounts.tickets = (newCounts.tickets || 0) + snapSvc.size;
-        }
+      const qPN = query(collection(db, "presale_requests"),
+        where("tenant_id", "==", "kmitsurat"),
+        where("status", "==", "new"));
+      unsubs.push(onSnapshot(qPN, s => { live.presaleNew = s.size; flush(); }, () => {}));
+    }
 
-        if (alive) setCounts(newCounts);
-      } catch {}
-    })();
+    // ── Job Requests → Service ─────────────────────────────────────────────
+    if (isService) {
+      const qSvc = query(collection(db, "job_requests"),
+        where("tenant_id", "==", "kmitsurat"),
+        where("request_to_team", "==", "service"),
+        where("status", "==", "pending"));
+      unsubs.push(onSnapshot(qSvc, s => { live.jobReqService = s.size; flush(); }, () => {}));
+    }
 
-    return () => { alive = false; };
+    // ── Sales in-app notifications unread by current user ──────────────────
+    const qSN = query(collection(db, "notifications"),
+      where("tenant_id", "==", "kmitsurat"),
+      where("module", "==", "sales"));
+    unsubs.push(onSnapshot(qSN, s => {
+      live.salesNotifs = s.docs.filter(d => {
+        const readBy: string[] = d.data().read_by || [];
+        return !readBy.includes(uName);
+      }).length;
+      flush();
+    }, () => {}));
+
+    return () => unsubs.forEach(u => u());
   }, [userName, role]);
 
-  return counts;
+  return {
+    tickets:      (raw.tickets      || 0) + (raw.jobReqService || 0),
+    jobReqPresale:(raw.jobReqPresale|| 0) + (raw.presaleNew    || 0),
+    salesNotifs:   raw.salesNotifs  || 0,
+  };
 }
 
 // ─── NavLink ──────────────────────────────────────────────────────────────────
@@ -216,8 +232,11 @@ function NavLink({ item, active, badge }: { item: NavItem; active: boolean; badg
       <span className="text-[13px] shrink-0 leading-none">{item.icon}</span>
       <span className="flex-1 min-w-0 truncate leading-tight">{item.label}</span>
       {badge > 0 && (
-        <span className="shrink-0 min-w-[18px] h-[18px] rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center px-1 leading-none">
-          {badge > 99 ? "99+" : badge}
+        <span className="shrink-0 relative inline-flex">
+          <span className="absolute inset-0 rounded-full bg-rose-500 animate-ping opacity-60" />
+          <span className="relative min-w-[18px] h-[18px] rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center px-1 leading-none">
+            {badge > 99 ? "99+" : badge}
+          </span>
         </span>
       )}
     </Link>
@@ -299,8 +318,11 @@ function SidebarSection({
           )}
         </span>
         {!open && sectionBadge > 0 && (
-          <span className="shrink-0 min-w-[18px] h-[18px] rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center px-1 leading-none">
-            {sectionBadge > 99 ? "99+" : sectionBadge}
+          <span className="shrink-0 relative inline-flex">
+            <span className="absolute inset-0 rounded-full bg-rose-500 animate-ping opacity-60" />
+            <span className="relative min-w-[18px] h-[18px] rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center px-1 leading-none">
+              {sectionBadge > 99 ? "99+" : sectionBadge}
+            </span>
           </span>
         )}
         <span
