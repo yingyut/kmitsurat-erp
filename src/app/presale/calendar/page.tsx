@@ -1,11 +1,21 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { PresaleRequest, User } from "@/lib/types";
+import type { PresaleRequest, PresaleWorkStep, User } from "@/lib/types";
 
 const typeLabels: Record<string, string> = { solution_design: "Design", requirement_summary: "Requirement", boq: "BOQ", technical_proposal: "Proposal", site_survey: "Survey", project_planning: "Planning" };
 const statusColor: Record<string, string> = { pending: "bg-blue-500", in_progress: "bg-yellow-500", completed: "bg-green-500" };
 const statusLabel: Record<string, string> = { pending: "รอเริ่ม", in_progress: "กำลังทำ", completed: "เสร็จ" };
+const STEP_META: Record<PresaleWorkStep["type"], { icon: string; label: string }> = {
+  research:     { icon: "🔍", label: "ค้นหาข้อมูล" },
+  presentation: { icon: "🎤", label: "สร้างไฟล์นำเสนอ" },
+  boq:          { icon: "💰", label: "จัดทำ BOQ" },
+  bom:          { icon: "🛒", label: "จัดทำ BOM" },
+  design:       { icon: "🎨", label: "ออกแบบระบบ" },
+  site_visit:   { icon: "📍", label: "สำรวจหน้างาน" },
+  other:        { icon: "📝", label: "อื่นๆ" },
+};
+const STEP_STATUS_DOT: Record<string, string> = { pending: "bg-slate-500", in_progress: "bg-amber-400", done: "bg-green-500" };
 
 const DAYS_TH = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
@@ -47,6 +57,15 @@ export default function PresaleCalendarPage() {
 
   // Filter
   const filtered = personFilter === "all" ? requests : requests.filter(r => r.assigned_to === personFilter);
+
+  // Work steps — flat list
+  type StepEntry = { request: PresaleRequest; step: PresaleWorkStep };
+  const allSteps: StepEntry[] = filtered.flatMap(r =>
+    (r.work_steps || []).map(s => ({ request: r, step: s }))
+  );
+  function stepsOnDate(ds: string): StepEntry[] {
+    return allSteps.filter(e => e.step.start_date === ds);
+  }
 
   // Build calendar grid
   const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
@@ -146,25 +165,35 @@ export default function PresaleCalendarPage() {
                   if (day === null) return <div key={di} className="min-h-[80px] bg-background/30" />;
                   const ds = dateStr(day);
                   const jobs = jobsOnDate(ds);
+                  const steps = stepsOnDate(ds);
                   const isToday = ds === today;
                   const isSelected = ds === selectedDate;
                   const isPast = ds < today;
+                  const totalItems = jobs.length + steps.length;
                   return (
                     <button key={di} onClick={() => setSelectedDate(isSelected ? null : ds)}
-                      className={`min-h-[80px] p-1 text-left transition-colors border-r border-border last:border-0 ${isSelected ? "bg-accent/10" : "hover:bg-card-hover"} ${isPast && !isToday ? "opacity-60" : ""}`}>
+                      className={`min-h-[90px] p-1 text-left transition-colors border-r border-border last:border-0 ${isSelected ? "bg-accent/10" : "hover:bg-card-hover"} ${isPast && !isToday ? "opacity-60" : ""}`}>
                       <div className="flex items-center justify-between px-1">
                         <span className={`text-xs font-medium ${isToday ? "bg-accent text-white rounded-full w-5 h-5 flex items-center justify-center" : di === 0 ? "text-red-400" : di === 6 ? "text-blue-400" : ""}`}>{day}</span>
-                        {jobs.length > 0 && <span className="text-[9px] text-muted">{jobs.length}</span>}
+                        {totalItems > 0 && <span className="text-[9px] text-muted">{totalItems}</span>}
                       </div>
-                      {/* Job dots */}
+                      {/* Task due date dots */}
                       <div className="mt-1 space-y-0.5 px-0.5">
-                        {jobs.slice(0, 3).map(j => (
+                        {jobs.slice(0, 2).map(j => (
                           <div key={j.id} className="flex items-center gap-1 text-[8px] leading-tight truncate">
                             <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${statusColor[j.status]}`} />
                             <span className="truncate" style={{ color: personColor(j.assigned_to) }}>{(j.assigned_to || "").split(" ")[0].replace(/[()]/g, "")}</span>
                           </div>
                         ))}
-                        {jobs.length > 3 && <p className="text-[8px] text-muted">+{jobs.length - 3} more</p>}
+                        {/* Work step rows */}
+                        {steps.slice(0, 2).map((e, si) => (
+                          <div key={`s${si}`} className="flex items-center gap-1 text-[8px] leading-tight truncate">
+                            <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${STEP_STATUS_DOT[e.step.status]}`} />
+                            <span className="shrink-0">{STEP_META[e.step.type].icon}</span>
+                            <span className="truncate text-purple-300">{e.step.assignee || (e.request.assigned_to || "").split(" ")[0]}</span>
+                          </div>
+                        ))}
+                        {totalItems > 4 && <p className="text-[8px] text-muted">+{totalItems - 4} more</p>}
                       </div>
                     </button>
                   );
@@ -174,10 +203,15 @@ export default function PresaleCalendarPage() {
           </div>
 
           {/* Legend */}
-          <div className="flex gap-4 mt-2 text-[10px] text-muted">
+          <div className="flex gap-4 mt-2 text-[10px] text-muted flex-wrap">
+            <span className="font-medium text-muted/60">กำหนดส่ง:</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> รอเริ่ม</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500" /> กำลังทำ</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" /> เสร็จ</span>
+            <span className="font-medium text-muted/60 ml-2">แผนงาน:</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-500" /> รอ</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400" /> กำลังทำ</span>
+            <span className="flex items-center gap-1"><span className="text-purple-300">🗓 ชื่อสีม่วง</span> = แผนงาน step</span>
           </div>
         </div>
 
@@ -210,21 +244,50 @@ export default function PresaleCalendarPage() {
             <h3 className="text-sm font-semibold mb-2">
               {selectedDate ? `📅 ${selectedDate}` : "เลือกวันในปฏิทิน"}
             </h3>
-            {!selectedDate ? <p className="text-xs text-muted">คลิกวันที่เพื่อดูงาน</p> : selectedJobs.length === 0 ? <p className="text-xs text-muted">ไม่มีงานวันนี้</p> : (
-              <div className="space-y-2">
-                {selectedJobs.map(j => (
-                  <Link key={j.id} href="/presale" className="block rounded-lg bg-background border border-border p-2.5 hover:border-accent transition-colors">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className={`w-2 h-2 rounded-full ${statusColor[j.status]}`} />
-                      <span className="text-[10px] font-medium" style={{ color: personColor(j.assigned_to) }}>{(j.assigned_to || "").split(" ")[0].replace(/[()]/g, "")}</span>
-                      <span className={`rounded px-1 py-0.5 text-[8px] ${j.status === "completed" ? "bg-green-900/50 text-green-400" : j.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}>{statusLabel[j.status]}</span>
-                    </div>
-                    <p className="text-xs truncate">{typeLabels[j.type] || j.type}: {j.requirement?.slice(0, 40)}</p>
-                    <p className="text-[10px] text-muted truncate">{j.customer_name} · {j.project_name}</p>
-                  </Link>
-                ))}
-              </div>
-            )}
+            {!selectedDate ? (
+              <p className="text-xs text-muted">คลิกวันที่เพื่อดูงาน</p>
+            ) : (() => {
+              const dayJobs = jobsOnDate(selectedDate);
+              const daySteps = stepsOnDate(selectedDate);
+              return (dayJobs.length === 0 && daySteps.length === 0) ? (
+                <p className="text-xs text-muted">ไม่มีงานวันนี้</p>
+              ) : (
+                <div className="space-y-2">
+                  {dayJobs.length > 0 && (
+                    <>
+                      <p className="text-[10px] text-muted font-medium uppercase tracking-wide">📋 กำหนดส่งงาน</p>
+                      {dayJobs.map(j => (
+                        <Link key={j.id} href="/presale" className="block rounded-lg bg-background border border-border p-2.5 hover:border-accent transition-colors">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className={`w-2 h-2 rounded-full ${statusColor[j.status]}`} />
+                            <span className="text-[10px] font-medium" style={{ color: personColor(j.assigned_to) }}>{(j.assigned_to || "").split(" ")[0].replace(/[()]/g, "")}</span>
+                            <span className={`rounded px-1 py-0.5 text-[8px] ${j.status === "completed" ? "bg-green-900/50 text-green-400" : j.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}>{statusLabel[j.status]}</span>
+                          </div>
+                          <p className="text-xs truncate">{typeLabels[j.type] || j.type}: {j.requirement?.slice(0, 40)}</p>
+                          <p className="text-[10px] text-muted truncate">{j.customer_name} · {j.project_name}</p>
+                        </Link>
+                      ))}
+                    </>
+                  )}
+                  {daySteps.length > 0 && (
+                    <>
+                      <p className="text-[10px] text-muted font-medium uppercase tracking-wide mt-2">🗓 แผนงาน</p>
+                      {daySteps.map((e, i) => (
+                        <Link key={i} href="/presale" className="block rounded-lg bg-purple-900/10 border border-purple-800/30 p-2.5 hover:border-purple-500/50 transition-colors">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className={`w-2 h-2 rounded-full ${STEP_STATUS_DOT[e.step.status]}`} />
+                            <span className="text-base leading-none">{STEP_META[e.step.type].icon}</span>
+                            <span className="text-[10px] font-medium text-purple-300">{e.step.label}</span>
+                          </div>
+                          <p className="text-[10px] text-muted truncate">{e.request.customer_name}{e.request.project_name ? ` · ${e.request.project_name}` : ""}</p>
+                          <p className="text-[10px] text-muted">⏱ {e.step.duration_days} วัน{e.step.assignee ? ` · 👤 ${e.step.assignee}` : ""}</p>
+                        </Link>
+                      ))}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

@@ -1461,9 +1461,20 @@ export default function PresalePage() {
                         <span className={`rounded-full px-2 py-0.5 text-[10px] shrink-0 ${STEP_STATUS_COLOR[step.status]}`}>{STEP_STATUS_LABEL[step.status]}</span>
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-[11px] text-muted flex-wrap">
-                        <span>📅 {step.start_date}</span>
-                        <span>⏱ {step.duration_days} วัน</span>
-                        <span>→ สิ้นสุด {addDays(step.start_date, step.duration_days)}</span>
+                        <label className="flex items-center gap-0.5 cursor-pointer group">
+                          <span>📅</span>
+                          <input type="date" value={step.start_date}
+                            onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, start_date: e.target.value} : s))}
+                            className="bg-transparent border-b border-transparent group-hover:border-border focus:border-accent focus:outline-none text-[11px] text-muted hover:text-foreground cursor-pointer transition-colors" />
+                        </label>
+                        <label className="flex items-center gap-0.5 cursor-pointer group">
+                          <span>⏱</span>
+                          <input type="number" min={1} value={step.duration_days}
+                            onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, duration_days: Number(e.target.value)||1} : s))}
+                            className="w-7 text-center bg-transparent border-b border-transparent group-hover:border-border focus:border-accent focus:outline-none text-[11px] text-muted hover:text-foreground transition-colors" />
+                          <span>วัน</span>
+                        </label>
+                        <span className="text-accent/70">→ สิ้นสุด {addDays(step.start_date, step.duration_days)}</span>
                         {step.assignee && (
                           <span className="flex items-center gap-1 rounded-full px-2 py-0.5 bg-card border border-border text-foreground">
                             <span className={`w-3.5 h-3.5 rounded-full ${avatarBg(step.assignee)} flex items-center justify-center text-[7px] font-bold text-white`}>{step.assignee.slice(0,2).toUpperCase()}</span>
@@ -1481,13 +1492,11 @@ export default function PresalePage() {
                         <option value="done">เสร็จ</option>
                       </select>
                       <select value={step.assignee || ""} onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, assignee: e.target.value} : s))}
-                        className="rounded px-2 py-0.5 text-[10px] bg-card border border-border focus:outline-none cursor-pointer max-w-[100px] truncate" title="ผู้รับผิดชอบ">
+                        className="rounded px-2 py-0.5 text-[10px] bg-card border border-border focus:outline-none cursor-pointer max-w-[110px] truncate" title="ผู้รับผิดชอบ">
                         <option value="">— ผู้รับผิดชอบ —</option>
                         {presaleUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
                       </select>
-                      <input type="number" min={1} value={step.duration_days} onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, duration_days: Number(e.target.value)||1} : s))}
-                        className="w-12 text-center text-xs rounded bg-card border border-border px-1 py-0.5 focus:outline-none focus:border-accent" title="จำนวนวัน" />
-                      <button onClick={() => setWorkSteps(prev => prev.filter((_,i) => i!==idx))} className="text-danger hover:opacity-70 text-xs w-5 h-5 flex items-center justify-center">✕</button>
+                      <button onClick={() => setWorkSteps(prev => prev.filter((_,i) => i!==idx))} className="text-danger hover:opacity-70 text-xs w-5 h-5 flex items-center justify-center" title="ลบขั้นตอน">✕</button>
                     </div>
                   </div>
                 ))}
