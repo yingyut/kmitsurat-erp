@@ -460,7 +460,16 @@ export default function ServicePage() {
   const ownTicketsOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_tickets");
   const isTechView = ownTicketsOnly;
   const myIdent = currentUser?.name || currentUser?.email || "";
-  const baseTickets = ownTicketsOnly ? list.filter(t => t.technician === myIdent) : list;
+  // รวม tickets ที่ assigned ให้ตัวเอง + tickets ที่ลิ้งกับ job request ที่เราเคยรับ (ป้องกัน name mismatch เก่า)
+  const myAcceptedReqIds = new Set(
+    incomingReqs
+      .filter(r => r.status === "accepted" && (r.accepted_by === myIdent || r.assigned_to === myIdent))
+      .map(r => r.id!)
+      .filter(Boolean)
+  );
+  const baseTickets = ownTicketsOnly
+    ? list.filter(t => t.technician === myIdent || (t.job_request_id && myAcceptedReqIds.has(t.job_request_id)))
+    : list;
   const canSeeFinance = hasPermission("view_finance");
   const custMap = new Map(custs.map(c => [c.id, c]));
 
