@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest, Quotation } from "@/lib/types";
@@ -101,7 +101,6 @@ export default function SalesPage() {
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
-  const [reassigningId, setReassigningId] = useState<string | null>(null);
   const [reassignTarget, setReassignTarget] = useState("");
   const [selectedActivity, setSelectedActivity] = useState<SalesActivity | null>(null);
   const [editingActId, setEditingActId] = useState<string | null>(null);
@@ -174,6 +173,7 @@ export default function SalesPage() {
   // Inline reassign panel (inside selectedActivity modal)
   const [showReassignPanel, setShowReassignPanel] = useState(false);
   const [reassignNote,      setReassignNote]      = useState("");
+  const openReassignOnLoad = useRef(false);
 
   // Inline quick-report state (inside selectedActivity modal)
   const [qrOpen,       setQrOpen]       = useState(false);
@@ -446,7 +446,11 @@ export default function SalesPage() {
   useEffect(() => {
     setQrOpen(false); setQrOutcome(""); setQrStatus("completed");
     setQrNextAction(""); setQrNextDate(""); setQrFiles([]); setQrLinkUrl(""); setQrLinkLabel("");
-    setShowReassignPanel(false); setReassignNote(""); setReassignTarget("");
+    if (openReassignOnLoad.current) {
+      openReassignOnLoad.current = false;
+    } else {
+      setShowReassignPanel(false); setReassignNote(""); setReassignTarget("");
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedActivity?.id]);
 
@@ -565,7 +569,7 @@ export default function SalesPage() {
         resource_id: id,
         details: `โยกงานจาก ${oldAssignee || "ไม่ระบุ"} → ${newAssignee}${note.trim() ? ` | หมายเหตุ: ${note.trim()}` : ""}`,
       });
-      setReassigningId(null); setReassignTarget(""); setReassignNote(""); setShowReassignPanel(false);
+      setReassignTarget(""); setReassignNote(""); setShowReassignPanel(false);
       setSelectedActivity(null);
       await load();
     } catch (e) { console.error(e); } finally { setSaving(false); }
@@ -3111,7 +3115,6 @@ export default function SalesPage() {
         {filteredActs.length === 0 ? <p className="text-muted text-sm">ไม่พบกิจกรรม</p> : (
           <div className="space-y-1.5">{filteredActs.map(a => {
             const isOverdue = (a.next_follow_up && a.next_follow_up < today || a.next_action_date && a.next_action_date < today) && a.status !== "done";
-            const isReassigning = reassigningId === a.id;
             return (
               <div key={a.id} className={`rounded-xl bg-card border p-3 cursor-pointer hover:border-accent/30 transition-all ${isOverdue ? "border-red-800/50 hover:border-red-700/60" : "border-border"}`} onClick={() => setSelectedActivity(a)}>
                 <div className="flex items-start justify-between gap-2">
@@ -3136,31 +3139,12 @@ export default function SalesPage() {
                       {a.next_action_by && <span className="text-muted">โดย {a.next_action_by}</span>}
                       {a.converted_to_project_id && <span className="bg-green-900/50 text-badge rounded px-1.5 py-0.5">✓ Pipeline</span>}
                     </div>
-                    {isReassigning && (
-                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border">
-                        <span className="text-[10px] text-muted shrink-0">โยกงานให้:</span>
-                        <select value={reassignTarget} onChange={e => setReassignTarget(e.target.value)}
-                          className="flex-1 rounded-lg bg-background border border-accent/50 px-2 py-1 text-xs focus:outline-none focus:border-accent">
-                          <option value="">— เลือกเซลล์ —</option>
-                          {users.filter(u => ["sale","avenger"].includes(u.role) && u.active).map(u => (
-                            <option key={u.id} value={u.name}>{u.name}</option>
-                          ))}
-                        </select>
-                        <button onClick={() => reassignActivity(a.id!, reassignTarget, a.assigned_to || "")}
-                          disabled={!reassignTarget || saving}
-                          className="text-[10px] bg-accent text-white rounded px-2 py-1 hover:bg-accent-hover disabled:opacity-50">
-                          {saving ? "..." : "ยืนยัน"}
-                        </button>
-                        <button onClick={() => { setReassigningId(null); setReassignTarget(""); }}
-                          className="text-[10px] text-muted hover:text-foreground">ยกเลิก</button>
-                      </div>
-                    )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                     <select value={a.status} onChange={e => updateActivity(a.id!, { status: e.target.value })} className={`rounded-full px-2.5 py-1 text-[10px] font-bold cursor-pointer focus:outline-none text-foreground ${a.status === "done" ? "bg-green-900/50" : a.status === "in_progress" ? "bg-amber-900/50" : "bg-blue-900/50"}`}><option value="new">New</option><option value="in_progress">ทำอยู่</option><option value="done">เสร็จ</option></select>
                     {!a.converted_to_project_id && a.status !== "done" && <button onClick={() => convertActivityToPipeline(a)} title="สร้างดีล → Pipeline" className="text-[10px] bg-blue-900/50 text-badge rounded px-2 py-1 hover:bg-blue-800/60 transition-colors">→ ดีล</button>}
-                    {canReassign && !isReassigning && (
-                      <button onClick={() => { setReassigningId(a.id!); setReassignTarget(a.assigned_to || ""); }}
+                    {canReassign && (
+                      <button onClick={() => { openReassignOnLoad.current = true; setShowReassignPanel(true); setReassignTarget(a.assigned_to || ""); setSelectedActivity(a); }}
                         title="โยกงานให้เซลล์คนอื่น"
                         className="text-[10px] bg-amber-900/50 text-badge rounded px-2 py-1 hover:bg-amber-800/60 transition-colors">โยก</button>
                     )}
