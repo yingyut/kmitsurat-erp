@@ -1,13 +1,31 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { PROVINCE_COORDS } from "@/lib/thailand-coords";
 
 interface Props {
   lat?: number;
   lng?: number;
   onChange: (lat: number, lng: number) => void;
+  province?: string;
+  district?: string;
+  subdistrict?: string;
 }
 
-export default function MapPicker({ lat, lng, onChange }: Props) {
+type ViewTarget = { center: [number, number]; zoom: number };
+
+async function geocodeTH(query: string): Promise<[number, number] | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + " ประเทศไทย")}&format=json&limit=1`,
+      { headers: { "Accept-Language": "th" } }
+    );
+    const data = await res.json();
+    if (data[0]) return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+  } catch {}
+  return null;
+}
+
+export default function MapPicker({ lat, lng, onChange, province, district, subdistrict }: Props) {
   const [L, setL] = useState<typeof import("leaflet") | null>(null);
   const [RL, setRL] = useState<typeof import("react-leaflet") | null>(null);
   const [ready, setReady] = useState(false);
@@ -16,7 +34,7 @@ export default function MapPicker({ lat, lng, onChange }: Props) {
   );
   const [latStr, setLatStr] = useState(lat != null ? String(lat) : "");
   const [lngStr, setLngStr] = useState(lng != null ? String(lng) : "");
-  const mapRef = useRef<{ flyTo: (p: [number,number], z: number, opts?: object) => void } | null>(null);
+  const [viewTarget, setViewTarget] = useState<ViewTarget | null>(null);
 
   useEffect(() => {
     Promise.all([import("leaflet"), import("react-leaflet")]).then(([l, rl]) => {
@@ -24,8 +42,8 @@ export default function MapPicker({ lat, lng, onChange }: Props) {
     });
   }, []);
 
-  // Sync when parent changes lat/lng (edit mode load)
-  const prevLatLng = useRef<string>("");
+  // Sync when parent changes lat/lng (edit mode)
+  const prevLatLng = useRef("");
   useEffect(() => {
     const key = `${lat},${lng}`;
     if (lat != null && lng != null && key !== prevLatLng.current) {
@@ -34,9 +52,38 @@ export default function MapPicker({ lat, lng, onChange }: Props) {
       setPos(p);
       setLatStr(lat.toFixed(6));
       setLngStr(lng.toFixed(6));
-      mapRef.current?.flyTo(p, 15, { animate: true, duration: 0.8 });
+      setViewTarget({ center: p, zoom: 15 });
     }
   }, [lat, lng]);
+
+  // Fly to province
+  const prevProvince = useRef("");
+  useEffect(() => {
+    if (!province || province === prevProvince.current) return;
+    prevProvince.current = province;
+    const coords = PROVINCE_COORDS[province];
+    if (coords) setViewTarget({ center: coords, zoom: 10 });
+  }, [province]);
+
+  // Fly to district (geocode)
+  const prevDistrict = useRef("");
+  useEffect(() => {
+    if (!district || !province || district === prevDistrict.current) return;
+    prevDistrict.current = district;
+    geocodeTH(`อำเภอ${district} จังหวัด${province}`).then(coords => {
+      if (coords) setViewTarget({ center: coords, zoom: 12 });
+    });
+  }, [district, province]);
+
+  // Fly to subdistrict (geocode)
+  const prevSubdistrict = useRef("");
+  useEffect(() => {
+    if (!subdistrict || !district || subdistrict === prevSubdistrict.current) return;
+    prevSubdistrict.current = subdistrict;
+    geocodeTH(`ตำบล${subdistrict} อำเภอ${district} จังหวัด${province}`).then(coords => {
+      if (coords) setViewTarget({ center: coords, zoom: 14 });
+    });
+  }, [subdistrict, district, province]);
 
   function applyPos(newLat: number, newLng: number) {
     const p: [number, number] = [newLat, newLng];
@@ -51,12 +98,7 @@ export default function MapPicker({ lat, lng, onChange }: Props) {
     const n = parseFloat(v);
     if (!isNaN(n)) {
       const lngN = pos ? pos[1] : parseFloat(lngStr);
-      if (!isNaN(lngN)) {
-        const p: [number, number] = [n, lngN];
-        setPos(p);
-        onChange(n, lngN);
-        mapRef.current?.flyTo(p, 15, { animate: true, duration: 0.5 });
-      }
+      if (!isNaN(lngN)) { setPos([n, lngN]); onChange(n, lngN); setViewTarget({ center: [n, lngN], zoom: 15 }); }
     }
   }
 
@@ -65,35 +107,21 @@ export default function MapPicker({ lat, lng, onChange }: Props) {
     const n = parseFloat(v);
     if (!isNaN(n)) {
       const latN = pos ? pos[0] : parseFloat(latStr);
-      if (!isNaN(latN)) {
-        const p: [number, number] = [latN, n];
-        setPos(p);
-        onChange(latN, n);
-        mapRef.current?.flyTo(p, 15, { animate: true, duration: 0.5 });
-      }
+      if (!isNaN(latN)) { setPos([latN, n]); onChange(latN, n); setViewTarget({ center: [latN, n], zoom: 15 }); }
     }
   }
 
   function handleGeolocate() {
     if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        const p: [number, number] = [coords.latitude, coords.longitude];
-        applyPos(coords.latitude, coords.longitude);
-        mapRef.current?.flyTo(p, 16, { animate: true, duration: 1 });
-      },
-      () => {}
-    );
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      applyPos(coords.latitude, coords.longitude);
+      setViewTarget({ center: [coords.latitude, coords.longitude], zoom: 16 });
+    }, () => {});
   }
 
-  function clearPos() {
-    setPos(null);
-    setLatStr("");
-    setLngStr("");
-  }
-
-  const initCenter: [number, number] = pos ?? [13.0, 101.5];
-  const initZoom = pos ? 14 : 6;
+  const initCenter: [number, number] = pos
+    ?? (province && PROVINCE_COORDS[province] ? PROVINCE_COORDS[province] : [13.0, 101.5]);
+  const initZoom = pos ? 14 : province && PROVINCE_COORDS[province] ? 10 : 6;
 
   if (!ready || !L || !RL) {
     return (
@@ -112,12 +140,17 @@ export default function MapPicker({ lat, lng, onChange }: Props) {
     iconAnchor: [18, 36],
   });
 
-  function MapSetup() {
+  // Sub-component: handles click + programmatic fly
+  function MapController() {
     const map = useMap();
-    mapRef.current = map as typeof mapRef.current;
-    useMapEvents({
-      click(e) { applyPos(e.latlng.lat, e.latlng.lng); }
-    });
+    useMapEvents({ click(e) { applyPos(e.latlng.lat, e.latlng.lng); } });
+    useEffect(() => {
+      if (viewTarget) {
+        map.flyTo(viewTarget.center, viewTarget.zoom, { animate: true, duration: 1 });
+        setViewTarget(null);
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [viewTarget]);
     return null;
   }
 
@@ -146,14 +179,13 @@ export default function MapPicker({ lat, lng, onChange }: Props) {
           type="button"
           onClick={handleGeolocate}
           className="rounded-lg bg-background border border-border px-3 py-2 text-sm hover:bg-card-hover whitespace-nowrap"
-          title="ใช้ที่ตั้งของเครื่องนี้"
         >
           📍 ที่ตั้งปัจจุบัน
         </button>
         {pos && (
           <button
             type="button"
-            onClick={clearPos}
+            onClick={() => { setPos(null); setLatStr(""); setLngStr(""); }}
             className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:text-danger hover:border-danger"
           >
             ✕ ล้าง
@@ -163,16 +195,12 @@ export default function MapPicker({ lat, lng, onChange }: Props) {
 
       <div className="relative rounded-lg overflow-hidden border border-border" style={{ height: 240 }}>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-        <MapContainer
-          center={initCenter}
-          zoom={initZoom}
-          style={{ width: "100%", height: "100%" }}
-        >
+        <MapContainer center={initCenter} zoom={initZoom} style={{ width: "100%", height: "100%" }}>
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
           />
-          <MapSetup />
+          <MapController />
           {pos && (
             <Marker
               position={pos}
@@ -188,10 +216,7 @@ export default function MapPicker({ lat, lng, onChange }: Props) {
           )}
         </MapContainer>
         {!pos && (
-          <div
-            className="absolute inset-0 flex items-center justify-center pointer-events-none"
-            style={{ zIndex: 1000 }}
-          >
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 1000 }}>
             <div className="bg-background/80 backdrop-blur-sm rounded-lg px-4 py-2 text-xs text-muted border border-border shadow">
               คลิกบนแผนที่เพื่อปักหมุด หรือกรอก lat/lng ด้านบน
             </div>

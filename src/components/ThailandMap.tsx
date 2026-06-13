@@ -1,35 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { Customer } from "@/lib/types";
+import { PROVINCE_COORDS } from "@/lib/thailand-coords";
 
-const PROVINCE_COORDS: Record<string, [number, number]> = {
-  "กรุงเทพ": [13.7563, 100.5018], "กระบี่": [8.0863, 98.9063], "กาญจนบุรี": [14.0227, 99.5328],
-  "กาฬสินธุ์": [16.4322, 103.5061], "กำแพงเพชร": [16.4827, 99.5226], "ขอนแก่น": [16.4419, 102.8360],
-  "จันทบุรี": [12.6113, 102.1037], "ฉะเชิงเทรา": [13.6904, 101.0779], "ชลบุรี": [13.3611, 100.9847],
-  "ชัยนาท": [15.1851, 100.1251], "ชัยภูมิ": [15.8068, 102.0317], "ชุมพร": [10.4930, 99.1800],
-  "เชียงราย": [19.9105, 99.8406], "เชียงใหม่": [18.7883, 98.9853], "ตรัง": [7.5563, 99.6114],
-  "ตราด": [12.2428, 102.5176], "ตาก": [16.8840, 99.1258], "นครนายก": [14.2069, 101.2133],
-  "นครปฐม": [13.8199, 100.0645], "นครพนม": [17.3920, 104.7695], "นครราชสีมา": [14.9799, 102.0978],
-  "นครศรีธรรมราช": [8.4304, 99.9631], "นครสวรรค์": [15.7030, 100.1371], "นนทบุรี": [13.8622, 100.5144],
-  "นราธิวาส": [6.4254, 101.8253], "น่าน": [18.7756, 100.7730], "บึงกาฬ": [18.3609, 103.6466],
-  "บุรีรัมย์": [14.9930, 103.1029], "ปทุมธานี": [14.0208, 100.5253], "ประจวบคีรีขันธ์": [11.8126, 99.7957],
-  "ปราจีนบุรี": [14.0509, 101.3717], "ปัตตานี": [6.8699, 101.2502], "พระนครศรีอยุธยา": [14.3692, 100.5877],
-  "พะเยา": [19.1664, 99.9019], "พังงา": [8.4509, 98.5213], "พัทลุง": [7.6167, 100.0740],
-  "พิจิตร": [16.4429, 100.3486], "พิษณุโลก": [16.8211, 100.2659], "เพชรบุรี": [13.1112, 99.9391],
-  "เพชรบูรณ์": [16.4190, 101.1591], "แพร่": [18.1445, 100.1403], "ภูเก็ต": [7.8804, 98.3923],
-  "มหาสารคาม": [16.1851, 103.3008], "มุกดาหาร": [16.5424, 104.7233], "แม่ฮ่องสอน": [19.3020, 97.9654],
-  "ยโสธร": [15.7944, 104.1451], "ยะลา": [6.5410, 101.2803], "ร้อยเอ็ด": [16.0538, 103.6520],
-  "ระนอง": [9.9529, 98.6085], "ระยอง": [12.6814, 101.2816], "ราชบุรี": [13.5283, 99.8134],
-  "ลพบุรี": [14.7995, 100.6534], "ลำปาง": [18.2888, 99.4907], "ลำพูน": [18.5744, 99.0087],
-  "เลย": [17.4860, 101.7223], "ศรีสะเกษ": [15.1186, 104.3220], "สกลนคร": [17.1545, 104.1348],
-  "สงขลา": [7.1896, 100.5945], "สตูล": [6.6238, 100.0675], "สมุทรปราการ": [13.5991, 100.5998],
-  "สมุทรสงคราม": [13.4094, 100.0023], "สมุทรสาคร": [13.5475, 100.2747], "สระแก้ว": [13.8241, 102.0645],
-  "สระบุรี": [14.5289, 100.9101], "สิงห์บุรี": [14.8936, 100.3967], "สุโขทัย": [17.0076, 99.8231],
-  "สุพรรณบุรี": [14.4744, 100.1177], "สุราษฎร์ธานี": [9.1382, 99.3217], "สุรินทร์": [14.8820, 103.4937],
-  "หนองคาย": [17.8782, 102.7420], "หนองบัวลำภู": [17.2042, 102.4260], "อ่างทอง": [14.5896, 100.4549],
-  "อำนาจเจริญ": [15.8656, 104.6258], "อุดรธานี": [17.4156, 102.7872], "อุตรดิตถ์": [17.6200, 100.0993],
-  "อุทัยธานี": [15.3830, 100.0244], "อุบลราชธานี": [15.2287, 104.8564],
-};
 
 const HQ: [number, number] = [9.1382, 99.3217]; // KMITSURAT สุราษฎร์ธานี
 
@@ -76,9 +49,13 @@ export default function ThailandMap({ customers, myCustomers, selectedProvince, 
 
   const { MapContainer, TileLayer, Marker, Polyline, Popup } = RL;
 
-  // Group all customers by province
+  // Split: exact-pin customers vs province-only
+  const pinnedCustomers = customers.filter(c => c.lat != null && c.lng != null);
+  const pinnedIds = new Set(pinnedCustomers.map(c => c.id));
+
   const byProv: Record<string, Customer[]> = {};
   customers.forEach(c => {
+    if (pinnedIds.has(c.id)) return; // shown as individual pin
     if (c.province && PROVINCE_COORDS[c.province]) {
       (byProv[c.province] ??= []).push(c);
     }
@@ -149,7 +126,49 @@ export default function ThailandMap({ customers, myCustomers, selectedProvince, 
             );
           })}
 
-          {/* Province markers */}
+          {/* Individual exact-position pins */}
+          {pinnedCustomers.map(c => {
+            const s = getCustomerSummary(c);
+            const fp = freshnessPct(s.lastContactDays);
+            const fc = freshnessCol(fp);
+            const pinIcon = L.divIcon({
+              className: "",
+              html: `<div style="display:flex;flex-direction:column;align-items:center">
+                <div style="background:${fc};color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis">${c.company_name}</div>
+                <div style="width:2px;height:6px;background:${fc}"></div>
+                <div style="width:8px;height:8px;background:${fc};border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>
+              </div>`,
+              iconSize: [120, 36],
+              iconAnchor: [60, 36],
+            });
+            const dayLabel = s.lastContactDays === null ? "ไม่มีข้อมูล"
+              : s.lastContactDays === 0 ? "วันนี้"
+              : s.lastContactDays < 30 ? `${s.lastContactDays} วัน`
+              : s.lastContactDays < 365 ? `${Math.round(s.lastContactDays / 30)} เดือน`
+              : `${(s.lastContactDays / 365).toFixed(1)} ปี`;
+            return (
+              <Marker key={c.id} position={[c.lat!, c.lng!]} icon={pinIcon}>
+                <Popup>
+                  <div style={{ minWidth: 200, fontFamily: "sans-serif", padding: "10px 14px" }}>
+                    <p style={{ fontWeight: 700, fontSize: 13, margin: "0 0 4px" }}>{c.company_name}</p>
+                    {c.contact_name && <p style={{ fontSize: 11, color: "#64748b", margin: "0 0 2px" }}>{c.contact_name} {c.phone ? `· ${c.phone}` : ""}</p>}
+                    {c.address && <p style={{ fontSize: 10, color: "#94a3b8", margin: "0 0 6px" }}>{c.address}</p>}
+                    <div style={{ display: "flex", gap: 8, fontSize: 10, color: "#475569", flexWrap: "wrap" }}>
+                      {s.projects > 0 && <span>📁 {s.projects} โปรเจค</span>}
+                      {s.quotations > 0 && <span>📋 {s.quotations} ใบเสนอ</span>}
+                      {s.openJobs > 0 && <span style={{ color: "#ef4444" }}>⚠ {s.openJobs} งานค้าง</span>}
+                      {s.totalValue > 0 && <span style={{ color: "#22c55e" }}>฿{(s.totalValue / 1000).toFixed(0)}K</span>}
+                    </div>
+                    <p style={{ fontSize: 10, color: fc, fontWeight: 600, marginTop: 4 }}>● ติดต่อล่าสุด {dayLabel}</p>
+                    <a href={`https://www.google.com/maps?q=${c.lat},${c.lng}`} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 10, color: "#3b82f6", display: "block", marginTop: 4 }}>ดูใน Google Maps ↗</a>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
+
+          {/* Province cluster markers (customers without exact pin) */}
           {Object.entries(byProv).map(([prov, custs]) => {
             const coords = PROVINCE_COORDS[prov];
             if (!coords) return null;

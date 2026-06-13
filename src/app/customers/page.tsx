@@ -567,6 +567,9 @@ export default function CustomersPage() {
               lat={form.lat}
               lng={form.lng}
               onChange={(lat, lng) => setForm(f => ({ ...f, lat, lng }))}
+              province={form.province}
+              district={form.district}
+              subdistrict={form.subdistrict}
             />
 
             {/* ── Section 4: CRM ───────────────────────────────── */}
