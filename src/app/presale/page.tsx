@@ -302,6 +302,7 @@ export default function PresalePage() {
   const [dateTo, setDateTo] = useState("");
   const [valueMin, setValueMin] = useState<number | "">("");
   const [valueMax, setValueMax] = useState<number | "">("");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -456,6 +457,19 @@ export default function PresalePage() {
     if (viewFilter === "cancelled") return r.status === "cancelled";
     return true;
   });
+
+  function tsMillis(r: PresaleRequest): number {
+    const ca = r.created_at as { toMillis?: () => number; seconds?: number } | string | number | null | undefined;
+    if (!ca) return 0;
+    if (typeof ca === "object" && ca !== null && typeof (ca as { toMillis?: () => number }).toMillis === "function") return (ca as { toMillis: () => number }).toMillis();
+    if (typeof ca === "object" && ca !== null && typeof (ca as { seconds?: number }).seconds === "number") return ((ca as { seconds: number }).seconds) * 1000;
+    if (typeof ca === "number") return ca;
+    if (typeof ca === "string") return new Date(ca).getTime();
+    return 0;
+  }
+  const sortedFiltered = [...filtered].sort((a, b) =>
+    sortOrder === "newest" ? tsMillis(b) - tsMillis(a) : tsMillis(a) - tsMillis(b)
+  );
 
   // Dashboard stats (scoped to what user can see)
   const today = todayStr();
@@ -1996,6 +2010,11 @@ export default function PresalePage() {
             </div>
           )}
           <input placeholder="🔍 ค้นหา requirement / ลูกค้า / โปรเจค..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-40 rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
+          <button onClick={() => setSortOrder(o => o === "newest" ? "oldest" : "newest")}
+            className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover hover:border-accent/50 transition-colors flex items-center gap-1"
+            title="เรียงลำดับตามวันที่รับงาน">
+            {sortOrder === "newest" ? "⬇ ใหม่สุดก่อน" : "⬆ เก่าสุดก่อน"}
+          </button>
           <p className="text-xs text-muted shrink-0">{filtered.length} รายการ</p>
         </div>
         {/* Advanced filters — date range & value range */}
@@ -2024,7 +2043,7 @@ export default function PresalePage() {
       {/* Task List */}
       {loading ? (
         <div className="text-center py-12 text-muted text-sm">Loading...</div>
-      ) : filtered.length === 0 ? (
+      ) : sortedFiltered.length === 0 ? (
         <div className="text-center py-16 rounded-xl bg-card border border-border">
           <p className="text-4xl mb-3">📋</p>
           <p className="text-base font-medium">ไม่มีงานในขณะนี้</p>
@@ -2033,7 +2052,7 @@ export default function PresalePage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-2">{pageTab === "list" && filtered.map((r) => {
+        <div className="space-y-2">{pageTab === "list" && sortedFiltered.map((r) => {
           const isOverdue = !!(r.due_date && r.due_date < today && r.status !== "completed" && r.status !== "cancelled");
           const isDueToday = r.due_date === today && r.status !== "completed" && r.status !== "cancelled";
           const bomCount = (r.bom_items || []).length;
