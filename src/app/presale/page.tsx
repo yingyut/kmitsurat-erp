@@ -284,6 +284,9 @@ export default function PresalePage() {
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [reviewModal, setReviewModal] = useState<{ request: PresaleRequest; action: "approve" | "reject" } | null>(null);
+  const [reviewSummary, setReviewSummary] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const cid = p.get("customer_id"); const cname = p.get("customer_name");
@@ -389,6 +392,9 @@ export default function PresalePage() {
   const canApprove = isAdmin || hasPermission("approve_presale") ||
     approvalSettings?.primary_approver === myName ||
     (approvalSettings?.substitute_approvers || []).includes(myName);
+  const presaleRoleSet = new Set(["presale", "Presales Engineer", "Presales Manager"]);
+  const isPresaleUser = presaleRoleSet.has(myRole) || (currentUser?.extra_roles as string[] || []).some((r: string) => presaleRoleSet.has(r));
+  const canReview = isPresaleUser || canApprove;
   const isManager = canApprove || hasPermission("manage_presale");
   const ownOnly = !isManager && !!currentUser;
 
@@ -484,6 +490,7 @@ export default function PresalePage() {
           approval_status: needsApproval ? "pending_review" : "not_required",
           approval_requested_at: needsApproval ? todayStr() : "",
           co_approvers: [],
+          created_by: currentUser?.name || "",
         } as unknown as Record<string, unknown>);
 
         // Notify ALL presale team members (in-app + workflow channels)
@@ -524,19 +531,66 @@ export default function PresalePage() {
     await load();
   }
 
-  async function handleApprove(r: PresaleRequest) {
-    const note = prompt("หมายเหตุการอนุมัติ (ไม่บังคับ)") ?? "";
-    const { presaleRequests } = await import("@/lib/firestore");
-    await presaleRequests.update(r.id!, { approval_status: "approved", reviewed_by: myName, reviewed_at: todayStr(), review_note: note });
-    if (detail?.id === r.id) setDetail({ ...r, approval_status: "approved", reviewed_by: myName, reviewed_at: todayStr(), review_note: note });
-    await load();
+  function openReviewModal(r: PresaleRequest, action: "approve" | "reject") {
+    setReviewModal({ request: r, action });
+    setReviewSummary("");
+    setReviewNote("");
   }
-  async function handleReject(r: PresaleRequest) {
-    const note = prompt("เหตุผลที่ส่งกลับแก้ไข:");
-    if (!note) return;
-    const { presaleRequests } = await import("@/lib/firestore");
-    await presaleRequests.update(r.id!, { approval_status: "rejected", reviewed_by: myName, reviewed_at: todayStr(), review_note: note });
-    if (detail?.id === r.id) setDetail({ ...r, approval_status: "rejected", reviewed_by: myName, reviewed_at: todayStr(), review_note: note });
+
+  async function handleReviewSubmit() {
+    if (!reviewModal) return;
+    const { request, action } = reviewModal;
+    const { presaleRequests, inAppNotifications } = await import("@/lib/firestore");
+    const updates: Record<string, unknown> = {
+      approval_status: action === "approve" ? "approved" : "rejected",
+      reviewed_by: myName, reviewed_at: todayStr(),
+      review_note: reviewNote, review_summary: reviewSummary,
+      status: action === "approve" ? "in_progress" : "waiting_info",
+    };
+    await presaleRequests.update(request.id!, updates);
+    if (detail?.id === request.id) setDetail({ ...request, ...(updates as Partial<PresaleRequest>) });
+
+    const requesterName = request.created_by || "";
+    const requesterUser = allUsers.find(u => u.name === requesterName);
+    const toEmail = requesterUser?.email || "";
+
+    const subject = action === "approve"
+      ? `✅ [Presale] ดำเนินการได้: ${request.customer_name} — ${typeLabels[request.type]}`
+      : `📋 [Presale] ส่งกลับ/แนะนำเพิ่มเติม: ${request.customer_name} — ${typeLabels[request.type]}`;
+    const emailBody = [
+      `ผลการพิจารณาคำขอ Presale`,
+      `─────────────────────────`,
+      `ลูกค้า       : ${request.customer_name}`,
+      `โปรเจค      : ${request.project_name || "—"}`,
+      `ประเภทงาน   : ${typeLabels[request.type]}`,
+      `ความต้องการ : ${request.requirement}`,
+      `─────────────────────────`,
+      `ผลการพิจารณา: ${action === "approve" ? "✅ ดำเนินการได้" : "📋 ส่งกลับ / ต้องการข้อมูลเพิ่มเติม"}`,
+      reviewSummary ? `\nสรุปผลการพิจารณา:\n${reviewSummary}` : "",
+      reviewNote    ? `\nหมายเหตุ: ${reviewNote}` : "",
+      `─────────────────────────`,
+      `พิจารณาโดย: ${myName}  วันที่: ${todayStr()}`,
+    ].filter(Boolean).join("\n");
+
+    if (toEmail) {
+      const emailChannel = notifChannels.find(c => c.type === "email" && c.active);
+      if (emailChannel) {
+        fetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel: emailChannel, to_emails: [toEmail], subject, body: emailBody }),
+        }).catch(e => console.warn("[notify] review email", e));
+      }
+    }
+    if (requesterName) {
+      inAppNotifications.add({
+        tenant_id: "kmitsurat", module: "presale", trigger: "presale_status_changed",
+        title: action === "approve" ? `✅ Presale ดำเนินการได้: ${request.customer_name}` : `📋 Presale ส่งกลับ: ${request.customer_name}`,
+        body: [action === "approve" ? "ดำเนินการได้" : "ส่งกลับ/แนะนำเพิ่มเติม",
+          reviewSummary ? `สรุป: ${reviewSummary.slice(0,80)}` : "", `โดย: ${myName}`].filter(Boolean).join(" | "),
+        link: "/presale", metadata: { task_id: request.id },
+        recipients: [requesterName], read_by: [],
+      } as Record<string, unknown>).catch(e => console.warn("[notify] in-app to requester", e));
+    }
+    setReviewModal(null); setReviewSummary(""); setReviewNote("");
     await load();
   }
   async function requestApproval(r: PresaleRequest) {
@@ -1141,12 +1195,21 @@ export default function PresalePage() {
                 {(detail.value || 0) > 0 && <span>· 💰 {(detail.value || 0).toLocaleString()} THB</span>}
               </p>
               <p className="text-xs text-muted mt-1 italic">📋 {detail.requirement}</p>
-              {/* Approval actions for approvers */}
-              {canApprove && detail.approval_status === "pending_review" && (
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => handleApprove(detail)} className="rounded-lg bg-green-700/60 text-green-200 px-3 py-1 text-xs hover:bg-green-700">✅ อนุมัติ</button>
-                  <button onClick={() => handleReject(detail)} className="rounded-lg bg-red-700/60 text-red-200 px-3 py-1 text-xs hover:bg-red-700">❌ ส่งกลับแก้ไข</button>
-                  <button onClick={() => addCoApprover(detail)} className="rounded-lg border border-border text-muted px-3 py-1 text-xs hover:bg-card-hover">+ ผู้ตรวจสอบร่วม</button>
+              {/* Review actions for presale team */}
+              {canReview && !["approved","rejected"].includes(detail.approval_status || "") && (
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  <button onClick={() => openReviewModal(detail, "approve")} className="rounded-lg bg-green-700/60 text-green-200 px-3 py-1.5 text-xs hover:bg-green-700">✅ ส่งผลอนุมัติ</button>
+                  <button onClick={() => openReviewModal(detail, "reject")} className="rounded-lg bg-amber-700/60 text-amber-200 px-3 py-1.5 text-xs hover:bg-amber-700">📋 ส่งกลับ / แนะนำ</button>
+                  {canApprove && <button onClick={() => addCoApprover(detail)} className="rounded-lg border border-border text-muted px-3 py-1.5 text-xs hover:bg-card-hover">+ ผู้ตรวจสอบร่วม</button>}
+                </div>
+              )}
+              {/* Show review result if already reviewed */}
+              {(detail.approval_status === "approved" || detail.approval_status === "rejected") && detail.review_summary && (
+                <div className={`mt-2 rounded-lg px-3 py-2 text-xs border ${detail.approval_status === "approved" ? "bg-green-900/20 border-green-500/20 text-green-300" : "bg-amber-900/20 border-amber-500/20 text-amber-300"}`}>
+                  <p className="font-medium mb-1">{detail.approval_status === "approved" ? "✅ สรุปผลการพิจารณา" : "📋 สรุปผล / คำแนะนำ"}</p>
+                  <p className="whitespace-pre-wrap">{detail.review_summary}</p>
+                  {detail.review_note && <p className="mt-1 text-muted">หมายเหตุ: {detail.review_note}</p>}
+                  <p className="mt-1 text-muted">โดย: {detail.reviewed_by} · {detail.reviewed_at}</p>
                 </div>
               )}
               {detail.co_approvers && detail.co_approvers.length > 0 && (
@@ -1710,10 +1773,10 @@ export default function PresalePage() {
                   {fileCount > 0 && <span className="rounded bg-purple-900/30 px-1.5 py-0.5 text-[10px] text-purple-400">📎 {fileCount}</span>}
                 </div>
                 <div className="flex gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
-                  {canApprove && r.approval_status === "pending_review" && (
+                  {canReview && !["approved","rejected"].includes(r.approval_status || "") && (
                     <>
-                      <button onClick={() => handleApprove(r)} className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✅</button>
-                      <button onClick={() => handleReject(r)} className="text-[10px] bg-red-800/50 text-red-400 rounded px-2 py-1 hover:bg-red-800">❌</button>
+                      <button onClick={e => { e.stopPropagation(); openReviewModal(r, "approve"); }} className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✅</button>
+                      <button onClick={e => { e.stopPropagation(); openReviewModal(r, "reject"); }} className="text-[10px] bg-amber-800/50 text-amber-400 rounded px-2 py-1 hover:bg-amber-800">📋</button>
                     </>
                   )}
                   {!r.approval_status && checkNeedsApproval(r.type, r.value || 0) && (
@@ -1951,6 +2014,71 @@ export default function PresalePage() {
           </div>
         );
       })()}
+
+      {/* ── Review Modal ── */}
+      {reviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
+          <div className="w-full max-w-lg rounded-2xl bg-card border border-border shadow-2xl overflow-hidden">
+            <div className={`px-5 py-4 border-b border-border flex items-center gap-3 ${reviewModal.action === "approve" ? "bg-green-900/20" : "bg-amber-900/20"}`}>
+              <span className="text-2xl">{reviewModal.action === "approve" ? "✅" : "📋"}</span>
+              <div>
+                <p className="font-semibold text-sm">{reviewModal.action === "approve" ? "ส่งผลอนุมัติ — ดำเนินการได้" : "ส่งกลับ / คำแนะนำ"}</p>
+                <p className="text-xs text-muted">{reviewModal.request.customer_name} · {typeLabels[reviewModal.request.type]}</p>
+              </div>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Summary of request */}
+              <div className="rounded-lg bg-background border border-border px-3 py-2.5 text-xs text-muted">
+                <p className="font-medium text-foreground mb-1">📋 ความต้องการที่ขอ</p>
+                <p className="whitespace-pre-wrap">{reviewModal.request.requirement}</p>
+              </div>
+              {/* Review summary */}
+              <div>
+                <label className="text-xs font-medium text-foreground block mb-1.5">
+                  {reviewModal.action === "approve" ? "สรุปผลการพิจารณา / แนวทางดำเนินงาน *" : "สรุปผล / เหตุผล / คำแนะนำ *"}
+                </label>
+                <textarea
+                  value={reviewSummary}
+                  onChange={e => setReviewSummary(e.target.value)}
+                  rows={5}
+                  placeholder={reviewModal.action === "approve"
+                    ? "สรุปแนวทางที่จะดำเนินการ เช่น Solution ที่เสนอ, ระยะเวลา, สิ่งที่ต้องใช้..."
+                    : "ระบุเหตุผลที่ส่งกลับ หรือข้อมูลที่ต้องการเพิ่มเติม / ข้อแนะนำ..."}
+                  className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent resize-y"
+                />
+              </div>
+              {/* Optional note */}
+              <div>
+                <label className="text-xs font-medium text-muted block mb-1.5">หมายเหตุเพิ่มเติม (ไม่บังคับ)</label>
+                <input
+                  value={reviewNote}
+                  onChange={e => setReviewNote(e.target.value)}
+                  placeholder="หมายเหตุ / เงื่อนไข..."
+                  className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"
+                />
+              </div>
+              {reviewModal.request.created_by && (
+                <p className="text-[11px] text-muted">
+                  📧 ผลจะแจ้งเตือนไปยัง <span className="text-accent">{reviewModal.request.created_by}</span>{" "}
+                  {allUsers.find(u => u.name === reviewModal.request.created_by)?.email
+                    ? `(${allUsers.find(u => u.name === reviewModal.request.created_by)?.email})` : ""}
+                  {" "}ทาง In-App และอีเมล
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-border bg-card-hover">
+              <button onClick={() => setReviewModal(null)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card">ยกเลิก</button>
+              <button
+                onClick={handleReviewSubmit}
+                disabled={!reviewSummary.trim()}
+                className={`rounded-lg px-5 py-2 text-sm font-medium text-white disabled:opacity-40 ${reviewModal.action === "approve" ? "bg-green-700 hover:bg-green-600" : "bg-amber-700 hover:bg-amber-600"}`}
+              >
+                {reviewModal.action === "approve" ? "✅ ยืนยันอนุมัติ & ส่งแจ้งเตือน" : "📋 ยืนยันส่งกลับ & ส่งแจ้งเตือน"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

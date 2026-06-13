@@ -391,6 +391,8 @@ export interface PresaleRequest {
   converted_to_quotation_id?: string;
   converted_quotation_number?: string;
   converted_at?: string;
+  // Submitter
+  created_by?: string;
   // Approval workflow
   value?: number;
   approval_status?: "pending_review" | "approved" | "rejected" | "not_required";
@@ -398,6 +400,7 @@ export interface PresaleRequest {
   reviewed_by?: string;
   reviewed_at?: string;
   review_note?: string;
+  review_summary?: string;
   co_approvers?: string[];
 }
 
