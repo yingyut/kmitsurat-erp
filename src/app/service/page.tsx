@@ -152,12 +152,14 @@ function StatusUpdateModal({
 }: {
   ticket: ServiceTicket;
   newStatus: ServiceStatus;
-  onConfirm: (note: string, files: PendingFile[]) => Promise<void>;
+  onConfirm: (note: string, files: PendingFile[], link?: string) => Promise<void>;
   onCancel: () => void;
 }) {
   const [note, setNote] = useState("");
   const [files, setFiles] = useState<PendingFile[]>([]);
+  const [link, setLink] = useState("");
   const [saving, setSaving] = useState(false);
+  const isClose = newStatus === "closed";
 
   async function addFiles(e: React.ChangeEvent<HTMLInputElement>, kind: "photo" | "document") {
     const list = Array.from(e.target.files ?? []);
@@ -180,7 +182,7 @@ function StatusUpdateModal({
 
   async function confirm() {
     setSaving(true);
-    await onConfirm(note, files);
+    await onConfirm(note, files, link.trim() || undefined);
     setSaving(false);
   }
 
@@ -208,6 +210,16 @@ function StatusUpdateModal({
               placeholder="ระบุสิ่งที่พบ, ขั้นตอนที่ทำ, หรือหมายเหตุ..."
               rows={3}
               className="w-full rounded-xl bg-background border border-border px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none" />
+          </div>
+
+          {/* Link input — always shown, highlighted for closure */}
+          <div className={isClose ? "rounded-xl border border-amber-500/40 bg-amber-500/5 p-3" : ""}>
+            {isClose && <p className="text-[10px] font-semibold text-amber-400 mb-1.5">🔗 แนบลิ้ง (Google Form / รายงาน / เอกสาร)</p>}
+            {!isClose && <label className="text-[10px] font-semibold text-muted uppercase tracking-widest block mb-1.5">🔗 แนบลิ้ง (ไม่บังคับ)</label>}
+            <input type="url" value={link} onChange={e => setLink(e.target.value)}
+              placeholder="https://docs.google.com/..."
+              className="w-full rounded-xl bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            {isClose && <p className="text-[10px] text-muted mt-1">หลังปิดงาน ธุรการจะได้รับแจ้งเตือนเพื่อบันทึกลงประวัติลูกค้า</p>}
           </div>
 
           {/* Upload buttons */}
@@ -364,6 +376,7 @@ export default function ServicePage() {
   const [projs, setProjs]             = useState<Project[]>([]);
   const [incomingReqs, setIncomingReqs] = useState<JobRequest[]>([]);
   const [svcUsers, setSvcUsers]       = useState<User[]>([]);
+  const [adminUsers, setAdminUsers]   = useState<User[]>([]);
   const [assetList, setAssetList]     = useState<Asset[]>([]);
   const [search, setSearch]           = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | ServiceStatus>("all");
@@ -451,7 +464,10 @@ export default function ServicePage() {
         fs.customers.subscribe(data => setCusts(data)),
         fs.projects.subscribe(data => setProjs(data)),
         fs.jobRequests.subscribe(data => setIncomingReqs(data.filter(j => j.request_to_team === "service"))),
-        fs.users.subscribe(data => setSvcUsers(data.filter(x => x.active !== false && (x.role === "service" || x.role === "Service Technician" || x.role === "Service Manager")))),
+        fs.users.subscribe(data => {
+          setSvcUsers(data.filter(x => x.active !== false && (x.role === "service" || x.role === "Service Technician" || x.role === "Service Manager")));
+          setAdminUsers(data.filter(x => x.active !== false && ["admin","Administrator","avenger","ธุรการ","Branch Manager"].some(r => x.role?.includes(r))));
+        }),
         fs.assets.subscribe(data => setAssetList(data)),
         fs.inAppNotifications.subscribe(data => setMyNotifs(data.filter(n => n.module === "service"))),
       );
@@ -804,10 +820,14 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
   }
 
   // ── Handler functions (unchanged) ────────────────────────────────────────────
-  async function confirmStatusChange(note: string, files: PendingFile[]) {
+  async function confirmStatusChange(note: string, files: PendingFile[], link?: string) {
     if (!pendingChange) return;
     const { ticket, newStatus } = pendingChange;
     await changeStatus(ticket, newStatus, undefined, note || undefined);
+    if (link) {
+      const { serviceTickets } = await import("@/lib/firestore");
+      await serviceTickets.update(ticket.id!, { closure_link: link });
+    }
     if (files.length > 0) {
       const { serviceAttachments } = await import("@/lib/firestore");
       await Promise.all(files.map(f =>
@@ -820,6 +840,20 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
           created_by: currentUser?.name || "",
         })
       ));
+    }
+    if (newStatus === "closed" && adminUsers.length > 0) {
+      const { inAppNotifications } = await import("@/lib/firestore");
+      await inAppNotifications.add({
+        tenant_id: "kmitsurat",
+        module: "service",
+        trigger: "ticket_closed",
+        title: `🔒 ปิดงานแล้ว — รอบันทึกประวัติ`,
+        body: `${ticket.customer_name} · ${(ticket.issue || "").slice(0, 60)} | ช่าง: ${ticket.technician}${link ? ` | ลิ้ง: ${link}` : ""}`,
+        link: `/service`,
+        metadata: { ticket_id: ticket.id, customer_id: ticket.customer_id, closure_link: link || "" },
+        recipients: adminUsers.map(u => u.name).filter(Boolean),
+        read_by: [],
+      } as Record<string, unknown>);
     }
     setPendingChange(null);
   }
