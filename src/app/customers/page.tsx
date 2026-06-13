@@ -5,6 +5,7 @@ import type { Customer, Project, Quotation, ServiceTicket, User } from "@/lib/ty
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
 import CsvImportExport from "@/components/CsvImportExport";
+import { DISTRICTS, SUBDISTRICTS } from "@/lib/thailand-geo";
 
 const CUST_COLS = [
   { key: "company_name", label: "ชื่อบริษัท/องค์กร" },
@@ -28,7 +29,7 @@ const provinces = ["กรุงเทพ","กระบี่","กาญจน
 
 const emptyForm = {
   company_name: "", contact_name: "", phone: "", phone2: "", email: "",
-  address: "", province: "สุราษฎร์ธานี",
+  address: "", province: "สุราษฎร์ธานี", district: "", subdistrict: "",
   org_type: "private" as Customer["org_type"],
   tax_id: "", line_id: "", facebook: "", website: "",
   notes: "",
@@ -56,6 +57,11 @@ export default function CustomersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId]     = useState<string | null>(null);
   const [form, setForm]         = useState(emptyForm);
+
+  // Company name autocomplete
+  const [nameSearch, setNameSearch] = useState("");
+  const [nameDropOpen, setNameDropOpen] = useState(false);
+  const [dupMatch, setDupMatch] = useState<Customer | null>(null); // exact duplicate found
 
   // Hover popup
   const [hoverCust, setHoverCust] = useState<Customer | null>(null);
@@ -179,6 +185,7 @@ export default function CustomersPage() {
   function openAdd() {
     setEditId(null);
     setForm({ ...emptyForm, assigned_to: canViewAll ? "" : (currentUser?.name ?? "") });
+    setNameSearch(""); setNameDropOpen(false); setDupMatch(null);
     setShowForm(true);
   }
 
@@ -187,13 +194,15 @@ export default function CustomersPage() {
     setForm({
       company_name: c.company_name, contact_name: c.contact_name,
       phone: c.phone, phone2: c.phone2 || "", email: c.email, address: c.address,
-      province: c.province || "", org_type: c.org_type || "other",
+      province: c.province || "", district: c.district || "", subdistrict: c.subdistrict || "",
+      org_type: c.org_type || "other",
       tax_id: c.tax_id || "", line_id: c.line_id || "",
       facebook: c.facebook || "", website: c.website || "",
       notes: c.notes,
       assigned_to: c.assigned_to || "",
       co_owners: c.co_owners || [],
     });
+    setNameSearch(""); setNameDropOpen(false); setDupMatch(null);
     setShowForm(true);
   }
 
@@ -205,7 +214,8 @@ export default function CustomersPage() {
       const saveData: Record<string, unknown> = {
         company_name: form.company_name, contact_name: form.contact_name,
         phone: form.phone, phone2: form.phone2, email: form.email, address: form.address,
-        province: form.province, org_type: form.org_type, notes: form.notes,
+        province: form.province, district: form.district, subdistrict: form.subdistrict,
+        org_type: form.org_type, notes: form.notes,
         tax_id: form.tax_id, line_id: form.line_id,
         facebook: form.facebook, website: form.website,
         assigned_to: form.assigned_to || (!canViewAll ? (currentUser?.name ?? "") : ""),
@@ -221,7 +231,7 @@ export default function CustomersPage() {
           await logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "create", module: "customers", resource_id: (docRef as { id?: string }).id, resource_name: form.company_name, details: `สร้างลูกค้า: ${form.company_name}` });
         } catch {}
       }
-      setForm(emptyForm); setShowForm(false); setEditId(null); await load();
+      setForm(emptyForm); setShowForm(false); setEditId(null); setDupMatch(null); setNameSearch(""); await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
   }
@@ -338,8 +348,95 @@ export default function CustomersPage() {
       {showForm && (
         <div className="rounded-xl bg-card border border-border p-5 mb-4">
           <h2 className="text-base font-semibold mb-3">{editId ? "แก้ไขลูกค้า" : "เพิ่มลูกค้าใหม่"}</h2>
+          {/* Autocomplete helpers */}
+          {(() => {
+            const q = nameSearch.toLowerCase();
+            return q.length >= 1 ? list.filter(c =>
+              (c.id !== editId) && (
+                c.company_name.toLowerCase().includes(q) ||
+                (c.tax_id ?? "").includes(q)
+              )
+            ).slice(0, 8) : [];
+          })().length > 0 && nameDropOpen && (
+            <div className="absolute z-50 mt-[-8px] ml-0 w-80 rounded-xl bg-card border border-border shadow-xl overflow-hidden">
+              {(() => {
+                const q = nameSearch.toLowerCase();
+                return list.filter(c =>
+                  (c.id !== editId) && (
+                    c.company_name.toLowerCase().includes(q) ||
+                    (c.tax_id ?? "").includes(q)
+                  )
+                ).slice(0, 8).map(c => (
+                  <button key={c.id} type="button"
+                    onMouseDown={() => {
+                      setDupMatch(c);
+                      setForm(f => ({ ...f, company_name: c.company_name }));
+                      setNameSearch(c.company_name);
+                      setNameDropOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-card-hover border-b border-border/30 last:border-0">
+                    <p className="font-medium">{c.company_name}</p>
+                    <p className="text-[10px] text-muted">{c.province}{c.district ? ` · ${c.district}` : ""}{c.tax_id ? ` · 🪪 ${c.tax_id}` : ""}{c.assigned_to ? ` · 👤 ${c.assigned_to}` : ""}</p>
+                  </button>
+                ));
+              })()}
+            </div>
+          )}
+
+          {dupMatch && !editId && (
+            <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm flex items-start gap-3">
+              <span className="text-amber-400 mt-0.5">⚠</span>
+              <div className="flex-1">
+                <p className="font-medium text-amber-300">มีลูกค้าชื่อนี้อยู่แล้ว</p>
+                <p className="text-[11px] text-muted mt-0.5">เจ้าของ: {dupMatch.assigned_to || "ไม่ระบุ"} · {dupMatch.province}{dupMatch.district ? ` ${dupMatch.district}` : ""}</p>
+                <div className="flex gap-2 mt-2">
+                  <button type="button" onClick={() => {
+                    setForm(f => ({ ...f, company_name: f.company_name + " (สาขา)" }));
+                    setDupMatch(null);
+                  }} className="rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 px-2.5 py-1 text-xs hover:bg-amber-500/30">
+                    + เพิ่มเป็นสาขา
+                  </button>
+                  <button type="button" onClick={() => setDupMatch(null)} className="rounded-md border border-border text-muted px-2.5 py-1 text-xs hover:bg-card-hover">
+                    เพิ่มต่อไป (ชื่อซ้ำ)
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-            <input placeholder="ชื่อบริษัท / หน่วยงาน *" value={form.company_name} onChange={e => setForm({...form, company_name: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            {/* Company name with autocomplete */}
+            <div className="relative">
+              <input placeholder="ชื่อบริษัท / หน่วยงาน *"
+                value={form.company_name}
+                onChange={e => {
+                  setForm({...form, company_name: e.target.value});
+                  setNameSearch(e.target.value);
+                  setNameDropOpen(true);
+                  if (dupMatch && e.target.value !== dupMatch.company_name) setDupMatch(null);
+                }}
+                onFocus={() => { setNameSearch(form.company_name); setNameDropOpen(true); }}
+                onBlur={() => setTimeout(() => setNameDropOpen(false), 150)}
+                className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+              {nameDropOpen && nameSearch.length >= 1 && (() => {
+                const q = nameSearch.toLowerCase();
+                const hits = list.filter(c => (c.id !== editId) && (c.company_name.toLowerCase().includes(q) || (c.tax_id ?? "").includes(q))).slice(0, 8);
+                if (!hits.length) return null;
+                return (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl bg-card border border-border shadow-xl overflow-hidden">
+                    {hits.map(c => (
+                      <button key={c.id} type="button"
+                        onMouseDown={() => { setDupMatch(c); setForm(f => ({...f, company_name: c.company_name})); setNameSearch(c.company_name); setNameDropOpen(false); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-card-hover border-b border-border/30 last:border-0">
+                        <p className="font-medium truncate">{c.company_name}</p>
+                        <p className="text-[10px] text-muted">{c.province}{c.district ? ` · ${c.district}` : ""}{c.tax_id ? ` · 🪪 ${c.tax_id}` : ""}{c.assigned_to ? ` · 👤 ${c.assigned_to}` : ""}</p>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+
             <input placeholder="ชื่อผู้ติดต่อ" value={form.contact_name} onChange={e => setForm({...form, contact_name: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <input placeholder="เบอร์โทร" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <input placeholder="เบอร์สำรอง" value={form.phone2} onChange={e => setForm({...form, phone2: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
@@ -348,10 +445,30 @@ export default function CustomersPage() {
             <input placeholder="LINE ID" value={form.line_id} onChange={e => setForm({...form, line_id: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <input placeholder="Facebook (URL หรือชื่อ page)" value={form.facebook} onChange={e => setForm({...form, facebook: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <input placeholder="เว็บไซต์" value={form.website} onChange={e => setForm({...form, website: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <select value={form.province} onChange={e => setForm({...form, province: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+
+            {/* Province → District → Subdistrict cascade */}
+            <select value={form.province} onChange={e => setForm({...form, province: e.target.value, district: "", subdistrict: ""})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
               <option value="">-- จังหวัด --</option>
               {provinces.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
+            <select value={form.district} onChange={e => setForm({...form, district: e.target.value, subdistrict: ""})}
+              className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent"
+              disabled={!form.province || !(DISTRICTS[form.province]?.length)}>
+              <option value="">-- อำเภอ --</option>
+              {(DISTRICTS[form.province] ?? []).map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            {(SUBDISTRICTS[form.district] ?? []).length > 0 ? (
+              <select value={form.subdistrict} onChange={e => setForm({...form, subdistrict: e.target.value})}
+                className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                <option value="">-- ตำบล --</option>
+                {(SUBDISTRICTS[form.district] ?? []).map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            ) : (
+              <input placeholder="ตำบล (พิมเอง)" value={form.subdistrict} onChange={e => setForm({...form, subdistrict: e.target.value})}
+                disabled={!form.district}
+                className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent disabled:opacity-40" />
+            )}
+
             <select value={form.org_type} onChange={e => setForm({...form, org_type: e.target.value as Customer["org_type"]})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
               {orgTypes.map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
             </select>
