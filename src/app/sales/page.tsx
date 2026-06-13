@@ -3347,7 +3347,9 @@ export default function SalesPage() {
               </tr></thead>
               <tbody>{filteredPipeline.map(p => (
                 <tr key={p.id} className="border-b border-border last:border-0 hover:bg-card-hover">
-                  <td className="px-4 py-2.5 font-medium">{p.name}</td>
+                  <td className="px-4 py-2.5 font-medium">
+                    <Link href={`/projects?open=${p.id}`} className="hover:text-accent hover:underline transition-colors">{p.name}</Link>
+                  </td>
                   <td className="px-4 py-2.5 text-muted text-xs">{p.customer_name}</td>
                   <td className="px-4 py-2.5 text-right">{(p.value||0).toLocaleString()}</td>
                   <td className="px-4 py-2.5"><select value={p.status} onChange={e => updateProjectStatus(p.id!, e.target.value)} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${stageColor[p.status] || "bg-gray-700"}`}>{stages.map(s => <option key={s} value={s}>{s}</option>)}</select></td>

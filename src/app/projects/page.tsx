@@ -188,6 +188,19 @@ export default function ProjectsPage() {
   }, []);
   useEffect(() => { if (ownProjectsOnly) setPipelineView("list"); }, [ownProjectsOnly]);
 
+  // Auto-expand project from ?open=<id> query param (e.g. deep-linked from Pipeline tab)
+  useEffect(() => {
+    if (list.length === 0) return;
+    const openId = new URLSearchParams(window.location.search).get("open");
+    if (!openId) return;
+    setExpandedIds(prev => new Set([...prev, openId]));
+    setPipelineView("list");
+    setTimeout(() => {
+      document.getElementById(`project-${openId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 200);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.length]);
+
   const filtered = baseList.filter(p => {
     const matchSearch = search ? (p.name.toLowerCase().includes(search.toLowerCase()) || p.customer_name.toLowerCase().includes(search.toLowerCase())) : true;
     const matchStatus = statusFilter === "all" ? true : p.status === statusFilter;
@@ -965,7 +978,7 @@ export default function ProjectsPage() {
             const types = p.job_types?.length ? p.job_types : p.type ? [p.type] : [];
             const cCount = contractCountForProject(p.id!);
             return (
-              <div key={p.id} className="rounded-xl bg-card border border-border overflow-hidden hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all">
+              <div key={p.id} id={`project-${p.id}`} className="rounded-xl bg-card border border-border overflow-hidden hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all">
                 {/* Compact row */}
                 <div className="flex items-stretch cursor-pointer" onClick={() => toggleExpand(p.id!)}>
                   {/* Status bar */}
