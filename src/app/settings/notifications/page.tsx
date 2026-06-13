@@ -23,6 +23,9 @@ const triggers: { value: NotifyTrigger; label: string; thai: string; module: str
   { value: "contract_expiring", label: "Contract Expiring Soon", thai: "สัญญาใกล้หมดอายุ", module: "contracts" },
   { value: "service_ticket_created", label: "Service Ticket Created", thai: "สร้าง Service Ticket ใหม่", module: "service" },
   { value: "ticket_status_changed", label: "Ticket Status Changed", thai: "เปลี่ยนสถานะ Ticket", module: "service" },
+  { value: "presale_task_created",  label: "Presale Request Created",  thai: "ส่งคำขอ Presale ใหม่ (แจ้งทีม)", module: "presale" },
+  { value: "presale_status_changed", label: "Presale Status Changed", thai: "เปลี่ยนสถานะ Presale Task",        module: "presale" },
+  { value: "presale_task_overdue",   label: "Presale Task Overdue",   thai: "Presale Task เกินกำหนด",          module: "presale" },
   { value: "sales_reassign", label: "Sales Task Reassigned", thai: "โยกงาน/มอบหมายงานให้เซลล์", module: "sales" },
 ];
 

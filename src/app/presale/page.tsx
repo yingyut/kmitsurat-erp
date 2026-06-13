@@ -474,18 +474,44 @@ export default function PresalePage() {
 
   async function handleSave() {
     if (!form.requirement.trim()) return; setSaving(true);
-    const { presaleRequests } = await import("@/lib/firestore");
+    const { presaleRequests, inAppNotifications } = await import("@/lib/firestore");
     try {
       if (editId) {
         await presaleRequests.update(editId, form as unknown as Record<string, unknown>);
       } else {
         const needsApproval = checkNeedsApproval(form.type, form.value || 0);
-        await presaleRequests.add({
+        const ref = await presaleRequests.add({
           ...form,
           approval_status: needsApproval ? "pending_review" : "not_required",
           approval_requested_at: needsApproval ? todayStr() : "",
           co_approvers: [],
         } as unknown as Record<string, unknown>);
+
+        // Notify ALL presale team members (in-app + workflow channels)
+        const myName = currentUser?.name || currentUser?.email || "ระบบ";
+        const presaleNames = presaleUsers.map(u => u.name).filter(Boolean);
+        if (presaleNames.length > 0) {
+          const title = `📋 Presale ใหม่: ${form.customer_name || "ไม่ระบุลูกค้า"}`;
+          const body = [
+            `${myName} ส่งคำขอ ${typeLabels[form.type] || form.type}`,
+            form.customer_name ? `ลูกค้า: ${form.customer_name}` : "",
+            form.project_name  ? `โปรเจค: ${form.project_name}`  : "",
+            form.requirement   ? `รายละเอียด: ${form.requirement.slice(0, 100)}` : "",
+          ].filter(Boolean).join("\n");
+          inAppNotifications.add({
+            tenant_id: "kmitsurat", module: "presale", trigger: "presale_task_created",
+            title, body, link: "/presale",
+            metadata: { task_id: ref.id, new_status: "new" },
+            recipients: presaleNames, read_by: [],
+          } as Record<string, unknown>).catch(e => console.warn("[notify] presale in-app", e));
+
+          sendPresaleStatusNotification({
+            task: { ...form, id: ref.id, status: "new" } as PresaleRequest,
+            newStatus: "new", oldStatus: "",
+            actor: myName, users: allUsers,
+            workflows: notifWorkflows, channels: notifChannels,
+          }).catch(e => console.warn("[notify]", e));
+        }
       }
       setForm(empty); setShowForm(false); setEditId(null); await load();
     } catch (e) { console.error(e); }
@@ -1009,32 +1035,40 @@ export default function PresalePage() {
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-muted mb-1.5 font-medium">มอบหมายให้</p>
-                <SearchableSelect
-                  value={form.assigned_to}
-                  options={presaleUsers.map(u => ({ value: u.name, label: u.name, sublabel: u.role }))}
-                  onChange={v => setForm({ ...form, assigned_to: v })}
-                  emptyLabel="— ยังไม่มอบหมาย —"
-                  placeholder="เลือกผู้รับผิดชอบ"
-                  renderTrigger={sel => sel ? (
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className={`w-5 h-5 rounded-full ${avatarBg(sel.value)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{sel.value.slice(0,2).toUpperCase()}</span>
-                      <span className="text-foreground truncate">{sel.label}</span>
-                      <span className="text-muted text-[11px] shrink-0">{sel.sublabel}</span>
-                    </span>
-                  ) : undefined}
-                  renderItem={(o, isSel) => (
-                    <div className="flex items-center gap-2.5 py-0.5">
-                      <div className={`w-7 h-7 rounded-full ${avatarBg(o.value)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{o.value.slice(0,2).toUpperCase()}</div>
-                      <div>
-                        <p className={`text-sm leading-tight ${isSel ? "font-medium" : ""}`}>{o.label}</p>
-                        <p className="text-[11px] text-muted">{o.sublabel}</p>
+              {editId && (
+                <div>
+                  <p className="text-xs text-muted mb-1.5 font-medium">มอบหมายให้</p>
+                  <SearchableSelect
+                    value={form.assigned_to}
+                    options={presaleUsers.map(u => ({ value: u.name, label: u.name, sublabel: u.role }))}
+                    onChange={v => setForm({ ...form, assigned_to: v })}
+                    emptyLabel="— ยังไม่มอบหมาย —"
+                    placeholder="เลือกผู้รับผิดชอบ"
+                    renderTrigger={sel => sel ? (
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className={`w-5 h-5 rounded-full ${avatarBg(sel.value)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{sel.value.slice(0,2).toUpperCase()}</span>
+                        <span className="text-foreground truncate">{sel.label}</span>
+                        <span className="text-muted text-[11px] shrink-0">{sel.sublabel}</span>
+                      </span>
+                    ) : undefined}
+                    renderItem={(o, isSel) => (
+                      <div className="flex items-center gap-2.5 py-0.5">
+                        <div className={`w-7 h-7 rounded-full ${avatarBg(o.value)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{o.value.slice(0,2).toUpperCase()}</div>
+                        <div>
+                          <p className={`text-sm leading-tight ${isSel ? "font-medium" : ""}`}>{o.label}</p>
+                          <p className="text-[11px] text-muted">{o.sublabel}</p>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                />
-              </div>
+                    )}
+                  />
+                </div>
+              )}
+              {!editId && (
+                <div className="flex items-center gap-2 rounded-lg bg-blue-900/20 border border-blue-500/20 px-3 py-2.5">
+                  <span className="text-blue-400 text-lg">📢</span>
+                  <p className="text-xs text-blue-300">คำขอจะแจ้งเตือนไปยัง<span className="font-medium">ทีม Presale ทุกคน</span> — Presales Manager จะมอบหมายงานให้อีกทีหนึ่ง</p>
+                </div>
+              )}
               <div>
                 <p className="text-xs text-muted mb-1.5 font-medium">Due Date</p>
                 <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent hover:border-accent/50 transition-colors" />
