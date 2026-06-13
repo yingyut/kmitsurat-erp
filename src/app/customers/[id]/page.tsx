@@ -223,25 +223,25 @@ export default function CustomerDetailPage() {
 
       {/* Lifetime metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <div className="rounded-xl bg-card border border-border p-4">
+        <div className="rounded-xl bg-card border border-border p-4 cursor-pointer hover:border-accent/40 transition-colors" onClick={() => setTab("quotations")}>
           <p className="text-[10px] text-muted uppercase">💰 Lifetime Value</p>
           <p className="text-[10px] text-muted">มูลค่ารวมทั้งหมด</p>
           <p className="text-xl font-bold text-green-400 mt-1">{(totalLifetimeValue / 1000).toLocaleString()}K</p>
           <p className="text-[10px] text-muted">THB · QT + Service</p>
         </div>
-        <div className="rounded-xl bg-card border border-border p-4">
+        <div className="rounded-xl bg-card border border-border p-4 cursor-pointer hover:border-accent/40 transition-colors" onClick={() => setTab("quotations")}>
           <p className="text-[10px] text-muted uppercase">💎 กำไรรวม</p>
           <p className="text-[10px] text-muted">Gross Profit สะสม</p>
           <p className="text-xl font-bold text-purple-400 mt-1">{(totalLifetimeProfit / 1000).toLocaleString()}K</p>
           <p className="text-[10px] text-muted">{totalLifetimeValue > 0 ? `${(totalLifetimeProfit / totalLifetimeValue * 100).toFixed(1)}% GP` : "—"}</p>
         </div>
-        <div className="rounded-xl bg-card border border-border p-4">
+        <div className="rounded-xl bg-card border border-border p-4 cursor-pointer hover:border-accent/40 transition-colors" onClick={() => setTab("projects")}>
           <p className="text-[10px] text-muted uppercase">📊 ดีล / โปรเจค</p>
           <p className="text-[10px] text-muted">won / active</p>
           <p className="text-xl font-bold mt-1"><span className="text-green-400">{stats.wonCount}</span> <span className="text-muted text-base">/</span> <span className="text-blue-400">{stats.activeCount}</span></p>
           <p className="text-[10px] text-muted">{(stats.projectValue / 1000).toFixed(0)}K won · {(stats.activeProjectValue / 1000).toFixed(0)}K pipeline</p>
         </div>
-        <div className="rounded-xl bg-card border border-border p-4">
+        <div className="rounded-xl bg-card border border-border p-4 cursor-pointer hover:border-accent/40 transition-colors" onClick={() => setTab("service")}>
           <p className="text-[10px] text-muted uppercase">🔧 งานบริการ</p>
           <p className="text-[10px] text-muted">total / open</p>
           <p className="text-xl font-bold mt-1"><span>{stats.totalSvc}</span> <span className="text-muted text-base">/</span> <span className={stats.openSvc > 0 ? "text-amber-400" : "text-green-400"}>{stats.openSvc}</span></p>
@@ -289,14 +289,16 @@ export default function CustomerDetailPage() {
                 {quotations.length > 0 && <button onClick={() => setTab("quotations")} className="text-[10px] text-accent hover:underline">ดูทั้งหมด →</button>}
               </div>
               {quotations.length === 0 ? <p className="text-xs text-muted">ยังไม่มีใบเสนอราคา</p> : (
-                <div className="space-y-1.5">
+                <div className="space-y-0.5">
                   {quotations.slice(0, 5).map(q => (
-                    <div key={q.id} className="flex items-center gap-2 text-xs py-1 border-b border-border last:border-0">
-                      <span className="font-mono text-muted shrink-0">{q.quotation_number}</span>
+                    <button key={q.id} onClick={() => setTab("quotations")}
+                      className="w-full flex items-center gap-2 text-xs py-1.5 px-1 rounded-lg border-b border-border/40 last:border-0 hover:bg-card-hover transition-colors text-left group">
+                      <span className="font-mono text-muted shrink-0 group-hover:text-foreground">{q.quotation_number}</span>
                       <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${quotStatusColor[q.status]}`}>{quotStatusLabel[q.status]}</span>
-                      <span className="flex-1 truncate text-muted">{q.project_name || "-"}</span>
+                      <span className="flex-1 truncate text-muted group-hover:text-foreground">{q.project_name || "-"}</span>
                       <span className="font-semibold text-right shrink-0">{((q.grand_total || q.total_selling || 0) / 1000).toLocaleString()}K</span>
-                    </div>
+                      <span className="text-accent opacity-0 group-hover:opacity-100 shrink-0">→</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -309,16 +311,16 @@ export default function CustomerDetailPage() {
                 {serviceTickets.length > 0 && <button onClick={() => setTab("service")} className="text-[10px] text-accent hover:underline">ดูทั้งหมด →</button>}
               </div>
               {serviceTickets.length === 0 ? <p className="text-xs text-muted">ยังไม่มีงานบริการ</p> : (
-                <div className="space-y-1.5">
+                <div className="space-y-0.5">
                   {serviceTickets.slice(0, 5).map(t => (
-                    <div key={t.id} className="text-xs py-1 border-b border-border last:border-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium shrink-0">{svcTypeLabels[t.type]}</span>
-                        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${svcStatusColor[t.status]}`}>{svcStatusLabel[t.status]}</span>
-                        <span className="flex-1 truncate text-muted">{t.issue}</span>
-                        {t.service_date && <span className="text-muted shrink-0">{t.service_date}</span>}
-                      </div>
-                    </div>
+                    <button key={t.id} onClick={() => setTab("service")}
+                      className="w-full flex items-center gap-2 text-xs py-1.5 px-1 rounded-lg border-b border-border/40 last:border-0 hover:bg-card-hover transition-colors text-left group">
+                      <span className="font-medium shrink-0">{svcTypeLabels[t.type]}</span>
+                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${svcStatusColor[t.status]}`}>{svcStatusLabel[t.status]}</span>
+                      <span className="flex-1 truncate text-muted group-hover:text-foreground">{t.issue}</span>
+                      {t.service_date && <span className="text-muted shrink-0">{t.service_date}</span>}
+                      <span className="text-accent opacity-0 group-hover:opacity-100 shrink-0">→</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -331,13 +333,15 @@ export default function CustomerDetailPage() {
                 {projects.length > 0 && <button onClick={() => setTab("projects")} className="text-[10px] text-accent hover:underline">ดูทั้งหมด →</button>}
               </div>
               {projects.length === 0 ? <p className="text-xs text-muted">ยังไม่มีโปรเจค</p> : (
-                <div className="space-y-1.5">
+                <div className="space-y-0.5">
                   {projects.slice(0, 5).map(p => (
-                    <div key={p.id} className="flex items-center gap-2 text-xs py-1 border-b border-border last:border-0">
+                    <button key={p.id} onClick={() => setTab("projects")}
+                      className="w-full flex items-center gap-2 text-xs py-1.5 px-1 rounded-lg border-b border-border/40 last:border-0 hover:bg-card-hover transition-colors text-left group">
                       <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${projectStatusColor[p.status]}`}>{projectStatusLabel[p.status]}</span>
-                      <span className="flex-1 truncate font-medium">{p.name}</span>
+                      <span className="flex-1 truncate font-medium group-hover:text-accent">{p.name}</span>
                       <span className="text-muted text-right shrink-0">{((p.value || 0) / 1000).toLocaleString()}K</span>
-                    </div>
+                      <span className="text-accent opacity-0 group-hover:opacity-100 shrink-0">→</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -350,15 +354,15 @@ export default function CustomerDetailPage() {
                 {activities.length > 0 && <button onClick={() => setTab("activities")} className="text-[10px] text-accent hover:underline">ดูทั้งหมด →</button>}
               </div>
               {activities.length === 0 ? <p className="text-xs text-muted">ยังไม่มีกิจกรรม</p> : (
-                <div className="space-y-1.5">
+                <div className="space-y-0.5">
                   {activities.slice(0, 5).map(a => (
-                    <div key={a.id} className="text-xs py-1 border-b border-border last:border-0">
-                      <div className="flex items-center gap-2">
-                        <span className="shrink-0">{actTypeLabels[a.type] || a.type}</span>
-                        <span className="flex-1 truncate text-muted">{a.description}</span>
-                        {a.next_follow_up && <span className="text-muted shrink-0">{a.next_follow_up}</span>}
-                      </div>
-                    </div>
+                    <button key={a.id} onClick={() => setTab("activities")}
+                      className="w-full flex items-center gap-2 text-xs py-1.5 px-1 rounded-lg border-b border-border/40 last:border-0 hover:bg-card-hover transition-colors text-left group">
+                      <span className="shrink-0">{actTypeLabels[a.type] || a.type}</span>
+                      <span className="flex-1 truncate text-muted group-hover:text-foreground">{a.description}</span>
+                      {a.next_follow_up && <span className="text-muted shrink-0">{a.next_follow_up}</span>}
+                      <span className="text-accent opacity-0 group-hover:opacity-100 shrink-0">→</span>
+                    </button>
                   ))}
                 </div>
               )}
