@@ -185,6 +185,12 @@ export interface Customer {
   notes: string;
   assigned_to?: string;   // primary owner (user.name)
   co_owners?: string[];   // shared CRM ownership
+  // Social / contact channels
+  tax_id?: string;        // เลขที่ผู้เสียภาษี
+  phone2?: string;        // เบอร์สำรอง
+  line_id?: string;       // LINE ID
+  facebook?: string;      // Facebook page / URL
+  website?: string;       // เว็บไซต์
 }
 
 export interface Project {
@@ -304,6 +310,10 @@ export interface SalesActivity {
   rescheduled_to?: string;                   // วันที่เลื่อนไป
   completed_at?: string;                     // วันที่บันทึกว่าเสร็จ
   auto_followup_created?: boolean;
+  plan_time?: string;            // HH:mm — เวลาเริ่มต้นของแผน
+  rescheduled_reason?: string;   // เหตุผลที่เลื่อน
+  // Attachments (files as base64 dataUrl or external links)
+  attachments?: { name: string; url: string; type: "file" | "link"; uploaded_at: string; uploaded_by: string }[];
 }
 
 export interface BomItem {

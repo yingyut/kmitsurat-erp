@@ -54,16 +54,28 @@ export default function SalesWorkflowPage() {
   // Action form
   const [actionNote, setActionNote] = useState("");
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [q, u] = await Promise.all([fs.quotations.list(), fs.users.list()]);
-      setQuots(q); setUsers(u.filter(x => x.active));
-      if (selected) { const updated = q.find(x => x.id === selected.id); if (updated) setSelected(updated); }
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }
-  useEffect(() => { setMounted(true); load(); }, []);
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
+
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.quotations.subscribe(data => {
+          setQuots(data);
+          setSelected(prev => { if (!prev) return prev; const updated = data.find(x => x.id === prev.id); return updated ?? prev; });
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.users.subscribe(data => setUsers(data.filter(x => x.active !== false))),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = quots.filter(q => {
     const s = search.toLowerCase();

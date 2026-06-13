@@ -101,14 +101,27 @@ export default function VendorsPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(empty);
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [v, vp] = await Promise.all([fs.vendors.list(), fs.vendorPrices.list()]);
-      setList(v); setVendorPrices(vp);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  }
-  useEffect(() => { setMounted(true); load(); }, []);
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
+
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.vendors.subscribe(data => {
+          setList(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.vendorPrices.subscribe(data => setVendorPrices(data)),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Stats
   const productCount = (vendorId: string) => vendorPrices.filter(vp => vp.vendor_id === vendorId && vp.active !== false).length;

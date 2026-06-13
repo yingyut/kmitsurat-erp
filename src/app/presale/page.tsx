@@ -311,37 +311,50 @@ export default function PresalePage() {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [editingNotesIdx, setEditingNotesIdx] = useState<number | null>(null);
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [r, c, p, jr, u, pd, ints, aps, wfs, chs] = await Promise.all([
-        fs.presaleRequests.list(), fs.customers.list(), fs.projects.list(),
-        fs.jobRequests.list(), fs.users.list(), fs.products.list(),
-        fs.integrationSettings.list(), fs.presaleApprovalSettings.list(),
-        fs.notificationWorkflows.list(), fs.notificationChannels.list(),
-      ]);
-      setList(r); setCusts(c); setProjs(p);
-      setProds(pd.filter(x => x.active));
-      setAllUsers(u.filter(x => x.active));
-      setIncomingReqs(jr.filter(j => j.request_to_team === "presale"));
-      const presaleRoles = new Set(["presale", "Presales Engineer", "Presales Manager"]);
-      setPresaleUsers(u.filter(x => x.active && (presaleRoles.has(x.role) || (x.extra_roles ?? []).some(r => presaleRoles.has(r)))));
-      setIntegration(ints.find(i => i.active) || null);
-      setNotifWorkflows(wfs); setNotifChannels(chs);
-      const myName = u.find(x => x.email === currentUser?.email)?.name || currentUser?.name || "";
-      const notifs = await fs.inAppNotifications.list();
-      setMyNotifs(notifs.filter(n => n.recipients.includes(myName)));
-      const latestAps = aps[0] || null;
-      setApprovalSettings(latestAps);
-      if (latestAps) setApForm({ require_for_types: latestAps.require_for_types || [], value_threshold: latestAps.value_threshold || 0, primary_approver: latestAps.primary_approver || "", substitute_approvers: latestAps.substitute_approvers || [] });
-      // Refresh detail panel if open
-      if (detail) {
-        const updated = r.find(x => x.id === detail.id);
-        if (updated) hydrateDetail(updated);
-      }
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  }
-  useEffect(() => { setMounted(true); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
+
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    const presaleRoles = new Set(["presale", "Presales Engineer", "Presales Manager"]);
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.presaleRequests.subscribe(data => {
+          setList(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.customers.subscribe(data => setCusts(data)),
+        fs.projects.subscribe(data => setProjs(data)),
+        fs.jobRequests.subscribe(data => setIncomingReqs(data.filter(j => j.request_to_team === "presale"))),
+        fs.users.subscribe(data => {
+          const active = data.filter(x => x.active !== false);
+          setAllUsers(active);
+          setPresaleUsers(active.filter(x => presaleRoles.has(x.role) || (x.extra_roles ?? []).some(r => presaleRoles.has(r))));
+          const myName = active.find(x => x.email === currentUser?.email)?.name || currentUser?.name || "";
+          setMyNotifs(prev => prev.filter(n => n.recipients.includes(myName)));
+        }),
+        fs.products.subscribe(data => setProds(data.filter(x => x.active))),
+        fs.integrationSettings.subscribe(data => setIntegration(data.find(i => i.active) || null)),
+        fs.presaleApprovalSettings.subscribe(data => {
+          const latestAps = data[0] || null;
+          setApprovalSettings(latestAps);
+          if (latestAps) setApForm({ require_for_types: latestAps.require_for_types || [], value_threshold: latestAps.value_threshold || 0, primary_approver: latestAps.primary_approver || "", substitute_approvers: latestAps.substitute_approvers || [] });
+        }),
+        fs.notificationWorkflows.subscribe(data => setNotifWorkflows(data)),
+        fs.notificationChannels.subscribe(data => setNotifChannels(data)),
+        fs.inAppNotifications.subscribe(data => {
+          const myName = currentUser?.name || "";
+          setMyNotifs(data.filter(n => n.recipients.includes(myName)));
+        }),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function hydrateDetail(r: PresaleRequest) {
     setDetail(r);

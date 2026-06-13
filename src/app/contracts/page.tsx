@@ -142,19 +142,28 @@ export default function ContractsPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [c, cust, proj] = await Promise.all([
-        fs.serviceContracts.list(),
-        fs.customers.list(),
-        fs.projects.list(),
-      ]);
-      setList(c); setCustomers(cust); setProjects(proj);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }
-  useEffect(() => { setMounted(true); load(); }, []);
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
+
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.serviceContracts.subscribe(data => {
+          setList(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.customers.subscribe(data => setCustomers(data)),
+        fs.projects.subscribe(data => setProjects(data)),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-mark expired
   const enriched = useMemo(() => list.map(c => {

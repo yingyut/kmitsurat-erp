@@ -175,9 +175,13 @@ export default function CustomerDetailPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 text-xs text-muted mt-2">
               {customer.contact_name && <p>👤 {customer.contact_name}</p>}
-              {customer.phone && <p>📞 {customer.phone}</p>}
+              {customer.phone && <p>📞 {customer.phone}{customer.phone2 ? <span className="ml-2 opacity-60">/ {customer.phone2}</span> : null}</p>}
               {customer.email && <p>✉️ {customer.email}</p>}
               {customer.province && <p>📍 {customer.province}</p>}
+              {customer.tax_id && <p>🧾 {customer.tax_id}</p>}
+              {customer.line_id && <p>💬 LINE: {customer.line_id}</p>}
+              {customer.facebook && <p>📘 {customer.facebook}</p>}
+              {customer.website && <p>🌐 <a href={customer.website.startsWith("http") ? customer.website : `https://${customer.website}`} target="_blank" rel="noopener noreferrer" className="hover:text-accent hover:underline">{customer.website}</a></p>}
               {customer.address && <p className="lg:col-span-3">🏠 {customer.address}</p>}
             </div>
 

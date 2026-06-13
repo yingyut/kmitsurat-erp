@@ -71,14 +71,26 @@ export default function PMSchedulePage() {
   const canManage = hasPermission("manage_assets");
   const canView = hasPermission("view_assets") || canManage;
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    const data = await fs.assets.list();
-    setAssets(data.filter(a => a.pm_interval_months && a.status !== "decommissioned"));
-    setLoading(false);
-  }
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
 
-  useEffect(() => { setMounted(true); load(); }, []);
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.assets.subscribe(data => {
+          setAssets(data.filter(a => a.pm_interval_months && a.status !== "decommissioned"));
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
   if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;

@@ -62,17 +62,30 @@ function ProductsContent() {
   const [vpForm, setVpForm] = useState(emptyVp);
   const [showHistoryFor, setShowHistoryFor] = useState<string | null>(null);
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [d, c, vd, vp, ph] = await Promise.all([
-        fs.products.list(), fs.productCategories.list(),
-        fs.vendors.list(), fs.vendorPrices.list(), fs.priceHistories.list(),
-      ]);
-      setList(d); setCategories(c); setVendors(vd); setVendorPrices(vp); setPriceHistories(ph);
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  }
-  useEffect(() => { setMounted(true); load(); }, []);
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
+
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.products.subscribe(data => {
+          setList(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.productCategories.subscribe(data => setCategories(data)),
+        fs.vendors.subscribe(data => setVendors(data)),
+        fs.vendorPrices.subscribe(data => setVendorPrices(data)),
+        fs.priceHistories.subscribe(data => setPriceHistories(data)),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Vendor price helpers
   const vendorPricesFor = (pid: string) => vendorPrices.filter(vp => vp.product_id === pid);

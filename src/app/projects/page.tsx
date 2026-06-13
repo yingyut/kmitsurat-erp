@@ -154,14 +154,9 @@ export default function ProjectsPage() {
   const closedCount = stats.won + stats.lost;
   const winRate = closedCount > 0 ? Math.round((stats.won / closedCount) * 100) : 0;
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [p, c, u, pt, ct] = await Promise.all([fs.projects.list(), fs.customers.list(), fs.users.list(), fs.projectTypes.list(), fs.serviceContracts.list()]);
-      setList(p); setCusts(c); setUsers(u.filter(x => x.active)); setPTypes(pt); setContracts(ct);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
 
   // Helpers for project ↔ contracts
   function contractsForProject(projectId: string): ServiceContract[] {
@@ -171,7 +166,26 @@ export default function ProjectsPage() {
     return contractsForProject(projectId).length;
   }
 
-  useEffect(() => { setMounted(true); load(); }, []);
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.projects.subscribe(data => {
+          setList(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.customers.subscribe(data => setCusts(data)),
+        fs.users.subscribe(data => setUsers(data.filter(x => x.active !== false))),
+        fs.projectTypes.subscribe(data => setPTypes(data)),
+        fs.serviceContracts.subscribe(data => setContracts(data)),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => { if (ownProjectsOnly) setPipelineView("list"); }, [ownProjectsOnly]);
 
   const filtered = baseList.filter(p => {

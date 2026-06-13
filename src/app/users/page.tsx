@@ -160,16 +160,27 @@ export default function UsersPage() {
     finally { setSaving(false); }
   }
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [u, t] = await Promise.all([fs.users.list(), fs.teams.list()]);
-      setUserList(u); setTeamList(t);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
 
-  useEffect(() => { setMounted(true); load(); }, []);
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.users.subscribe(data => {
+          setUserList(data.filter(x => x.active !== false));
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.teams.subscribe(data => setTeamList(data)),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filteredUsers = userList.filter((u) => {
     if (!showInactive && !u.active) return false;

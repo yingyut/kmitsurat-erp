@@ -76,15 +76,30 @@ export default function QuotationsPage() {
   // Picker
   const [pickerOpen, setPickerOpen] = useState<number | null>(null);
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [q, c, p, pr, u] = await Promise.all([fs.quotations.list(), fs.customers.list(), fs.projects.list(), fs.products.list(), fs.users.list()]);
-      setList(q); setCusts(c); setProjs(p); setProds(pr.filter((x) => x.active));
-      setUsers(u.filter(x => x.active));
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  }
-  useEffect(() => { setMounted(true); load(); }, []);
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
+
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.quotations.subscribe(data => {
+          setList(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.customers.subscribe(data => setCusts(data)),
+        fs.projects.subscribe(data => setProjs(data)),
+        fs.products.subscribe(data => setProds(data.filter((x) => x.active))),
+        fs.users.subscribe(data => setUsers(data.filter(x => x.active !== false))),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (users.length > 0 && currentUser && !createdById) {
       const me = users.find(u => u.name === currentUser.name || u.email === currentUser.email);

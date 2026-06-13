@@ -43,6 +43,29 @@ const nextWeekStr = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 1
 const prevMonth = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().slice(0, 7);
 const nextMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 7);
 
+type QrFile = { name: string; dataUrl: string; fileType: "photo" | "document" };
+
+async function compressImage(file: File): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1200;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else       { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.72));
+    };
+    img.src = url;
+  });
+}
+
 export default function SalesPage() {
   const { currentUser, hasPermission } = useCurrentUser();
   const searchParams = useSearchParams();
@@ -71,6 +94,13 @@ export default function SalesPage() {
   const [reassignTarget, setReassignTarget] = useState("");
   const [selectedActivity, setSelectedActivity] = useState<SalesActivity | null>(null);
   const [editingActId, setEditingActId] = useState<string | null>(null);
+  const [createDealModal, setCreateDealModal] = useState<SalesActivity | null>(null);
+  const [createDealForm, setCreateDealForm] = useState({ deal_name: "", deal_value: 0, company_name: "", contact_name: "", phone: "", phone2: "", email: "", address: "", province: "", org_type: "private" as Customer["org_type"], tax_id: "", line_id: "", facebook: "", website: "", notes: "" });
+  const [cdCustSearch, setCdCustSearch] = useState("");
+  const [cdCustOpen, setCdCustOpen] = useState(false);
+  const [cdCustId, setCdCustId] = useState("");
+  const [cdCustName, setCdCustName] = useState("");
+  const [cdMode, setCdMode] = useState<"search"|"new">("search");
   const [custSearch, setCustSearch] = useState("");
   const [custOpen, setCustOpen] = useState(false);
   const [reqCustSearch, setReqCustSearch] = useState("");
@@ -103,6 +133,30 @@ export default function SalesPage() {
   const [drawerDay, setDrawerDay] = useState<string | null>(null);
   const [showMgDash, setShowMgDash] = useState(false);
   const [mgDate, setMgDate] = useState(today);
+  const [mgPeriod, setMgPeriod] = useState<"day"|"week"|"month">("day");
+  const [sideOpen, setSideOpen] = useState({ summary: true, overview: true, overdue: true, types: true });
+  const toggleSide = (k: keyof typeof sideOpen) => setSideOpen(s => ({ ...s, [k]: !s[k] }));
+  const [calPopupPlan, setCalPopupPlan] = useState<SalesActivity | null>(null);
+  const [rpOpenDays,   setRpOpenDays]   = useState<Set<string>>(new Set([today]));
+  // Calendar popup edit state
+  const [cpNewDate,    setCpNewDate]    = useState("");
+  const [cpNewStatus,  setCpNewStatus]  = useState("planned");
+  const [cpOutcome,    setCpOutcome]    = useState("");
+  // Drag-and-drop
+  const [draggingPlanId, setDraggingPlanId] = useState<string | null>(null);
+  const [dragOverDate,   setDragOverDate]   = useState<string | null>(null);
+  // Reschedule confirmation popup
+  const [rescheduleTarget,  setRescheduleTarget]  = useState<{ planId: string; newDate: string; oldDate: string } | null>(null);
+  const [rescheduleReason,  setRescheduleReason]  = useState("");
+  // Inline quick-report state (inside selectedActivity modal)
+  const [qrOpen,       setQrOpen]       = useState(false);
+  const [qrOutcome,    setQrOutcome]    = useState("");
+  const [qrStatus,     setQrStatus]     = useState<"completed"|"rescheduled">("completed");
+  const [qrNextAction, setQrNextAction] = useState("");
+  const [qrNextDate,   setQrNextDate]   = useState("");
+  const [qrFiles,      setQrFiles]      = useState<QrFile[]>([]);
+  const [qrLinkUrl,    setQrLinkUrl]    = useState("");
+  const [qrLinkLabel,  setQrLinkLabel]  = useState("");
 
   // Derived calendar values — lifted out of IIFE so nav functions are cheap
   const [calY, calM] = useMemo(() => calNavDate.split("-").map(Number), [calNavDate]);
@@ -141,7 +195,7 @@ export default function SalesPage() {
   }
 
   // Activity/Plan form
-  const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing" | "prospect", project_id: "", project_name: "", assigned_to: "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "", objective: "", outcome: "", plan_status: "planned" as "planned" | "in_progress" | "completed" | "rescheduled", rescheduled_to: "", auto_followup: false });
+  const [actForm, setActForm] = useState({ type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing" | "prospect", project_id: "", project_name: "", assigned_to: "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: "", next_action_date: "", is_plan: false, plan_date: today, plan_time: "", expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "", objective: "", outcome: "", plan_status: "planned" as "planned" | "in_progress" | "completed" | "rescheduled", rescheduled_to: "", auto_followup: false });
 
   // Request form
   const [reqForm, setReqForm] = useState({ request_from: "", request_to_team: "presale" as JobRequest["request_to_team"], request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium" as JobRequest["priority"], status: "pending" as JobRequest["status"], assigned_to: "", reject_reason: "", accept_note: "" });
@@ -149,15 +203,41 @@ export default function SalesPage() {
   // Quota form
   const [quotaForm, setQuotaForm] = useState({ user_name: "", role: "sale" as "sale"|"avenger", month: currentMonth, quota_target: 0, actual_sales: 0, profit_target: 0, actual_profit: 0, target_gp_percent: 0, won_deals: 0, total_activities: 0 });
 
-  async function load() {
-    try {
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions ด้านล่าง
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
+
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
       const fs = await import("@/lib/firestore");
-      const [a, p, c, q, u, jr, qt] = await Promise.all([fs.salesActivities.list(), fs.projects.list(), fs.customers.list(), fs.salesQuotas.list(), fs.users.list(), fs.jobRequests.list(), fs.quotations.list()]);
-      setActivities(a); setProjects(p); setCustomers(c); setQuotas(q); setUsers(u.filter(x => x.active)); setJobReqs(jr); setQuotationsList(qt);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }
-  useEffect(() => { setMounted(true); load(); }, []);
+      unsubs.push(
+        fs.salesActivities.subscribe(data => {
+          setActivities(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.projects.subscribe(data => setProjects(data)),
+        fs.customers.subscribe(data => setCustomers(data)),
+        fs.salesQuotas.subscribe(data => setQuotas(data)),
+        fs.users.subscribe(data => setUsers(data.filter(x => x.active !== false))),
+        fs.jobRequests.subscribe(data => setJobReqs(data)),
+        fs.quotations.subscribe(data => setQuotationsList(data)),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-open activity detail modal from ?open=<id>
+  const openId = searchParams.get("open");
+  useEffect(() => {
+    if (!openId || activities.length === 0) return;
+    const act = activities.find(a => a.id === openId);
+    if (act) setSelectedActivity(act);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, activities]);
 
   // Helpers
   function selectCust(id: string, target: "act"|"req") {
@@ -278,7 +358,7 @@ export default function SalesPage() {
   }
 
   function resetActForm() {
-    setActForm({ type: "phone_call", customer_id: "", customer_name: "", customer_type: "existing", project_id: "", project_name: "", assigned_to: currentUser?.name || "", contact_person: "", description: "", status: "new", next_follow_up: "", result: "", next_action: "", next_action_type: "", next_action_by: currentUser?.name || "", next_action_date: "", is_plan: false, plan_date: today, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "", objective: "", outcome: "", plan_status: "planned" as "planned" | "in_progress" | "completed" | "rescheduled", rescheduled_to: "", auto_followup: false });
+    setActForm({ type: "phone_call", customer_id: "", customer_name: "", customer_type: "existing", project_id: "", project_name: "", assigned_to: currentUser?.name || "", contact_person: "", description: "", status: "new", next_follow_up: "", result: "", next_action: "", next_action_type: "", next_action_by: currentUser?.name || "", next_action_date: "", is_plan: false, plan_date: today, plan_time: "", expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale" | "service", support_note: "", objective: "", outcome: "", plan_status: "planned" as "planned" | "in_progress" | "completed" | "rescheduled", rescheduled_to: "", auto_followup: false });
     setCustSearch(""); setCustOpen(false);
   }
 
@@ -318,7 +398,7 @@ export default function SalesPage() {
       next_follow_up: a.next_follow_up || "", result: (a.result || "") as SalesActivity["result"],
       next_action: (a.next_action as string) || "", next_action_type: (a.next_action_type as string) || "",
       next_action_by: (a.next_action_by as string) || (currentUser?.name || ""), next_action_date: (a.next_action_date as string) || "",
-      is_plan: a.is_plan || false, plan_date: a.plan_date || today, expected_outcome: a.expected_outcome || "",
+      is_plan: a.is_plan || false, plan_date: a.plan_date || today, plan_time: (a.plan_time as string) || "", expected_outcome: a.expected_outcome || "",
       reminder_date: (a.reminder_date as string) || "", request_support: false,
       support_team: "presale" as "presale" | "service", support_note: "",
       objective: (a.objective as string) || "", outcome: (a.outcome as string) || "",
@@ -333,6 +413,103 @@ export default function SalesPage() {
   async function updateActivity(id: string, data: Record<string, unknown>) {
     const { salesActivities } = await import("@/lib/firestore");
     await salesActivities.update(id, data); await load();
+  }
+
+  // Reset quick-report fields whenever a different activity is opened
+  useEffect(() => {
+    setQrOpen(false); setQrOutcome(""); setQrStatus("completed");
+    setQrNextAction(""); setQrNextDate(""); setQrFiles([]); setQrLinkUrl(""); setQrLinkLabel("");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedActivity?.id]);
+
+  // Sync calendar popup edit state when a different plan is selected
+  useEffect(() => {
+    if (calPopupPlan) {
+      setCpNewDate(calPopupPlan.plan_date || today);
+      setCpNewStatus(calPopupPlan.plan_status || "planned");
+      setCpOutcome((calPopupPlan.outcome as string) || "");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calPopupPlan?.id]);
+
+  async function addQrFiles(e: React.ChangeEvent<HTMLInputElement>, kind: "photo" | "document") {
+    const list = Array.from(e.target.files ?? []);
+    const added: QrFile[] = [];
+    for (const f of list) {
+      const isImg = f.type.startsWith("image/");
+      const dataUrl = isImg
+        ? await compressImage(f)
+        : await new Promise<string>(res => { const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(f); });
+      added.push({ name: f.name, dataUrl, fileType: isImg ? "photo" : kind });
+    }
+    setQrFiles(prev => [...prev, ...added]);
+    e.target.value = "";
+  }
+
+  async function confirmReschedule() {
+    if (!rescheduleTarget) return;
+    setSaving(true);
+    try {
+      const { salesActivities } = await import("@/lib/firestore");
+      await salesActivities.update(rescheduleTarget.planId, {
+        plan_date: rescheduleTarget.newDate,
+        plan_status: "rescheduled",
+        rescheduled_to: rescheduleTarget.newDate,
+        ...(rescheduleReason.trim() ? { rescheduled_reason: rescheduleReason.trim() } : {}),
+      });
+      await load();
+      setRescheduleTarget(null);
+      setRescheduleReason("");
+    } finally { setSaving(false); }
+  }
+
+  async function saveCalPopup() {
+    const plan = calPopupPlan;
+    if (!plan?.id) return;
+    setSaving(true);
+    try {
+      const { salesActivities } = await import("@/lib/firestore");
+      const sm: Record<string, string> = { planned: "new", in_progress: "in_progress", completed: "done", rescheduled: "new" };
+      const upd: Record<string, unknown> = {
+        plan_status: cpNewStatus,
+        status: sm[cpNewStatus] || "new",
+        plan_date: cpNewDate,
+      };
+      if (cpNewStatus === "completed") {
+        upd.completed_at = today;
+        if (cpOutcome.trim()) upd.outcome = cpOutcome.trim();
+      }
+      await salesActivities.update(plan.id, upd);
+      await load();
+      setCalPopupPlan(null);
+    } finally { setSaving(false); }
+  }
+
+  async function saveQuickReport(a: SalesActivity) {
+    if (!a.id || !qrOutcome.trim()) return;
+    setSaving(true);
+    try {
+      const { salesActivities } = await import("@/lib/firestore");
+      const sm = { completed: "done", rescheduled: "new" } as const;
+      const newAttachments = [
+        ...qrFiles.map(f => ({ name: f.name, url: f.dataUrl, type: "file" as const, uploaded_at: today, uploaded_by: currentUser?.name || "" })),
+        ...(qrLinkUrl.trim() ? [{ name: qrLinkLabel.trim() || qrLinkUrl.trim(), url: qrLinkUrl.trim(), type: "link" as const, uploaded_at: today, uploaded_by: currentUser?.name || "" }] : []),
+      ];
+      const upd: Record<string, unknown> = {
+        plan_status: qrStatus,
+        status: sm[qrStatus],
+        outcome: qrOutcome.trim(),
+      };
+      if (qrStatus === "completed") upd.completed_at = today;
+      if (qrNextAction.trim()) upd.next_action = qrNextAction.trim();
+      if (qrNextDate) upd.next_action_date = qrNextDate;
+      if (newAttachments.length > 0) {
+        upd.attachments = [...(a.attachments || []), ...newAttachments];
+      }
+      await salesActivities.update(a.id, upd);
+      await load();
+      setSelectedActivity(null);
+    } finally { setSaving(false); }
   }
 
   async function deleteActivity(id: string) {
@@ -359,18 +536,79 @@ export default function SalesPage() {
     await load();
   }
 
-  // Convert Activity → Pipeline
-  async function convertActivityToPipeline(act: SalesActivity) {
-    const name = prompt("ชื่อดีล / โปรเจค:", `${act.customer_name} - ${typeLabels[act.type]}`);
-    if (!name) return;
-    const value = Number(prompt("มูลค่าโดยประมาณ (THB):", "0") || 0);
+  // Open Create Deal modal
+  function openCreateDeal(act: SalesActivity) {
+    const hasExistingCust = !!act.customer_id;
+    setCreateDealForm({
+      deal_name: act.customer_name ? `${act.customer_name} - ดีล` : "",
+      deal_value: 0,
+      company_name: "",
+      contact_name: (act.contact_person as string) || "",
+      phone: "", phone2: "", email: "", address: "", province: "",
+      org_type: "private" as Customer["org_type"],
+      tax_id: "", line_id: "", facebook: "", website: "", notes: "",
+    });
+    // ถ้ามี customer_id → pre-fill ลูกค้าที่ผูกไว้
+    setCdCustId(act.customer_id || "");
+    setCdCustName(act.customer_name || "");
+    setCdCustSearch(act.customer_name || "");
+    setCdCustOpen(false);
+    setCdMode(hasExistingCust ? "search" : "search");
+    setCreateDealModal(act);
+  }
+
+  async function saveCreateDeal() {
+    const act = createDealModal;
+    if (!act || !createDealForm.deal_name.trim()) return;
     setSaving(true);
-    const { projects: ps, salesActivities: sa } = await import("@/lib/firestore");
     try {
-      const ref = await ps.add({ name, customer_id: act.customer_id, customer_name: act.customer_name, type: "", value, status: "lead", assigned_to: act.assigned_to, notes: act.description, probability: 20, expected_close_date: "", next_action: act.next_action || "", next_action_date: act.next_action_date || "", support_teams: [], converted_from_activity_id: act.id, win_loss_reason: "", lost_competitor: "", re_engage: false, re_engage_date: "", re_engage_note: "", reminder_date: "", reminder_type: "none", reminder_sent: false, reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "" } as unknown as Record<string, unknown>);
-      await sa.update(act.id!, { converted_to_project_id: ref.id, status: "done" });
+      const { projects: ps, salesActivities: sa, customers: custCol } = await import("@/lib/firestore");
+      let customerId = cdCustId;
+      let customerName = cdCustName;
+
+      // สร้างลูกค้าใหม่ (mode="new")
+      if (cdMode === "new" && createDealForm.company_name.trim()) {
+        const f = createDealForm;
+        const newCust = await custCol.add({
+          company_name: f.company_name.trim(),
+          contact_name: f.contact_name.trim(),
+          phone: f.phone.trim(), phone2: f.phone2.trim(),
+          email: f.email.trim(), address: f.address.trim(),
+          province: f.province.trim(), org_type: f.org_type, notes: f.notes.trim(),
+          tax_id: f.tax_id.trim(), line_id: f.line_id.trim(),
+          facebook: f.facebook.trim(), website: f.website.trim(),
+          assigned_to: act.assigned_to, created_by: currentUser?.name || "",
+        } as unknown as Record<string, unknown>);
+        customerId = newCust.id || "";
+        customerName = createDealForm.company_name.trim();
+      }
+
+      const ref = await ps.add({
+        name: createDealForm.deal_name.trim(),
+        customer_id: customerId, customer_name: customerName,
+        type: "", value: createDealForm.deal_value, status: "lead",
+        assigned_to: act.assigned_to, notes: act.description, probability: 20,
+        expected_close_date: "", next_action: act.next_action || "",
+        next_action_date: act.next_action_date || "", support_teams: [],
+        converted_from_activity_id: act.id, win_loss_reason: "", lost_competitor: "",
+        re_engage: false, re_engage_date: "", re_engage_note: "",
+        reminder_date: "", reminder_type: "none", reminder_sent: false,
+        reminder_to_name: "", reminder_to_email: "", reminder_cc_email: "", reminder_note: "",
+      } as unknown as Record<string, unknown>);
+
+      // อัปเดต activity ให้ link ลูกค้าที่เลือก/สร้าง
+      await sa.update(act.id!, {
+        converted_to_project_id: ref.id, status: "done",
+        ...(customerId ? { customer_id: customerId, customer_name: customerName, customer_type: "existing" } : {}),
+      });
+      setCreateDealModal(null); setSelectedActivity(null);
       await load();
     } catch (e) { console.error(e); } finally { setSaving(false); }
+  }
+
+  // Convert Activity → Pipeline — opens Create Deal modal
+  function convertActivityToPipeline(act: SalesActivity) {
+    openCreateDeal(act);
   }
 
   // Save request
@@ -617,6 +855,15 @@ export default function SalesPage() {
         const salesTeam = users.filter(u => salesRoles.includes(u.role) || (u.extra_roles ?? []).some(r => salesRoles.includes(r)));
         const visibleTeam = ownSalesOnly ? salesTeam.filter(u => u.name === currentUser?.name) : salesTeam;
 
+        // Person colors for calendar — stable index per team member
+        const PERSON_COLORS_LIST = [
+          "bg-blue-500","bg-emerald-500","bg-purple-500","bg-orange-500",
+          "bg-pink-500","bg-cyan-500","bg-amber-600","bg-rose-500",
+          "bg-teal-500","bg-indigo-500","bg-lime-600","bg-sky-500",
+        ];
+        const personColorMap = new Map<string, string>();
+        salesTeam.forEach((u, i) => personColorMap.set(u.name, PERSON_COLORS_LIST[i % PERSON_COLORS_LIST.length]));
+
         // Plans — allPlans/viewPlans come from component-level useMemo
         const plansOn = (d: string) => viewPlans.filter(a => a.plan_date === d);
 
@@ -631,37 +878,53 @@ export default function SalesPage() {
         // navPrev/navNext/navToday defined at component level
 
         function chip(plan: SalesActivity) {
-          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
-          const ovd = (plan.plan_date || "") < today && plan.status !== "done";
-          const done = plan.status === "done";
+          const pc       = personColorMap.get(plan.assigned_to || "") ?? "bg-muted";
+          const ovd      = (plan.plan_date || "") < today && plan.status !== "done";
+          const done     = plan.status === "done";
+          const shortName = (plan.assigned_to || "").split(" ")[0].slice(0, 7) || "—";
+          const isDragging = draggingPlanId === plan.id;
           return (
-            <button key={plan.id} onClick={e => {e.stopPropagation(); setSelectedActivity(plan);}}
-              className="w-full flex items-stretch text-left rounded overflow-hidden border border-border/50 bg-card hover:bg-card-hover transition-all active:scale-[0.98]">
-              <div className={`w-[3px] shrink-0 ${done ? "bg-green-500 opacity-40" : ovd ? "bg-red-600" : tc.bar}`} />
+            <div key={plan.id}
+              draggable
+              onDragStart={e => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", plan.id!); setDraggingPlanId(plan.id!); }}
+              onDragEnd={() => { setDraggingPlanId(null); setDragOverDate(null); }}
+              onClick={e => { e.stopPropagation(); setCalPopupPlan(plan); }}
+              className={`w-full flex items-stretch text-left rounded overflow-hidden border border-border/50 bg-card hover:bg-card-hover transition-all cursor-grab active:cursor-grabbing select-none ${isDragging ? "opacity-40 scale-95" : ""}`}>
+              <div className={`w-[3px] shrink-0 ${done ? "bg-green-500 opacity-40" : ovd ? "bg-red-600" : pc}`} />
               <div className={`flex-1 px-1 py-0.5 min-w-0 ${done ? "opacity-50" : ""}`}>
-                <span className={`text-[10px] truncate leading-tight font-medium block ${done ? "line-through text-muted" : ovd ? "text-red-500" : tc.text}`}>
-                  {plan.customer_name?.slice(0, 13) || plan.expected_outcome?.slice(0, 13) || tc.label}
+                <span className={`text-[9px] font-bold truncate leading-tight block ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>
+                  {shortName}{(plan.plan_time as string) ? <span className="font-normal opacity-60 ml-0.5">{plan.plan_time as string}</span> : null}
+                </span>
+                <span className="text-[9px] text-muted/70 truncate leading-tight block">
+                  {plan.customer_name?.slice(0, 12) || plan.expected_outcome?.slice(0, 12) || "—"}
                 </span>
               </div>
-            </button>
+            </div>
           );
         }
 
         function planCard(plan: SalesActivity) {
-          const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
-          const ovd = (plan.plan_date || "") < today && plan.status !== "done";
-          const done = plan.status === "done";
+          const pc        = personColorMap.get(plan.assigned_to || "") ?? "bg-muted";
+          const ovd       = (plan.plan_date || "") < today && plan.status !== "done";
+          const done      = plan.status === "done";
+          const shortName = (plan.assigned_to || "").split(" ")[0].slice(0, 8);
+          const isDragging = draggingPlanId === plan.id;
           return (
-            <button key={plan.id} onClick={() => setSelectedActivity(plan)}
-              className={`w-full flex items-stretch text-left rounded-lg overflow-hidden border bg-card hover:shadow-sm hover:border-border transition-all active:scale-[0.98] ${ovd ? "border-red-500/40" : "border-border/60"} ${done ? "opacity-50" : ""}`}>
-              <div className={`w-1 shrink-0 ${done ? "bg-green-500 opacity-60" : ovd ? "bg-red-600" : tc.bar}`} />
+            <div key={plan.id}
+              draggable
+              onDragStart={e => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", plan.id!); setDraggingPlanId(plan.id!); }}
+              onDragEnd={() => { setDraggingPlanId(null); setDragOverDate(null); }}
+              onClick={() => setCalPopupPlan(plan)}
+              className={`w-full flex items-stretch text-left rounded-lg overflow-hidden border bg-card hover:shadow-sm transition-all cursor-grab active:cursor-grabbing select-none ${ovd ? "border-red-500/40" : "border-border/60"} ${done ? "opacity-50" : ""} ${isDragging ? "opacity-40 scale-95" : ""}`}>
+              <div className={`w-1 shrink-0 ${done ? "bg-green-500 opacity-60" : ovd ? "bg-red-600" : pc}`} />
               <div className="flex-1 px-2 py-1.5 min-w-0">
+                {shortName && <p className={`text-[9px] font-bold leading-tight truncate mb-0.5 ${done ? "text-muted" : "text-muted/60"}`}>{shortName}{(plan.plan_time as string) ? <span className="font-normal opacity-60 ml-1">{plan.plan_time as string}</span> : null}</p>}
                 <p className={`text-[11px] truncate font-semibold leading-tight ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>
                   {plan.expected_outcome?.slice(0, 22) || plan.description?.slice(0, 22) || "—"}
                 </p>
                 {plan.customer_name && <p className={`text-[9px] truncate mt-0.5 ${ovd ? "text-red-500/70" : "text-muted"}`}>{plan.customer_name}</p>}
               </div>
-            </button>
+            </div>
           );
         }
 
@@ -760,9 +1023,15 @@ export default function SalesPage() {
 
                       {/* Date + Customer + Assigned */}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 items-end">
-                        <div>
-                          <label className="text-[10px] text-muted">วันที่วางแผน</label>
-                          <input type="date" value={actForm.plan_date || today} onChange={e => setActForm({...actForm, plan_date: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                        <div className="flex gap-2">
+                          <div className="flex-1 min-w-0">
+                            <label className="text-[10px] text-muted">วันที่วางแผน</label>
+                            <input type="date" value={actForm.plan_date || today} onChange={e => setActForm({...actForm, plan_date: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                          </div>
+                          <div className="w-28 shrink-0">
+                            <label className="text-[10px] text-muted">เวลา</label>
+                            <input type="time" value={actForm.plan_time || ""} onChange={e => setActForm({...actForm, plan_time: e.target.value})} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                          </div>
                         </div>
                         <div>
                           <div className="flex items-center justify-between mb-1">
@@ -931,9 +1200,24 @@ export default function SalesPage() {
 
             {/* ══ MANAGER DASHBOARD ══ */}
             {!ownSalesOnly && (() => {
-              const salesRolesM = ["sale","avenger","Sales Executive","Sales Manager","Branch Manager"];
+              const salesRolesM = ["sale","Sales Executive"];
               const salesTeamM = users.filter(u => salesRolesM.includes(u.role) || (u.extra_roles??[]).some(r=>salesRolesM.includes(r)));
-              const mgPlans = activities.filter(a => a.is_plan && a.plan_date === mgDate);
+              // Period bounds
+              const _d = new Date(mgDate);
+              const _dow = _d.getDay();
+              const _diffToMon = _dow === 0 ? -6 : 1 - _dow;
+              const _wkStart = new Date(_d); _wkStart.setDate(_d.getDate() + _diffToMon);
+              const _wkEnd = new Date(_wkStart); _wkEnd.setDate(_wkStart.getDate() + 6);
+              const weekStartStr = _wkStart.toISOString().slice(0, 10);
+              const weekEndStr   = _wkEnd.toISOString().slice(0, 10);
+              const mgMonthPrefix = mgDate.slice(0, 7);
+              const mgPlans = activities.filter(a => {
+                if (!a.is_plan || !a.plan_date) return false;
+                if (mgPeriod === "day")   return a.plan_date === mgDate;
+                if (mgPeriod === "week")  return a.plan_date >= weekStartStr && a.plan_date <= weekEndStr;
+                if (mgPeriod === "month") return a.plan_date.startsWith(mgMonthPrefix);
+                return false;
+              });
               const mgRows = salesTeamM.map(u => {
                 const mp = mgPlans.filter(p => p.assigned_to === u.name);
                 const cmpd = mp.filter(p => p.plan_status === "completed" || p.status === "done").length;
@@ -954,7 +1238,10 @@ export default function SalesPage() {
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-left transition-colors ${showMgDash ? "bg-card border-accent/30" : "bg-card border-border/60 hover:border-border"}`}>
                     <div className="flex items-center gap-2.5">
                       <span className="text-sm font-semibold">📊 Manager Dashboard</span>
-                      <span className="text-[10px] text-muted">{mgDate} · ทีม {salesTeamM.length} คน · แผน {totalPlanned} รายการ · เสร็จ {totalDone}</span>
+                      <span className="text-[10px] text-muted">
+                        {mgPeriod === "day" ? mgDate : mgPeriod === "week" ? `${weekStartStr} – ${weekEndStr}` : mgMonthPrefix}
+                        {" · ทีม "}{salesTeamM.length}{" คน · แผน "}{totalPlanned}{" รายการ · เสร็จ "}{totalDone}
+                      </span>
                       {noActivity.length > 0 && <span className="rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-500 text-[10px] px-2 py-0.5">⚠ {noActivity.length} คนไม่มีแผน</span>}
                     </div>
                     <span className="text-muted text-xs">{showMgDash ? "▲" : "▼"}</span>
@@ -964,9 +1251,27 @@ export default function SalesPage() {
                     <div className="rounded-xl bg-card border border-border overflow-hidden mt-1">
                       {/* Controls */}
                       <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-wrap">
-                        <span className="text-[11px] text-muted font-medium uppercase tracking-wide">วันที่</span>
-                        <input type="date" value={mgDate} onChange={e => setMgDate(e.target.value)}
-                          className="rounded-lg bg-background border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                        {/* Period toggle */}
+                        <div className="flex gap-1 rounded-lg bg-background border border-border p-0.5">
+                          {(["day","week","month"] as const).map(p => (
+                            <button key={p} onClick={() => setMgPeriod(p)}
+                              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${mgPeriod===p?"bg-accent text-white":"text-muted hover:text-foreground"}`}>
+                              {p==="day"?"วัน":p==="week"?"สัปดาห์":"เดือน"}
+                            </button>
+                          ))}
+                        </div>
+                        {/* Date / Month picker */}
+                        {mgPeriod === "day" && (
+                          <input type="date" value={mgDate} onChange={e => setMgDate(e.target.value)}
+                            className="rounded-lg bg-background border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                        )}
+                        {mgPeriod === "month" && (
+                          <input type="month" value={mgDate.slice(0, 7)} onChange={e => setMgDate(e.target.value + "-01")}
+                            className="rounded-lg bg-background border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                        )}
+                        {mgPeriod === "week" && (
+                          <span className="text-xs text-muted bg-background border border-border rounded-lg px-3 py-1.5">{weekStartStr} – {weekEndStr}</span>
+                        )}
                         <button onClick={() => setMgDate(today)} className="text-[11px] text-accent hover:underline">วันนี้</button>
                         <div className="ml-auto flex items-center gap-3 text-[11px] text-muted">
                           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block"/>วางแผน</span>
@@ -980,7 +1285,7 @@ export default function SalesPage() {
                       {noActivity.length > 0 && (
                         <div className="px-4 py-2.5 bg-amber-500/5 border-b border-amber-500/20 flex items-center gap-2">
                           <span className="text-amber-500 text-sm">⚠</span>
-                          <span className="text-[11px] text-amber-500">ยังไม่มีแผนวันนี้: <strong>{noActivity.join(", ")}</strong></span>
+                          <span className="text-[11px] text-amber-500">ยังไม่มีแผนในช่วงนี้: <strong>{noActivity.join(", ")}</strong></span>
                         </div>
                       )}
 
@@ -1380,9 +1685,15 @@ export default function SalesPage() {
                         const dow      = i % 7;
                         const isSun    = dow === 6;
                         const isSat    = dow === 5;
+                        const isDragTarget = dragOverDate === dateStr && draggingPlanId !== null && inM;
                         return (
-                          <div key={dateStr} onClick={() => inM && setDrawerDay(drawerDay === dateStr ? null : dateStr)}
-                            className={`min-h-[90px] p-1 cursor-pointer transition-colors ${
+                          <div key={dateStr}
+                            onClick={() => inM && !draggingPlanId && setDrawerDay(drawerDay === dateStr ? null : dateStr)}
+                            onDragOver={e => { if (!inM) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverDate(dateStr); }}
+                            onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverDate(null); }}
+                            onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id && inM) { const plan = allPlans.find(p => p.id === id); if (plan && plan.plan_date !== dateStr) { setRescheduleTarget({ planId: id, newDate: dateStr, oldDate: plan.plan_date || "" }); setRescheduleReason(""); } } setDragOverDate(null); setDraggingPlanId(null); }}
+                            className={`min-h-[90px] p-1 transition-colors ${draggingPlanId ? "cursor-copy" : "cursor-pointer"} ${
+                              isDragTarget ? "bg-accent/10 ring-2 ring-inset ring-accent" :
                               !inM ? "bg-background/50 opacity-30" :
                               isSelected ? "bg-blue-500/8 ring-2 ring-inset ring-blue-600" :
                               isTd ? "bg-blue-500/5" :
@@ -1425,15 +1736,19 @@ export default function SalesPage() {
                         const hasOvd = dp.some(p => p.status !== "done" && isPast);
                         const isSun  = i === 6;
                         const isSat  = i === 5;
+                        const isWkDragTarget = dragOverDate === dateStr && draggingPlanId !== null;
                         return (
-                          <div key={dateStr} className={`rounded-xl border flex flex-col shadow-sm ${isTd ? "border-blue-600/40 bg-blue-500/4" : hasOvd ? "border-red-500/30" : isSun ? "border-rose-500/20 bg-rose-500/4" : isSat ? "border-orange-500/20 bg-orange-500/4" : "border-border/60 bg-card"}`}>
+                          <div key={dateStr} className={`rounded-xl border flex flex-col shadow-sm transition-colors ${isWkDragTarget ? "border-accent bg-accent/8" : isTd ? "border-blue-600/40 bg-blue-500/4" : hasOvd ? "border-red-500/30" : isSun ? "border-rose-500/20 bg-rose-500/4" : isSat ? "border-orange-500/20 bg-orange-500/4" : "border-border/60 bg-card"}`}>
                             <div className={`px-2 py-2 text-center border-b cursor-pointer hover:bg-card-hover/50 transition-colors ${isTd ? "border-blue-600/30 bg-blue-600/8" : hasOvd ? "border-red-500/20 bg-red-500/4" : isSun ? "border-rose-500/15 bg-rose-500/5" : isSat ? "border-orange-500/15 bg-orange-500/5" : "border-border/40"}`}
                               onClick={() => { setCalDayDate(dateStr); setApView("day"); }}>
                               <p className={`text-xs font-semibold tracking-wide ${isTd ? "text-blue-600" : hasOvd ? "text-red-500" : isSun ? "text-rose-400" : isSat ? "text-orange-400" : "text-muted/70"}`}>{dhFull[i]}</p>
                               <p className={`text-2xl font-bold leading-tight mt-0.5 ${isTd ? "text-blue-600" : isPast ? "text-muted/50" : isSun ? "text-rose-400" : isSat ? "text-orange-400" : "text-foreground"}`}>{parseInt(dateStr.slice(8))}</p>
                               {dp.length > 0 && <span className={`text-[9px] rounded px-1.5 py-0.5 font-bold inline-block mt-0.5 border ${hasOvd ? "bg-red-500/10 border-red-500/25 text-red-500" : isTd ? "bg-blue-500/10 border-blue-500/25 text-blue-600" : "bg-card-hover border-border text-muted"}`}>{dp.length}</span>}
                             </div>
-                            <div className="p-1 flex-1 space-y-0.5 min-h-[100px]">
+                            <div className="p-1 flex-1 space-y-0.5 min-h-[100px]"
+                              onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverDate(dateStr); }}
+                              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverDate(null); }}
+                              onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); if (id) { const plan = allPlans.find(p => p.id === id); if (plan && plan.plan_date !== dateStr) { setRescheduleTarget({ planId: id, newDate: dateStr, oldDate: plan.plan_date || "" }); setRescheduleReason(""); } } setDragOverDate(null); setDraggingPlanId(null); }}>
                               {dp.map(p => planCard(p))}
                               <button onClick={() => { resetActForm(); setActForm(f => ({...f, is_plan: true, plan_date: dateStr})); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
                                 className="w-full text-center text-[10px] text-muted/25 hover:text-blue-500 transition-colors py-1 rounded hover:bg-blue-500/5">+</button>
@@ -1663,90 +1978,166 @@ export default function SalesPage() {
               {/* ── Right Side Panel ── */}
               <div className="hidden xl:flex flex-col gap-3 w-52 shrink-0">
 
-                {/* ── Team Summary (manager/admin only) ── */}
-                {!ownSalesOnly && visibleTeam.length > 1 && (
-                  <div className="rounded-xl bg-card border border-border overflow-hidden">
-                    <div className="px-3 py-2 border-b border-border bg-card-hover/30">
-                      <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">ทีมขาย</p>
-                    </div>
-                    <div className="p-1.5 space-y-0.5 max-h-64 overflow-y-auto">
-                      {visibleTeam.map(u => {
-                        const uPlans   = allPlans.filter(p => p.assigned_to === u.name);
-                        const uDone    = uPlans.filter(p => p.status === "done").length;
-                        const uOverdue = uPlans.filter(p => (p.plan_date||"") < today && p.status !== "done").length;
-                        const uTotal   = uPlans.length;
-                        const pct      = uTotal > 0 ? Math.round(uDone / uTotal * 100) : 0;
-                        const isFiltered = apPersonFilter === u.name;
-                        return (
-                          <button key={u.id} onClick={() => setApPersonFilter(isFiltered ? "" : u.name)}
-                            className={`w-full text-left rounded-lg px-2.5 py-2 transition-colors ${isFiltered ? "bg-accent/10 border border-accent/30" : "hover:bg-card-hover"}`}>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className={`text-[11px] font-semibold truncate max-w-[100px] ${isFiltered ? "text-accent" : "text-foreground"}`}>
-                                {u.nickname || u.first_name || u.name}
-                              </span>
-                              <span className="text-[10px] text-muted tabular-nums">{uTotal}</span>
+                {/* ── 3-Day Plan Summary (yesterday / today / tomorrow) ── */}
+                {(() => {
+                  const _yd = new Date(today); _yd.setDate(_yd.getDate() - 1);
+                  const _tm = new Date(today); _tm.setDate(_tm.getDate() + 1);
+                  const yStr = _yd.toISOString().slice(0, 10);
+                  const tStr = today;
+                  const mStr = _tm.toISOString().slice(0, 10);
+                  const thD  = (d: string) => {
+                    const dt = new Date(d + "T12:00:00");
+                    return `${dt.getDate()} ${thaiM[dt.getMonth()]}`;
+                  };
+                  const dayDefs = [
+                    { key: yStr, label: "เมื่อวาน", sub: thD(yStr), isToday: false, isPast: true  },
+                    { key: tStr, label: "วันนี้",   sub: thD(tStr), isToday: true,  isPast: false },
+                    { key: mStr, label: "พรุ่งนี้", sub: thD(mStr), isToday: false, isPast: false },
+                  ];
+                  const teamForPanel = !ownSalesOnly && visibleTeam.length > 1
+                    ? visibleTeam
+                    : visibleTeam.filter(u => u.name === currentUser?.name);
+
+                  function toggleDay(d: string) {
+                    setRpOpenDays(prev => {
+                      const next = new Set(prev);
+                      next.has(d) ? next.delete(d) : next.add(d);
+                      return next;
+                    });
+                  }
+
+                  function PlanRow({ p }: { p: SalesActivity }) {
+                    const done = p.plan_status === "completed" || p.status === "done";
+                    const inPg = p.plan_status === "in_progress";
+                    const pc   = personColorMap.get(p.assigned_to || "") ?? "bg-muted";
+                    return (
+                      <button onClick={() => setSelectedActivity(p)}
+                        className="w-full flex items-start gap-1.5 rounded-lg px-2 py-1.5 text-left hover:bg-card-hover transition-colors group">
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-[3px] ${done ? "bg-green-500" : inPg ? "bg-amber-500" : "bg-blue-400"}`}/>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[10px] leading-tight truncate ${done ? "text-muted line-through" : inPg ? "text-amber-600" : "text-foreground"}`}>
+                            {p.expected_outcome || p.description || "—"}
+                          </p>
+                          {p.customer_name && (
+                            <p className="text-[9px] text-muted/60 truncate">{p.customer_name}</p>
+                          )}
+                        </div>
+                        {!ownSalesOnly && p.assigned_to && (
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-[3px] ${pc}`}/>
+                        )}
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <div className="rounded-xl bg-card border border-border overflow-hidden">
+                      <button onClick={() => toggleSide("summary")} className="w-full px-3 py-2 border-b border-border bg-card-hover/30 flex items-center justify-between hover:bg-card-hover transition-colors">
+                        <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">สรุปแผนงาน</p>
+                        <span className="text-[9px] text-muted">{sideOpen.summary ? "▲" : "▼"}</span>
+                      </button>
+                      {sideOpen.summary && <div className="divide-y divide-border/40">
+                        {dayDefs.map(({ key, label, sub, isToday, isPast }) => {
+                          const dayPlans  = allPlans.filter(p => p.plan_date === key);
+                          const doneCnt   = dayPlans.filter(p => p.plan_status === "completed" || p.status === "done").length;
+                          const overCnt   = isPast ? dayPlans.filter(p => p.status !== "done").length : 0;
+                          const isOpen    = rpOpenDays.has(key);
+
+                          return (
+                            <div key={key}>
+                              {/* Day header — toggle */}
+                              <button onClick={() => toggleDay(key)}
+                                className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-card-hover ${isToday ? "bg-blue-500/5" : isPast && overCnt > 0 ? "bg-red-500/4" : ""}`}>
+                                <span className="text-[9px] text-muted shrink-0">{isOpen ? "▼" : "▶"}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-[11px] font-bold leading-tight ${isToday ? "text-blue-600" : isPast ? "text-muted/70" : "text-foreground"}`}>
+                                    {label}
+                                    <span className="ml-1 font-normal text-[9px] text-muted/60">{sub}</span>
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {dayPlans.length > 0 && (
+                                    <span className={`text-[10px] font-bold rounded px-1.5 py-0.5 ${isToday ? "bg-blue-500/10 text-blue-600" : "bg-card-hover text-muted"}`}>
+                                      {dayPlans.length}
+                                    </span>
+                                  )}
+                                  {overCnt > 0 && (
+                                    <span className="text-[10px] font-bold rounded px-1.5 py-0.5 bg-red-500/10 text-red-500">⚠{overCnt}</span>
+                                  )}
+                                  {doneCnt > 0 && (
+                                    <span className="text-[10px] font-bold rounded px-1.5 py-0.5 bg-green-500/10 text-green-500">✓{doneCnt}</span>
+                                  )}
+                                </div>
+                              </button>
+
+                              {/* Expanded content */}
+                              {isOpen && (
+                                <div className="bg-background/40 pb-1">
+                                  {dayPlans.length === 0 ? (
+                                    <p className="text-[10px] text-muted/50 text-center py-3">ไม่มีแผน{label === "วันนี้" ? "วันนี้" : ""}</p>
+                                  ) : !ownSalesOnly && teamForPanel.length > 1 ? (
+                                    // Manager: group by person
+                                    teamForPanel.map(u => {
+                                      const uPlans = dayPlans.filter(p => p.assigned_to === u.name);
+                                      if (uPlans.length === 0) return null;
+                                      const pc = personColorMap.get(u.name) ?? "bg-muted";
+                                      const shortName = u.nickname || u.first_name || u.name.split(" ")[0];
+                                      return (
+                                        <div key={u.id}>
+                                          <div className="flex items-center gap-1.5 px-3 pt-2 pb-0.5">
+                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${pc}`}/>
+                                            <span className="text-[9px] font-bold text-muted uppercase tracking-wide">{shortName}</span>
+                                            <span className="text-[9px] text-muted/50 ml-auto">{uPlans.length}</span>
+                                          </div>
+                                          <div className="px-1">
+                                            {uPlans.map(p => <PlanRow key={p.id} p={p} />)}
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    // Own: flat list
+                                    <div className="px-1">
+                                      {dayPlans.map(p => <PlanRow key={p.id} p={p} />)}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                            {uTotal > 0 && (
-                              <div className="h-1 rounded-full bg-background overflow-hidden mb-1">
-                                <div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${pct}%`}}/>
-                              </div>
-                            )}
-                            <div className="flex gap-2 text-[9px]">
-                              <span className="text-green-500 font-bold">✓{uDone}</span>
-                              {uOverdue > 0 && <span className="text-red-500 font-bold">⚠{uOverdue}</span>}
-                              <span className="text-muted ml-auto">{uTotal > 0 ? `${pct}%` : "—"}</span>
-                            </div>
-                          </button>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Mini KPI */}
-                <div className="rounded-xl bg-card border border-border p-3">
-                  <div className="flex items-center justify-between mb-2">
+                <div className="rounded-xl bg-card border border-border overflow-hidden">
+                  <button onClick={() => toggleSide("overview")} className="w-full px-3 py-2 flex items-center justify-between hover:bg-card-hover transition-colors">
                     <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">ภาพรวม</p>
-                    <span className="text-xs font-bold">{allPlans.length} แผน</span>
-                  </div>
-                  {allPlans.length > 0 && <div className="h-1.5 rounded-full bg-background overflow-hidden mb-2.5"><div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${Math.round(kpiDone/allPlans.length*100)}%`}}/></div>}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold">{allPlans.length} แผน</span>
+                      <span className="text-[9px] text-muted">{sideOpen.overview ? "▲" : "▼"}</span>
+                    </div>
+                  </button>
+                  {sideOpen.overview && <div className="px-3 pb-3">
+                  {allPlans.length > 0 && <div className="h-1.5 rounded-full bg-background overflow-hidden mb-2.5 mt-1"><div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${Math.round(kpiDone/allPlans.length*100)}%`}}/></div>}
                   {[{label:"✓ เสร็จ",v:kpiDone,c:"text-green-500"},{label:"▷ ทำอยู่",v:kpiIP,c:"text-amber-500"},{label:"○ รอ",v:kpiNew,c:"text-blue-500"},{label:"⚠ เกิน",v:overdueItems.length,c:overdueItems.length>0?"text-red-500 font-black":"text-muted"}].map(s=>(
                     <div key={s.label} className="flex items-center justify-between text-[11px] py-0.5"><span className="text-muted">{s.label}</span><span className={`font-bold tabular-nums ${s.c}`}>{s.v}</span></div>
                   ))}
-                </div>
-
-                {/* Today */}
-                <div className="rounded-xl bg-card border border-border overflow-hidden">
-                  <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-600"/><p className="text-[11px] font-semibold">วันนี้</p></div>
-                    <span className="text-[10px] font-bold text-blue-600 bg-blue-500/10 border border-blue-500/20 rounded px-1.5 py-0.5">{todayItems.length}</span>
-                  </div>
-                  <div className="p-1.5 space-y-0.5 max-h-52 overflow-y-auto">
-                    {todayItems.length === 0
-                      ? <p className="text-[11px] text-muted text-center py-2.5">ไม่มีแผนวันนี้ ✓</p>
-                      : todayItems.map(p => {
-                          const tc = TC[p.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
-                          return (
-                            <button key={p.id} onClick={() => setSelectedActivity(p)}
-                              className="w-full flex items-stretch text-left rounded overflow-hidden border border-border/50 bg-card hover:bg-card-hover transition-all">
-                              <div className={`w-[3px] shrink-0 ${tc.bar}`} />
-                              <div className="flex-1 px-2 py-1 min-w-0">
-                                <p className={`text-[11px] truncate font-semibold ${tc.text}`}>{p.expected_outcome || p.customer_name || "—"}</p>
-                              </div>
-                            </button>
-                          );
-                        })}
-                  </div>
+                  </div>}
                 </div>
 
                 {/* Overdue */}
                 {overdueItems.length > 0 && (
                   <div className="rounded-xl bg-card border border-red-500/30 overflow-hidden">
-                    <div className="px-3 py-2 border-b border-red-500/20 flex items-center justify-between bg-red-500/5">
+                    <button onClick={() => toggleSide("overdue")} className="w-full px-3 py-2 border-b border-red-500/20 flex items-center justify-between bg-red-500/5 hover:bg-red-500/10 transition-colors">
                       <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-600"/><p className="text-[11px] font-semibold text-red-500">เกินกำหนด</p></div>
-                      <span className="text-[10px] text-red-600 font-black bg-red-500/10 border border-red-500/25 rounded px-1.5 py-0.5">{overdueItems.length}</span>
-                    </div>
-                    <div className="p-1.5 space-y-0.5 max-h-48 overflow-y-auto">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-red-600 font-black bg-red-500/10 border border-red-500/25 rounded px-1.5 py-0.5">{overdueItems.length}</span>
+                        <span className="text-[9px] text-red-400">{sideOpen.overdue ? "▲" : "▼"}</span>
+                      </div>
+                    </button>
+                    {sideOpen.overdue && <div className="p-1.5 space-y-0.5 max-h-48 overflow-y-auto">
                       {overdueItems.slice(0, 8).map(p => (
                         <button key={p.id} onClick={() => setSelectedActivity(p)}
                           className="w-full flex items-stretch text-left rounded overflow-hidden border border-red-500/25 bg-card hover:bg-red-500/5 transition-all">
@@ -1757,14 +2148,17 @@ export default function SalesPage() {
                           </div>
                         </button>
                       ))}
-                    </div>
+                    </div>}
                   </div>
                 )}
 
                 {/* Activity type legend + filter */}
-                <div className="rounded-xl bg-card border border-border p-3">
-                  <p className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-2">ประเภท</p>
-                  <div className="space-y-px">
+                <div className="rounded-xl bg-card border border-border overflow-hidden">
+                  <button onClick={() => toggleSide("types")} className="w-full px-3 py-2 flex items-center justify-between hover:bg-card-hover transition-colors">
+                    <p className="text-[10px] font-semibold text-muted uppercase tracking-wider">ประเภท</p>
+                    <span className="text-[9px] text-muted">{sideOpen.types ? "▲" : "▼"}</span>
+                  </button>
+                  {sideOpen.types && <div className="px-3 pb-3 space-y-px">
                     {(Object.entries(TC) as [string, typeof TC[string]][]).map(([type, tc]) => {
                       const cnt = allPlans.filter(p => p.type === type).length;
                       const isActive = typeFilter === type;
@@ -1776,7 +2170,7 @@ export default function SalesPage() {
                         </button>
                       );
                     })}
-                  </div>
+                  </div>}
                 </div>
               </div>
             </div>
@@ -1851,6 +2245,156 @@ export default function SalesPage() {
                 );
               })()}
             </div>
+
+            {/* ── Reschedule Confirmation Popup ── */}
+            {rescheduleTarget && (() => {
+              const rsPlan = allPlans.find(p => p.id === rescheduleTarget.planId);
+              return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                  onClick={() => { setRescheduleTarget(null); setRescheduleReason(""); }}>
+                  <div className="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-150"
+                    onClick={e => e.stopPropagation()}>
+                    <div className="px-5 py-4 border-b border-border">
+                      <p className="text-sm font-semibold">📅 ยืนยันการเลื่อนนัด</p>
+                      <p className="text-xs text-muted mt-1">
+                        <span className="line-through opacity-50">{rescheduleTarget.oldDate || "—"}</span>
+                        <span className="mx-2 text-muted">→</span>
+                        <span className="text-accent font-semibold">{rescheduleTarget.newDate}</span>
+                      </p>
+                    </div>
+                    <div className="p-5 space-y-4">
+                      {rsPlan && (
+                        <div className="rounded-xl bg-background border border-border px-4 py-3">
+                          <p className="text-xs font-semibold leading-snug">{rsPlan.expected_outcome || rsPlan.description || "—"}</p>
+                          {rsPlan.customer_name && <p className="text-[11px] text-muted mt-1">🏢 {rsPlan.customer_name}</p>}
+                          {rsPlan.assigned_to && <p className="text-[11px] text-muted">👤 {rsPlan.assigned_to.split(" ")[0]}</p>}
+                        </div>
+                      )}
+                      <div>
+                        <label className="text-[10px] text-muted font-semibold uppercase tracking-wide block mb-1.5">เหตุผลที่เลื่อน (ไม่จำเป็น)</label>
+                        <textarea value={rescheduleReason} onChange={e => setRescheduleReason(e.target.value)}
+                          placeholder="เช่น ลูกค้าขอเลื่อน / ติดประชุม / ไม่ว่าง..."
+                          rows={2}
+                          className="w-full rounded-xl bg-background border border-border px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-accent placeholder:text-muted/40" />
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={confirmReschedule} disabled={saving}
+                          className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-40 transition-colors">
+                          {saving ? "..." : "ยืนยัน เลื่อนนัด"}
+                        </button>
+                        <button onClick={() => { setRescheduleTarget(null); setRescheduleReason(""); }}
+                          className="rounded-xl border border-border px-4 py-2.5 text-sm text-muted hover:bg-card-hover transition-colors">
+                          ยกเลิก
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Calendar Plan Popup (quick update) ── */}
+            {calPopupPlan && (() => {
+              const plan = calPopupPlan;
+              const pc   = personColorMap.get(plan.assigned_to || "") ?? "bg-muted";
+              const tc   = TC[plan.type] ?? {icon:"📌",label:"งาน"};
+              const statusOpts = [
+                { v:"planned",     label:"○ วางแผน",  cls:"border-blue-500/40 text-blue-500 bg-blue-500/10"   },
+                { v:"in_progress", label:"▷ กำลังทำ", cls:"border-amber-500/40 text-amber-500 bg-amber-500/10" },
+                { v:"completed",   label:"✓ เสร็จ",   cls:"border-green-500/40 text-green-500 bg-green-500/10" },
+                { v:"rescheduled", label:"📅 เลื่อน",  cls:"border-orange-500/40 text-orange-500 bg-orange-500/10" },
+              ] as const;
+              const dateChanged   = cpNewDate   !== (plan.plan_date || "");
+              const statusChanged = cpNewStatus !== (plan.plan_status || "planned");
+              const hasChange = dateChanged || statusChanged || (cpNewStatus === "completed" && cpOutcome.trim() && cpOutcome.trim() !== ((plan.outcome as string) || ""));
+              return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+                  onClick={() => setCalPopupPlan(null)}>
+                  <div className="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-150"
+                    onClick={e => e.stopPropagation()}>
+                    {/* Person color bar */}
+                    <div className={`h-1.5 w-full ${pc}`} />
+
+                    <div className="p-4 space-y-3.5">
+                      {/* Title + close */}
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold leading-snug">{plan.expected_outcome || plan.description || "—"}</p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {plan.customer_name && <span className="text-xs text-muted">🏢 {plan.customer_name}</span>}
+                            {plan.assigned_to && (
+                              <span className="flex items-center gap-1 text-xs text-muted">
+                                <span className={`w-1.5 h-1.5 rounded-full inline-block ${pc}`}/>
+                                {plan.assigned_to.split(" ")[0]}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-muted/60 border border-border/50 rounded px-1.5 py-0.5">{tc.icon} {tc.label}</span>
+                          </div>
+                        </div>
+                        <button onClick={() => setCalPopupPlan(null)}
+                          className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-card-hover text-base transition-colors">✕</button>
+                      </div>
+
+                      {/* ── Status quick-pick ── */}
+                      <div>
+                        <p className="text-[10px] text-muted uppercase font-semibold tracking-wide mb-1.5">สถานะ</p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {statusOpts.map(s => (
+                            <button key={s.v} onClick={() => setCpNewStatus(s.v)}
+                              className={`rounded-xl px-2 py-2 text-[11px] font-semibold border transition-colors ${cpNewStatus === s.v ? s.cls : "border-border text-muted hover:bg-card-hover"}`}>
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* ── Date reschedule ── */}
+                      <div>
+                        <p className="text-[10px] text-muted uppercase font-semibold tracking-wide mb-1.5">
+                          วันที่แผน {dateChanged && <span className="text-accent normal-case font-normal">(เปลี่ยนแล้ว)</span>}
+                        </p>
+                        <div className="flex gap-2">
+                          <input type="date" value={cpNewDate} onChange={e => setCpNewDate(e.target.value)}
+                            className="flex-1 rounded-xl bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                          {(plan.plan_time as string) && (
+                            <div className="flex items-center gap-1 text-xs text-muted bg-background border border-border/50 rounded-xl px-2.5">
+                              🕐 {plan.plan_time as string}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ── Outcome (when marking complete) ── */}
+                      {cpNewStatus === "completed" && (
+                        <div>
+                          <p className="text-[10px] text-muted uppercase font-semibold tracking-wide mb-1.5">สรุปผล</p>
+                          <textarea value={cpOutcome} onChange={e => setCpOutcome(e.target.value)} rows={2}
+                            placeholder="สิ่งที่คุยกัน / ผลลัพธ์ (ไม่จำเป็น)..."
+                            className="w-full rounded-xl bg-background border border-border px-3 py-2 text-sm resize-none focus:outline-none focus:border-accent placeholder:text-muted/40" />
+                        </div>
+                      )}
+
+                      {/* ── Objective (read-only) ── */}
+                      {(plan.objective as string) && (
+                        <p className="text-[11px] text-muted/70 italic leading-snug">🎯 {plan.objective as string}</p>
+                      )}
+
+                      {/* ── Actions ── */}
+                      <div className="flex gap-2 pt-0.5">
+                        <button onClick={saveCalPopup} disabled={saving || !hasChange}
+                          className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-35 transition-colors">
+                          {saving ? "..." : "บันทึก"}
+                        </button>
+                        <button onClick={() => { setCalPopupPlan(null); setSelectedActivity(plan); }}
+                          className="rounded-xl border border-border px-3 py-2.5 text-xs text-muted hover:bg-card-hover transition-colors whitespace-nowrap">
+                          รายละเอียด →
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </>
         );
       })()}
@@ -2377,7 +2921,7 @@ export default function SalesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <button onClick={() => { setDrawerDay(null); const form = { type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing"|"prospect", project_id: "", project_name: "", assigned_to: currentUser?.name || "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: currentUser?.name || "", next_action_date: "", is_plan: true, plan_date: drawerDay, expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale"|"service", support_note: "", objective: "", outcome: "", plan_status: "planned" as "planned"|"in_progress"|"completed"|"rescheduled", rescheduled_to: "", auto_followup: false }; setActForm(form); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
+                    <button onClick={() => { setDrawerDay(null); const form = { type: "phone_call" as SalesActivity["type"], customer_id: "", customer_name: "", customer_type: "existing" as "existing"|"prospect", project_id: "", project_name: "", assigned_to: currentUser?.name || "", contact_person: "", description: "", status: "new" as SalesActivity["status"], next_follow_up: "", result: "" as SalesActivity["result"], next_action: "", next_action_type: "", next_action_by: currentUser?.name || "", next_action_date: "", is_plan: true, plan_date: drawerDay, plan_time: "", expected_outcome: "", reminder_date: "", request_support: false, support_team: "presale" as "presale"|"service", support_note: "", objective: "", outcome: "", plan_status: "planned" as "planned"|"in_progress"|"completed"|"rescheduled", rescheduled_to: "", auto_followup: false }; setActForm(form); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
                       className="rounded-lg bg-accent px-3 py-1.5 text-[11px] font-medium text-white hover:bg-accent-hover">+ เพิ่ม</button>
                     <button onClick={() => setDrawerDay(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover text-lg">✕</button>
                   </div>
@@ -2528,7 +3072,7 @@ export default function SalesPage() {
                   {a.customer_name && <div><p className="text-[10px] text-muted mb-0.5 uppercase">ลูกค้า</p><p className="font-medium">🏢 {a.customer_name}</p></div>}
                   {a.contact_person && <div><p className="text-[10px] text-muted mb-0.5 uppercase">ติดต่อ</p><p>👤 {a.contact_person as string}</p></div>}
                   {a.project_name && <div><p className="text-[10px] text-muted mb-0.5 uppercase">โปรเจค</p><p>📁 {a.project_name}</p></div>}
-                  {isPlan && a.plan_date && <div><p className="text-[10px] text-muted mb-0.5 uppercase">วันที่แผน</p><p className={(a.plan_date < today && a.status !== "done") ? "text-red-500 font-medium" : ""}>📅 {a.plan_date}</p></div>}
+                  {isPlan && a.plan_date && <div><p className="text-[10px] text-muted mb-0.5 uppercase">วันที่แผน</p><p className={(a.plan_date < today && a.status !== "done") ? "text-red-500 font-medium" : ""}>📅 {a.plan_date}{(a.plan_time as string) ? <span className="ml-2 text-muted font-normal">🕐 {a.plan_time as string}</span> : null}</p></div>}
                   {!isPlan && a.next_follow_up && <div><p className="text-[10px] text-muted mb-0.5 uppercase">Follow-up</p><p className={a.next_follow_up < today && a.status !== "done" ? "text-red-500 font-medium" : ""}>📅 {a.next_follow_up}</p></div>}
                 </div>
 
@@ -2537,6 +3081,39 @@ export default function SalesPage() {
                   <div className="rounded-lg bg-green-500/5 border border-green-500/20 p-3.5">
                     <p className="text-[10px] text-green-500 font-semibold uppercase tracking-wider mb-1.5">📝 ผลที่เกิดขึ้นจริง (Outcome)</p>
                     <p className="text-sm">{a.outcome as string}</p>
+                  </div>
+                )}
+
+                {/* Attachments — files & links */}
+                {(a.attachments ?? []).length > 0 && (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    <p className="text-[10px] text-muted font-semibold uppercase tracking-wide px-3 py-2 border-b border-border/40 bg-card-hover/30">
+                      📎 ไฟล์แนบ ({(a.attachments ?? []).length})
+                    </p>
+                    <div className="p-3 space-y-2">
+                      {/* Image grid */}
+                      {(a.attachments ?? []).filter(att => att.type === "file" && att.url.startsWith("data:image")).length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {(a.attachments ?? []).filter(att => att.type === "file" && att.url.startsWith("data:image")).map((att, i) => (
+                            <a key={i} href={att.url} target="_blank" rel="noreferrer" download={att.name}
+                              className="group relative block">
+                              <img src={att.url} alt={att.name} className="w-16 h-16 object-cover rounded-lg border border-border group-hover:opacity-80 transition-opacity" />
+                              <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 text-white text-lg transition-opacity">⬇</span>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                      {/* Documents & links list */}
+                      {(a.attachments ?? []).filter(att => att.type === "link" || (att.type === "file" && !att.url.startsWith("data:image"))).map((att, i) => (
+                        <a key={i} href={att.url} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-2 rounded-lg px-3 py-2 bg-background border border-border hover:border-accent/40 hover:bg-accent/5 transition-colors group">
+                          <span className="text-base shrink-0">{att.type === "link" ? "🔗" : "📄"}</span>
+                          <span className="flex-1 text-xs truncate font-medium group-hover:text-accent transition-colors">{att.name}</span>
+                          <span className="text-[10px] text-muted shrink-0">{att.uploaded_at}</span>
+                          <span className="text-muted/40 group-hover:text-accent text-xs shrink-0">↗</span>
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -2571,11 +3148,107 @@ export default function SalesPage() {
                   </div>
                 )}
 
-                {/* Quick report prompt — when plan is planned/in_progress and no outcome yet */}
-                {isPlan && ps !== "completed" && ps !== "rescheduled" && !(a.outcome as string) && (
-                  <div className="rounded-lg border border-dashed border-border p-3 text-center">
-                    <p className="text-[11px] text-muted mb-2">ดำเนินการแล้ว? บันทึกผลและ next action</p>
-                    <button onClick={() => openEditActivity(a)} className="rounded-lg bg-green-500/10 border border-green-500/25 text-green-500 px-4 py-1.5 text-xs font-medium hover:bg-green-500/20 transition-colors">✏️ รายงานผล</button>
+                {/* Inline Quick Report — plans that aren't completed/rescheduled yet */}
+                {isPlan && ps !== "completed" && ps !== "rescheduled" && (
+                  <div className="rounded-xl border border-border overflow-hidden">
+                    {!qrOpen ? (
+                      <button onClick={() => setQrOpen(true)}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-card-hover transition-colors">
+                        <span className="text-[11px] text-muted">ดำเนินการแล้ว? สรุปผลได้เลย</span>
+                        <span className="ml-auto shrink-0 rounded-lg bg-green-500/10 border border-green-500/25 text-green-500 px-3 py-1 text-[11px] font-medium hover:bg-green-500/20 transition-colors">
+                          ✏️ รายงานผล
+                        </span>
+                      </button>
+                    ) : (
+                      <div className="p-4 space-y-3 bg-card-hover/20">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold">📝 สรุปผลการทำงาน</p>
+                          <button onClick={() => setQrOpen(false)} className="text-muted hover:text-foreground text-base leading-none w-6 h-6 flex items-center justify-center rounded hover:bg-card-hover">✕</button>
+                        </div>
+                        {/* Status quick-pick */}
+                        <div className="flex gap-2">
+                          {(["completed","rescheduled"] as const).map(s => (
+                            <button key={s} onClick={() => setQrStatus(s)}
+                              className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold border transition-colors ${
+                                qrStatus===s
+                                  ? s==="completed"
+                                    ? "bg-green-500/15 border-green-500/40 text-green-500"
+                                    : "bg-orange-500/15 border-orange-500/40 text-orange-500"
+                                  : "border-border text-muted hover:bg-card-hover"}`}>
+                              {s==="completed" ? "✓ เสร็จแล้ว" : "📅 เลื่อนนัด"}
+                            </button>
+                          ))}
+                        </div>
+                        {/* Outcome / summary */}
+                        <textarea value={qrOutcome} onChange={e => setQrOutcome(e.target.value)} rows={3}
+                          placeholder="สรุปผล / สิ่งที่คุยกัน / ความต้องการของลูกค้า..."
+                          className="w-full rounded-lg bg-background border border-border px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-accent placeholder:text-muted/40 leading-relaxed" />
+                        {/* Next action row */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={qrNextAction} onChange={e => setQrNextAction(e.target.value)}
+                            placeholder="Next Action (ถ้ามี)"
+                            className="rounded-lg bg-background border border-border px-3 py-2 text-xs focus:outline-none focus:border-accent placeholder:text-muted/40" />
+                          <input type="date" value={qrNextDate} onChange={e => setQrNextDate(e.target.value)}
+                            className="rounded-lg bg-background border border-border px-3 py-2 text-xs focus:outline-none focus:border-accent text-muted" />
+                        </div>
+
+                        {/* ── Attachments ── */}
+                        <div className="rounded-xl border border-border/60 overflow-hidden">
+                          <p className="text-[10px] text-muted font-semibold uppercase tracking-wide px-3 pt-2.5 pb-1.5">📎 แนบไฟล์ / Link</p>
+                          {/* Upload buttons */}
+                          <div className="flex gap-2 px-3 pb-2.5">
+                            <label className="flex-1 cursor-pointer rounded-lg border border-dashed border-border hover:border-accent/60 px-2 py-2.5 text-[11px] text-muted text-center transition-colors hover:bg-accent/5 flex flex-col items-center gap-1">
+                              <span className="text-lg">📷</span>
+                              <span>รูป / ถ่ายภาพ</span>
+                              <input type="file" accept="image/*" capture="environment" multiple className="hidden"
+                                onChange={e => addQrFiles(e, "photo")} />
+                            </label>
+                            <label className="flex-1 cursor-pointer rounded-lg border border-dashed border-border hover:border-accent/60 px-2 py-2.5 text-[11px] text-muted text-center transition-colors hover:bg-accent/5 flex flex-col items-center gap-1">
+                              <span className="text-lg">📄</span>
+                              <span>ไฟล์เอกสาร</span>
+                              <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,.ppt,.pptx" multiple className="hidden"
+                                onChange={e => addQrFiles(e, "document")} />
+                            </label>
+                          </div>
+                          {/* File previews */}
+                          {qrFiles.length > 0 && (
+                            <div className="flex flex-wrap gap-2 px-3 pb-2.5">
+                              {qrFiles.map((f, i) => (
+                                <div key={i} className="relative group">
+                                  {f.fileType === "photo"
+                                    ? <img src={f.dataUrl} alt={f.name} className="w-14 h-14 object-cover rounded-lg border border-border" />
+                                    : <div className="w-14 h-14 rounded-lg border border-border bg-background flex flex-col items-center justify-center gap-0.5 p-1">
+                                        <span className="text-xl">📄</span>
+                                        <span className="text-[8px] text-muted truncate w-full text-center leading-tight">{f.name}</span>
+                                      </div>
+                                  }
+                                  <button onClick={() => setQrFiles(p => p.filter((_, j) => j !== i))}
+                                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] hidden group-hover:flex items-center justify-center shadow">✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* Link input */}
+                          <div className="px-3 pb-3 space-y-1.5 border-t border-border/40 pt-2.5">
+                            <input value={qrLinkUrl} onChange={e => setQrLinkUrl(e.target.value)}
+                              placeholder="🔗 วาง URL (Google Drive, Dropbox, ...)"
+                              className="w-full rounded-lg bg-background border border-border px-3 py-2 text-xs focus:outline-none focus:border-accent placeholder:text-muted/40" />
+                            {qrLinkUrl.trim() && (
+                              <input value={qrLinkLabel} onChange={e => setQrLinkLabel(e.target.value)}
+                                placeholder="ชื่อไฟล์ / คำอธิบาย (ไม่จำเป็น)"
+                                className="w-full rounded-lg bg-background border border-border px-3 py-2 text-xs focus:outline-none focus:border-accent placeholder:text-muted/40" />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Submit */}
+                        <button onClick={() => saveQuickReport(a)}
+                          disabled={saving || !qrOutcome.trim()}
+                          className="w-full rounded-xl bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-40 transition-colors">
+                          {saving ? "กำลังบันทึก..." : "บันทึกผล →"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2604,6 +3277,258 @@ export default function SalesPage() {
                 )}
                 <div className="flex-1" />
                 <button onClick={() => { setSelectedActivity(null); deleteActivity(a.id!); }} className="rounded-lg border border-red-500/30 text-red-500 px-3 py-1.5 text-xs hover:bg-red-500/10">ลบ</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ═══ CREATE DEAL MODAL ═══ */}
+      {createDealModal && (() => {
+        const act = createDealModal;
+        const custSelected = !!cdCustId;
+        const canSubmit = createDealForm.deal_name.trim() &&
+          (cdMode === "search" ? custSelected : createDealForm.company_name.trim());
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => setCreateDealModal(null)}>
+            <div className="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150"
+              onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold">🎯 สร้างดีลใหม่</p>
+                  <p className="text-[11px] text-muted mt-0.5">จากกิจกรรม: {act.description?.slice(0, 40) || act.expected_outcome?.slice(0, 40) || "—"}</p>
+                </div>
+                <button onClick={() => setCreateDealModal(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:bg-card-hover text-base">✕</button>
+              </div>
+
+              <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+
+                {/* ── ลูกค้า ── */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[10px] text-muted font-semibold uppercase tracking-wide">🏢 ลูกค้า *</label>
+                    <div className="flex rounded-lg overflow-hidden border border-border text-[10px]">
+                      <button onClick={() => { setCdMode("search"); setCdCustId(""); setCdCustName(""); setCdCustSearch(""); }}
+                        className={`px-2.5 py-1 transition-colors ${cdMode==="search" ? "bg-accent text-white" : "text-muted hover:bg-card-hover"}`}>
+                        ค้นหาในระบบ
+                      </button>
+                      <button onClick={() => { setCdMode("new"); setCdCustId(""); setCdCustName(""); }}
+                        className={`px-2.5 py-1 transition-colors ${cdMode==="new" ? "bg-orange-500 text-white" : "text-muted hover:bg-card-hover"}`}>
+                        + ลูกค้าใหม่
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Search mode */}
+                  {cdMode === "search" && (
+                    <div className="relative">
+                      <input
+                        placeholder="พิมพ์ชื่อบริษัทเพื่อค้นหา..."
+                        value={cdCustSearch}
+                        onChange={e => { setCdCustSearch(e.target.value); setCdCustOpen(true); if (!e.target.value) { setCdCustId(""); setCdCustName(""); } }}
+                        onFocus={() => setCdCustOpen(true)}
+                        onBlur={() => setTimeout(() => setCdCustOpen(false), 180)}
+                        className={`w-full rounded-xl bg-background border px-3 py-2.5 text-sm focus:outline-none transition-colors ${cdCustId ? "border-accent/60 focus:border-accent" : "border-border focus:border-accent"}`} />
+                      {cdCustId && (
+                        <div className="flex items-center justify-between mt-1.5 px-1">
+                          <p className="text-[11px] text-accent font-medium">✓ {cdCustName}</p>
+                          <Link href={`/customers/${cdCustId}`} target="_blank"
+                            className="text-[10px] text-muted hover:text-accent underline">แก้ไขรายละเอียด ↗</Link>
+                        </div>
+                      )}
+                      {cdCustOpen && (
+                        <div className="absolute z-30 w-full mt-1 rounded-xl bg-card border border-border shadow-2xl max-h-52 overflow-y-auto">
+                          {customers
+                            .filter(c => !cdCustSearch || c.company_name.toLowerCase().includes(cdCustSearch.toLowerCase()))
+                            .slice(0, 30)
+                            .map(c => (
+                              <button key={c.id} type="button"
+                                onMouseDown={() => { setCdCustId(c.id!); setCdCustName(c.company_name); setCdCustSearch(c.company_name); setCdCustOpen(false);
+                                  setCreateDealForm(f => ({ ...f, deal_name: f.deal_name || `${c.company_name} - ดีล` })); }}
+                                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-card-hover transition-colors border-b border-border/30 last:border-0 ${cdCustId===c.id ? "text-accent font-medium bg-accent/5" : ""}`}>
+                                <p className="font-medium">{c.company_name}</p>
+                                {(c.contact_name || c.phone) && (
+                                  <p className="text-[10px] text-muted mt-0.5">{[c.contact_name, c.phone].filter(Boolean).join(" · ")}</p>
+                                )}
+                              </button>
+                            ))}
+                          {customers.filter(c => !cdCustSearch || c.company_name.toLowerCase().includes(cdCustSearch.toLowerCase())).length === 0 && (
+                            <div className="px-4 py-4 text-center">
+                              <p className="text-xs text-muted">ไม่พบลูกค้า &quot;{cdCustSearch}&quot;</p>
+                              <button onClick={() => { setCdMode("new"); setCreateDealForm(f => ({ ...f, company_name: cdCustSearch })); setCdCustOpen(false); }}
+                                className="mt-2 text-xs text-accent hover:underline">+ สร้างลูกค้าใหม่ชื่อนี้</button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* New customer mode */}
+                  {cdMode === "new" && (
+                    <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-4 space-y-3">
+                      <p className="text-[10px] text-orange-500 font-semibold uppercase tracking-wide">สร้างลูกค้าใหม่ในระบบ</p>
+
+                      {/* ชื่อบริษัท */}
+                      <div>
+                        <label className="text-[10px] text-muted">ชื่อบริษัท / องค์กร <span className="text-orange-500">*</span></label>
+                        <input value={createDealForm.company_name}
+                          onChange={e => setCreateDealForm(f => ({ ...f, company_name: e.target.value }))}
+                          placeholder="เช่น บริษัท ABC จำกัด"
+                          className="w-full rounded-lg bg-background border border-orange-500/40 px-3 py-2 text-sm focus:outline-none focus:border-orange-500 mt-1 font-medium" />
+                      </div>
+
+                      {/* ประเภท + เลขผู้เสียภาษี */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-muted">ประเภทหน่วยงาน</label>
+                          <select value={createDealForm.org_type}
+                            onChange={e => setCreateDealForm(f => ({ ...f, org_type: e.target.value as Customer["org_type"] }))}
+                            className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                            <option value="private">เอกชน</option>
+                            <option value="government">ราชการ</option>
+                            <option value="education">การศึกษา</option>
+                            <option value="hospital">โรงพยาบาล</option>
+                            <option value="hotel">โรงแรม</option>
+                            <option value="other">อื่นๆ</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted">เลขที่ผู้เสียภาษี</label>
+                          <input value={createDealForm.tax_id}
+                            onChange={e => setCreateDealForm(f => ({ ...f, tax_id: e.target.value }))}
+                            placeholder="0-0000-00000-00-0"
+                            className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 font-mono" />
+                        </div>
+                      </div>
+
+                      {/* ผู้ติดต่อ + เบอร์โทร */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-muted">ผู้ติดต่อ</label>
+                          <input value={createDealForm.contact_name}
+                            onChange={e => setCreateDealForm(f => ({ ...f, contact_name: e.target.value }))}
+                            placeholder="ชื่อ-นามสกุล / ตำแหน่ง"
+                            className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted">เบอร์โทร</label>
+                          <input value={createDealForm.phone}
+                            onChange={e => setCreateDealForm(f => ({ ...f, phone: e.target.value }))}
+                            placeholder="08x-xxx-xxxx"
+                            className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                        </div>
+                      </div>
+
+                      {/* เบอร์สำรอง + อีเมล */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-muted">เบอร์สำรอง</label>
+                          <input value={createDealForm.phone2}
+                            onChange={e => setCreateDealForm(f => ({ ...f, phone2: e.target.value }))}
+                            placeholder="เบอร์ 2 / แฟกซ์"
+                            className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted">อีเมล</label>
+                          <input type="email" value={createDealForm.email}
+                            onChange={e => setCreateDealForm(f => ({ ...f, email: e.target.value }))}
+                            placeholder="contact@company.com"
+                            className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                        </div>
+                      </div>
+
+                      {/* LINE + Facebook */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-muted">LINE ID</label>
+                          <input value={createDealForm.line_id}
+                            onChange={e => setCreateDealForm(f => ({ ...f, line_id: e.target.value }))}
+                            placeholder="@line-id หรือชื่อ"
+                            className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-muted">Facebook</label>
+                          <input value={createDealForm.facebook}
+                            onChange={e => setCreateDealForm(f => ({ ...f, facebook: e.target.value }))}
+                            placeholder="ชื่อเพจ หรือ URL"
+                            className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                        </div>
+                      </div>
+
+                      {/* Website */}
+                      <div>
+                        <label className="text-[10px] text-muted">เว็บไซต์</label>
+                        <input value={createDealForm.website}
+                          onChange={e => setCreateDealForm(f => ({ ...f, website: e.target.value }))}
+                          placeholder="https://www.company.com"
+                          className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                      </div>
+
+                      {/* ที่อยู่ + จังหวัด */}
+                      <div>
+                        <label className="text-[10px] text-muted">ที่อยู่</label>
+                        <textarea value={createDealForm.address}
+                          onChange={e => setCreateDealForm(f => ({ ...f, address: e.target.value }))}
+                          placeholder="บ้านเลขที่ / ถนน / ตำบล / อำเภอ"
+                          rows={2}
+                          className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 resize-none" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-muted">จังหวัด</label>
+                        <input value={createDealForm.province}
+                          onChange={e => setCreateDealForm(f => ({ ...f, province: e.target.value }))}
+                          placeholder="เช่น สุราษฎร์ธานี"
+                          className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                      </div>
+
+                      {/* หมายเหตุ */}
+                      <div>
+                        <label className="text-[10px] text-muted">หมายเหตุ</label>
+                        <textarea value={createDealForm.notes}
+                          onChange={e => setCreateDealForm(f => ({ ...f, notes: e.target.value }))}
+                          placeholder="ข้อมูลเพิ่มเติมเกี่ยวกับลูกค้า..."
+                          rows={2}
+                          className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 resize-none" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── ข้อมูลดีล ── */}
+                <div className="space-y-3 border-t border-border pt-4">
+                  <p className="text-[10px] font-semibold text-muted uppercase tracking-wide">ข้อมูลดีล</p>
+                  <div>
+                    <label className="text-[10px] text-muted">ชื่อดีล / โปรเจค *</label>
+                    <input value={createDealForm.deal_name}
+                      onChange={e => setCreateDealForm(f => ({ ...f, deal_name: e.target.value }))}
+                      placeholder="เช่น ABC - Network Upgrade 2026"
+                      className="w-full rounded-xl bg-background border border-border px-3 py-2.5 text-sm focus:outline-none focus:border-accent mt-1 font-medium" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted">มูลค่าโดยประมาณ (THB)</label>
+                    <input type="text" inputMode="numeric"
+                      value={createDealForm.deal_value ? createDealForm.deal_value.toLocaleString() : ""}
+                      onChange={e => { const n = Number(e.target.value.replace(/,/g, "")); if (!isNaN(n)) setCreateDealForm(f => ({ ...f, deal_value: n })); }}
+                      placeholder="0"
+                      className="w-full rounded-xl bg-background border border-border px-3 py-2.5 text-sm focus:outline-none focus:border-accent mt-1 font-mono" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-4 border-t border-border flex gap-2">
+                <button onClick={saveCreateDeal} disabled={saving || !canSubmit}
+                  className="flex-1 rounded-xl bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-40 transition-colors">
+                  {saving ? "..." : cdMode === "new" ? "บันทึกลูกค้า + สร้างดีล" : "สร้างดีล →"}
+                </button>
+                <button onClick={() => setCreateDealModal(null)}
+                  className="rounded-xl border border-border px-4 py-2.5 text-sm text-muted hover:bg-card-hover transition-colors">
+                  ยกเลิก
+                </button>
               </div>
             </div>
           </div>

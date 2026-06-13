@@ -23,16 +23,27 @@ export default function PresaleCalendarPage() {
   const month = currentDate.getMonth();
   const today = new Date().toISOString().slice(0, 10);
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [r, u] = await Promise.all([fs.presaleRequests.list(), fs.users.list()]);
-      setRequests(r);
-      setUsers(u.filter(x => x.active && x.role === "presale"));
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }
-  useEffect(() => { setMounted(true); load(); }, []);
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
+
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.presaleRequests.subscribe(data => {
+          setRequests(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.users.subscribe(data => setUsers(data.filter(x => x.active !== false && x.role === "presale"))),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Filter
   const filtered = personFilter === "all" ? requests : requests.filter(r => r.assigned_to === personFilter);

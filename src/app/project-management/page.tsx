@@ -147,19 +147,32 @@ export default function ProjectManagementPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [groupBy, setGroupBy] = useState<"phase" | "none">("phase");
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [p, t, u] = await Promise.all([fs.projects.list(), fs.projectTasks.list(), fs.users.list()]);
-      setProjects(p);
-      setTasks(t);
-      setUsers(u.filter(x => x.active));
-      if (!selectedProjectId && p.length > 0) setSelectedProjectId(p[0].id!);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
 
-  useEffect(() => { setMounted(true); load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.projects.subscribe(data => {
+          setProjects(data);
+          if (firstSnap) {
+            setLoading(false);
+            firstSnap = false;
+            if (data.length > 0) setSelectedProjectId(prev => prev || data[0].id!);
+          }
+        }),
+        fs.projectTasks.subscribe(data => setTasks(data)),
+        fs.users.subscribe(data => setUsers(data.filter(x => x.active !== false))),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectedProject = projects.find(p => p.id === selectedProjectId);
 

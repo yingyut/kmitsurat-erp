@@ -273,18 +273,27 @@ export default function AssetsPage() {
   const canManage = hasPermission("manage_assets");
   const canView = hasPermission("view_assets") || canManage;
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    const [assetList, customerList] = await Promise.all([
-      fs.assets.list(),
-      fs.customers.list(),
-    ]);
-    setAssets(assetList);
-    setCustomers(customerList);
-    setLoading(false);
-  }
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
 
-  useEffect(() => { setMounted(true); load(); }, []);
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.assets.subscribe(data => {
+          setAssets(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.customers.subscribe(data => setCustomers(data)),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!mounted || userLoading) return <div className="p-6"><p className="text-muted text-sm">Loading...</p></div>;
   if (!currentUser) return <div className="p-6"><p className="text-muted text-sm">กรุณาเข้าสู่ระบบ</p></div>;
@@ -392,8 +401,6 @@ export default function AssetsPage() {
         });
       }
       setShowModal(false);
-      setLoading(true);
-      await load();
     } catch (e) {
       console.error(e);
       alert("❌ บันทึกไม่สำเร็จ กรุณาลองใหม่");
@@ -455,8 +462,6 @@ export default function AssetsPage() {
         details: `Import Asset Excel: เพิ่ม ${added} รายการ (ข้าม ${importPreview.length - validRows.length} error)`,
       });
       setImportResult({ added, failed });
-      setLoading(true);
-      await load();
     } catch (e) {
       console.error(e);
       alert("❌ Import ไม่สำเร็จ กรุณาลองใหม่");
@@ -473,8 +478,8 @@ export default function AssetsPage() {
           <p className="text-xs text-muted">ติดตามอุปกรณ์ที่ติดตั้ง — KM Number, Serial, ประกัน, MA, ประวัติการซ่อม</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => { setLoading(true); load(); }} disabled={loading} className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover disabled:opacity-50">
-            {loading ? "..." : "↺ Refresh"}
+          <button onClick={() => {}} disabled className="rounded-lg border border-border px-3 py-2 text-xs text-muted opacity-50 cursor-not-allowed hidden">
+            ↺ Refresh
           </button>
           <button
             onClick={async () => {

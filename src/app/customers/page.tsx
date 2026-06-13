@@ -27,9 +27,10 @@ const orgColor: Record<string, string> = { government: "bg-blue-900/50 text-blue
 const provinces = ["กรุงเทพ","กระบี่","กาญจนบุรี","กาฬสินธุ์","กำแพงเพชร","ขอนแก่น","จันทบุรี","ฉะเชิงเทรา","ชลบุรี","ชัยนาท","ชัยภูมิ","ชุมพร","เชียงราย","เชียงใหม่","ตรัง","ตราด","ตาก","นครนายก","นครปฐม","นครพนม","นครราชสีมา","นครศรีธรรมราช","นครสวรรค์","นนทบุรี","นราธิวาส","น่าน","บึงกาฬ","บุรีรัมย์","ปทุมธานี","ประจวบคีรีขันธ์","ปราจีนบุรี","ปัตตานี","พระนครศรีอยุธยา","พะเยา","พังงา","พัทลุง","พิจิตร","พิษณุโลก","เพชรบุรี","เพชรบูรณ์","แพร่","ภูเก็ต","มหาสารคาม","มุกดาหาร","แม่ฮ่องสอน","ยโสธร","ยะลา","ร้อยเอ็ด","ระนอง","ระยอง","ราชบุรี","ลพบุรี","ลำปาง","ลำพูน","เลย","ศรีสะเกษ","สกลนคร","สงขลา","สตูล","สมุทรปราการ","สมุทรสงคราม","สมุทรสาคร","สระแก้ว","สระบุรี","สิงห์บุรี","สุโขทัย","สุพรรณบุรี","สุราษฎร์ธานี","สุรินทร์","หนองคาย","หนองบัวลำภู","อ่างทอง","อำนาจเจริญ","อุดรธานี","อุตรดิตถ์","อุทัยธานี","อุบลราชธานี"];
 
 const emptyForm = {
-  company_name: "", contact_name: "", phone: "", email: "",
+  company_name: "", contact_name: "", phone: "", phone2: "", email: "",
   address: "", province: "สุราษฎร์ธานี",
   org_type: "private" as Customer["org_type"],
+  tax_id: "", line_id: "", facebook: "", website: "",
   notes: "",
   assigned_to: "",
   co_owners: [] as string[],
@@ -60,20 +61,30 @@ export default function CustomersPage() {
   const [hoverCust, setHoverCust] = useState<Customer | null>(null);
   const [hoverPos, setHoverPos]   = useState({ x: 0, y: 0 });
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [c, p, q, s, u] = await Promise.all([
-        fs.customers.list(), fs.projects.list(),
-        fs.quotations.list(), fs.serviceTickets.list(),
-        fs.users.list(),
-      ]);
-      setList(c); setProjects(p); setQuotations(q); setServiceTickets(s); setUsers(u);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  }
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
 
-  useEffect(() => { setMounted(true); load(); }, []);
+  useEffect(() => {
+    setMounted(true);
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.customers.subscribe(data => {
+          setList(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.projects.subscribe(data => setProjects(data)),
+        fs.quotations.subscribe(data => setQuotations(data)),
+        fs.serviceTickets.subscribe(data => setServiceTickets(data)),
+        fs.users.subscribe(data => setUsers(data.filter(x => x.active !== false))),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Permission flags ──────────────────────────────────────────────────────
   // Legacy admin/avenger = full access. New roles checked via permission matrix.
@@ -172,8 +183,10 @@ export default function CustomersPage() {
     setEditId(c.id!);
     setForm({
       company_name: c.company_name, contact_name: c.contact_name,
-      phone: c.phone, email: c.email, address: c.address,
+      phone: c.phone, phone2: c.phone2 || "", email: c.email, address: c.address,
       province: c.province || "", org_type: c.org_type || "other",
+      tax_id: c.tax_id || "", line_id: c.line_id || "",
+      facebook: c.facebook || "", website: c.website || "",
       notes: c.notes,
       assigned_to: c.assigned_to || "",
       co_owners: c.co_owners || [],
@@ -188,8 +201,10 @@ export default function CustomersPage() {
     try {
       const saveData = {
         company_name: form.company_name, contact_name: form.contact_name,
-        phone: form.phone, email: form.email, address: form.address,
+        phone: form.phone, phone2: form.phone2, email: form.email, address: form.address,
         province: form.province, org_type: form.org_type, notes: form.notes,
+        tax_id: form.tax_id, line_id: form.line_id,
+        facebook: form.facebook, website: form.website,
         assigned_to: form.assigned_to || (!canViewAll ? (currentUser?.name ?? "") : ""),
         co_owners: form.co_owners.filter(Boolean),
       };
@@ -311,7 +326,12 @@ export default function CustomersPage() {
             <input placeholder="ชื่อบริษัท / หน่วยงาน *" value={form.company_name} onChange={e => setForm({...form, company_name: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <input placeholder="ชื่อผู้ติดต่อ" value={form.contact_name} onChange={e => setForm({...form, contact_name: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <input placeholder="เบอร์โทร" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="เบอร์สำรอง" value={form.phone2} onChange={e => setForm({...form, phone2: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <input placeholder="อีเมล" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="เลขที่ผู้เสียภาษี" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="LINE ID" value={form.line_id} onChange={e => setForm({...form, line_id: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="Facebook (URL หรือชื่อ page)" value={form.facebook} onChange={e => setForm({...form, facebook: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="เว็บไซต์" value={form.website} onChange={e => setForm({...form, website: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <select value={form.province} onChange={e => setForm({...form, province: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
               <option value="">-- จังหวัด --</option>
               {provinces.map(p => <option key={p} value={p}>{p}</option>)}

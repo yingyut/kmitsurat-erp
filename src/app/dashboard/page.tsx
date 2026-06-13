@@ -1199,8 +1199,8 @@ export default function DashboardPage() {
             const planGroups=groupByPerson(salesPlanOverdue);
             const totalAlerts=salesOverdue.length+salesPlanOverdue.length;
             // row renderer
-            const renderRow=(a:{id?:string;customer_name?:string;next_follow_up?:string;plan_date?:string;description?:string},dateStr:string,accent:string)=>(
-              <Link key={a.id||a.customer_name} href={`/sales${a.id?`?highlight=${a.id}`:""}`}
+            const renderRow=(a:{id?:string;customer_name?:string;next_follow_up?:string;plan_date?:string;description?:string},dateStr:string,accent:string,isplan=false)=>(
+              <Link key={a.id||a.customer_name} href={`/sales?tab=${isplan?"workplan":"activities"}${a.id?`&open=${a.id}`:""}`}
                 className={`flex items-center gap-2 rounded-lg px-2 py-1 -mx-2 transition-colors group hover:${accent==="orange"?"bg-orange-500/5":"bg-violet-500/5"}`}>
                 <span className="text-[10px] text-muted/80 truncate flex-1 group-hover:text-foreground transition-colors">{a.customer_name||a.description?.slice(0,30)||"—"}</span>
                 {dateStr&&<span className={`text-[10px] shrink-0 ${accent==="orange"?"text-orange-400/80":"text-violet-400/80"}`}>{dateStr}</span>}
@@ -1234,8 +1234,8 @@ export default function DashboardPage() {
                                 <span className="text-[10px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-full px-1.5 py-0.5">{items.length}</span>
                               </div>
                               <div className="space-y-0.5">
-                                {items.slice(0,4).map(a=>renderRow(a,a.next_follow_up||"","orange"))}
-                                {items.length>4&&<Link href="/sales" className="block text-[10px] text-accent hover:underline pl-1">+ อีก {items.length-4} →</Link>}
+                                {items.slice(0,4).map(a=>renderRow(a,a.next_follow_up||"","orange",false))}
+                                {items.length>4&&<Link href="/sales?tab=activities" className="block text-[10px] text-accent hover:underline pl-1">+ อีก {items.length-4} →</Link>}
                               </div>
                             </div>
                           );
@@ -1262,8 +1262,8 @@ export default function DashboardPage() {
                                 <span className="text-[10px] bg-violet-500/10 border border-violet-500/25 text-violet-400 rounded-full px-1.5 py-0.5">{items.length}</span>
                               </div>
                               <div className="space-y-0.5">
-                                {items.slice(0,4).map(a=>renderRow(a,a.plan_date||a.next_follow_up||"","violet"))}
-                                {items.length>4&&<Link href="/sales" className="block text-[10px] text-accent hover:underline pl-1">+ อีก {items.length-4} →</Link>}
+                                {items.slice(0,4).map(a=>renderRow(a,a.plan_date||a.next_follow_up||"","violet",true))}
+                                {items.length>4&&<Link href="/sales?tab=workplan" className="block text-[10px] text-accent hover:underline pl-1">+ อีก {items.length-4} →</Link>}
                               </div>
                             </div>
                           );

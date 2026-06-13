@@ -326,21 +326,33 @@ export default function ServicePage() {
     try { localStorage.setItem("kmit_svc_doclinks", JSON.stringify(links)); } catch {}
   }
 
-  async function load() {
-    const fs = await import("@/lib/firestore");
-    try {
-      const [t, c, p, jr, u, al] = await Promise.all([fs.serviceTickets.list(), fs.customers.list(), fs.projects.list(), fs.jobRequests.list(), fs.users.list(), fs.assets.list()]);
-      setList(t); setCusts(c); setProjs(p); setAssetList(al);
-      setIncomingReqs(jr.filter(j => j.request_to_team === "service"));
-      setSvcUsers(u.filter(x => x.active && (x.role === "service" || x.role === "Service Technician" || x.role === "Service Manager")));
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  }
+  // no-op — ข้อมูลอัปเดตอัตโนมัติผ่าน onSnapshot subscriptions
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  async function load() {}
+
   useEffect(() => {
     setMounted(true);
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab") as ServiceView | null;
     if (tab && VIEWS.some(v => v.id === tab)) setActiveView(tab);
-    load();
+    const unsubs: Array<() => void> = [];
+    let firstSnap = true;
+    (async () => {
+      const fs = await import("@/lib/firestore");
+      unsubs.push(
+        fs.serviceTickets.subscribe(data => {
+          setList(data);
+          if (firstSnap) { setLoading(false); firstSnap = false; }
+        }),
+        fs.customers.subscribe(data => setCusts(data)),
+        fs.projects.subscribe(data => setProjs(data)),
+        fs.jobRequests.subscribe(data => setIncomingReqs(data.filter(j => j.request_to_team === "service"))),
+        fs.users.subscribe(data => setSvcUsers(data.filter(x => x.active !== false && (x.role === "service" || x.role === "Service Technician" || x.role === "Service Manager")))),
+        fs.assets.subscribe(data => setAssetList(data)),
+      );
+    })();
+    return () => unsubs.forEach(u => u());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const ownTicketsOnly = isNewRole(currentUser?.role ?? "") && !hasPermission("view_all_tickets");
