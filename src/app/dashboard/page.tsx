@@ -1388,6 +1388,7 @@ export default function DashboardPage() {
         const barColor = p.pct>=80?"bg-emerald-500":p.pct>=50?"bg-amber-500":"bg-orange-500";
         const gpColor  = gpPctMe>=20?"text-emerald-500":gpPctMe>=10?"text-amber-500":profitK>0?"text-foreground/70":"text-muted";
         return (
+          <Section title={`📊 ผลงานของฉัน · ${filterLabel}`} defaultOpen={false}>
           <div className="space-y-3">
             <div className="grid grid-cols-2 @md:grid-cols-4 gap-3">
               {/* Achievement */}
@@ -1432,6 +1433,7 @@ export default function DashboardPage() {
               <span className="ml-auto text-[11px] text-muted/40">{p.short||p.name} · {filterLabel}</span>
             </div>
           </div>
+          </Section>
         );
       }
       // Admin / seeAll: team cards view
