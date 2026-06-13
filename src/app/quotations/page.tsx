@@ -496,7 +496,13 @@ export default function QuotationsPage() {
         <div className="flex gap-2">
           <button title="ส่งออกไฟล์ CSV" className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">Export CSV</button>
           <button title="ส่งออกไฟล์ PDF" className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:bg-card-hover">Export PDF</button>
-          <button onClick={() => setShowForm(!showForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Quotation"}</button>
+          <button onClick={() => {
+            if (showForm) {
+              const me = users.find(u => u.name === currentUser?.name || u.email === currentUser?.email);
+              if (me?.id) setCreatedById(me.id);
+            }
+            setShowForm(!showForm);
+          }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Quotation"}</button>
         </div>
       </div>
 
@@ -632,12 +638,20 @@ export default function QuotationsPage() {
             </div>
             <div>
               <label className="text-[10px] text-muted">ผู้สร้าง / เซลล์ <span className="text-muted/60">(ใช้ใน QT number)</span></label>
-              <select value={createdById} onChange={(e) => setCreatedById(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
-                <option value="">-- เลือกเซลล์ --</option>
-                {(ownOnly ? users.filter(u => u.name === currentUser?.name || u.email === currentUser?.email) : users).map(u => (
-                  <option key={u.id} value={u.id}>{u.name}{u.sales_code ? ` [${u.sales_code}]` : ""}</option>
-                ))}
-              </select>
+              {ownOnly ? (
+                <div className="mt-1 rounded-lg bg-background border border-border px-3 py-2 text-sm text-foreground/80 flex items-center gap-2">
+                  <span className="text-muted text-xs">🔒</span>
+                  {users.find(u => u.id === createdById)?.name || currentUser?.name || "—"}
+                  {users.find(u => u.id === createdById)?.sales_code ? <span className="text-muted text-xs">[{users.find(u => u.id === createdById)?.sales_code}]</span> : null}
+                </div>
+              ) : (
+                <select value={createdById} onChange={(e) => setCreatedById(e.target.value)} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                  <option value="">-- เลือกเซลล์ --</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>{u.name}{u.sales_code ? ` [${u.sales_code}]` : ""}</option>
+                  ))}
+                </select>
+              )}
               {createdById && !users.find(u => u.id === createdById)?.sales_code && (
                 <p className="text-[10px] text-amber-400 mt-0.5">⚠ user นี้ยังไม่มี sales_code — <Link href="/users" className="underline">ตั้งค่า</Link></p>
               )}
