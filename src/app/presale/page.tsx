@@ -421,7 +421,7 @@ export default function PresalePage() {
   const isPresaleUser = presaleRoleSet.has(myRole) || (currentUser?.extra_roles as string[] || []).some((r: string) => presaleRoleSet.has(r));
   const canReview = isPresaleUser || canApprove;
   const isManager = canApprove || hasPermission("manage_presale");
-  const ownOnly = !isManager && !!currentUser;
+  const ownOnly = !isManager && !isPresaleUser && !!currentUser;
 
   function checkNeedsApproval(type: string, value: number): boolean {
     if (!approvalSettings) return false;
@@ -893,8 +893,30 @@ export default function PresalePage() {
                       <button onClick={async () => {
                         const assignTo = (document.getElementById(`assign-${r.id}`) as HTMLSelectElement)?.value;
                         const note = prompt("หมายเหตุรับงาน (ไม่บังคับ)") || "";
-                        const { jobRequests } = await import("@/lib/firestore");
-                        await jobRequests.update(r.id!, { status: "accepted", assigned_to: assignTo, accept_note: note }); await load();
+                        const { jobRequests, presaleRequests } = await import("@/lib/firestore");
+                        await jobRequests.update(r.id!, { status: "accepted", assigned_to: assignTo, accept_note: note });
+                        // Auto-create PresaleTask from this job request
+                        const prioMap: Record<string, string> = { low: "low", medium: "normal", high: "high", urgent: "urgent" };
+                        await presaleRequests.add({
+                          activity_id: r.id!, created_by: r.request_from,
+                          customer_id: r.customer_id, customer_name: r.customer_name,
+                          project_id: r.project_id || "", project_name: r.project_name || "",
+                          type: "solution_design",
+                          requirement: r.description,
+                          assigned_to: assignTo || "",
+                          due_date: r.due_date || "",
+                          status: assignTo ? "assigned" : "new",
+                          priority: prioMap[r.priority] || "normal",
+                          value: r.value || 0,
+                          approval_status: "not_required",
+                          approval_requested_at: "", co_approvers: [],
+                          attachments: (r.attachments || []).map(att => ({
+                            type: att.url.startsWith("data:image") ? "image" : att.type === "link" ? "other" : "document",
+                            name: att.name, url: att.url,
+                            uploaded_at: todayStr(), uploaded_by: r.request_from || "", notes: "",
+                          })),
+                        } as unknown as Record<string, unknown>);
+                        await load();
                       }} className="text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ รับงาน</button>
                       <button onClick={async () => {
                         const reason = prompt("เหตุผลที่ปฏิเสธ:");
