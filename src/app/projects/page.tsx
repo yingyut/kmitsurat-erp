@@ -224,12 +224,18 @@ export default function ProjectsPage() {
     }
   }
 
-  function openAdd() { setEditId(null); setForm(emptyForm); setShowForm(true); setDetail(null); }
+  function openAdd() {
+    setEditId(null);
+    setForm({ ...emptyForm, assigned_to: ownProjectsOnly ? (currentUser?.name || "") : "" });
+    setShowForm(true); setDetail(null);
+  }
   function openEdit(p: Project) {
     setEditId(p.id!);
     setForm({
       name: p.name, customer_id: p.customer_id, customer_name: p.customer_name,
-      type: p.type, job_types: p.job_types || (p.type ? [p.type] : []), value: p.value, status: p.status, assigned_to: p.assigned_to, notes: p.notes,
+      type: p.type, job_types: p.job_types || (p.type ? [p.type] : []), value: p.value, status: p.status,
+      assigned_to: ownProjectsOnly ? (currentUser?.name || p.assigned_to) : p.assigned_to,
+      notes: p.notes,
       win_loss_reason: p.win_loss_reason || "", lost_competitor: p.lost_competitor || "",
       re_engage: p.re_engage || false, re_engage_date: p.re_engage_date || "", re_engage_note: p.re_engage_note || "",
       reminder_date: p.reminder_date || "", reminder_type: p.reminder_type || "none", reminder_sent: p.reminder_sent || false,
@@ -786,7 +792,20 @@ export default function ProjectsPage() {
             </div>
             <div><label className="text-[10px] text-muted">มูลค่า (THB)</label><input type="number" placeholder="เช่น 500000" value={form.value || ""} onChange={e => setForm({ ...form, value: Number(e.target.value) })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
             <div><label className="text-[10px] text-muted">สถานะ</label><select value={form.status} onChange={e => setForm({ ...form, status: e.target.value as Project["status"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">{statuses.map(s => <option key={s} value={s}>{statusLabels[s]}</option>)}</select></div>
-            <div><label className="text-[10px] text-muted">ผู้รับผิดชอบ</label><select value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกผู้รับผิดชอบ --</option>{users.map(u => <option key={u.id} value={u.name}>{u.name} ({u.role})</option>)}</select></div>
+            <div>
+              <label className="text-[10px] text-muted">ผู้รับผิดชอบ</label>
+              {ownProjectsOnly ? (
+                <div className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm mt-1 flex items-center gap-2 text-muted">
+                  <span className="text-xs">🔒</span>
+                  <span className="text-foreground font-medium">{currentUser?.name}</span>
+                </div>
+              ) : (
+                <select value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1">
+                  <option value="">-- เลือกผู้รับผิดชอบ --</option>
+                  {users.map(u => <option key={u.id} value={u.name}>{u.name} ({u.role})</option>)}
+                </select>
+              )}
+            </div>
             <div className="col-span-full"><label className="text-[10px] text-muted">หมายเหตุ</label><textarea placeholder="รายละเอียดเพิ่มเติม" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent min-h-12 resize-y mt-1" /></div>
           </div>
 
