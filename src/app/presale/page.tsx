@@ -356,8 +356,7 @@ export default function PresalePage() {
         fs.notificationWorkflows.subscribe(data => setNotifWorkflows(data)),
         fs.notificationChannels.subscribe(data => setNotifChannels(data)),
         fs.inAppNotifications.subscribe(data => {
-          const myName = currentUser?.name || "";
-          setMyNotifs(data.filter(n => n.recipients.includes(myName)));
+          setMyNotifs(data.filter(n => n.module === "presale"));
         }),
       );
     })();
@@ -803,15 +802,17 @@ export default function PresalePage() {
           )}
           <Link href="/presale/calendar" title="ปฏิทินงาน Presale" className="rounded-lg border border-border px-3 py-2 text-sm text-muted hover:bg-card-hover">📅 ปฏิทิน</Link>
           {/* Notification bell */}
+          {(() => {
+            const myName = allUsers.find(u => u.email === currentUser?.email)?.name || currentUser?.name || "";
+            const myPersonalNotifs = myNotifs.filter(n => n.recipients.includes(myName));
+            const unreadCount = myPersonalNotifs.filter(n => !n.read_by.includes(myName)).length;
+            return (
           <div className="relative">
             <button onClick={() => setShowNotifPanel(v => !v)} className="relative rounded-lg border border-border px-3 py-2 text-sm text-muted hover:bg-card-hover" title="การแจ้งเตือน">
               🔔
-              {myNotifs.filter(n => {
-                const myName = allUsers.find(u => u.email === currentUser?.email)?.name || currentUser?.name || "";
-                return !n.read_by.includes(myName);
-              }).length > 0 && (
+              {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
-                  {Math.min(myNotifs.filter(n => { const myName = allUsers.find(u => u.email === currentUser?.email)?.name || currentUser?.name || ""; return !n.read_by.includes(myName); }).length, 9)}
+                  {Math.min(unreadCount, 9)}
                 </span>
               )}
             </button>
@@ -820,19 +821,16 @@ export default function PresalePage() {
                 <div className="flex items-center justify-between px-3 py-2 border-b border-border">
                   <p className="text-xs font-semibold">🔔 การแจ้งเตือน</p>
                   <button onClick={async () => {
-                    const myName = allUsers.find(u => u.email === currentUser?.email)?.name || currentUser?.name || "";
                     if (!myName) return;
                     const fs = await import("@/lib/firestore");
-                    await Promise.all(myNotifs.filter(n => !n.read_by.includes(myName)).map(n =>
+                    await Promise.all(myPersonalNotifs.filter(n => !n.read_by.includes(myName)).map(n =>
                       fs.inAppNotifications.update(n.id!, { read_by: [...n.read_by, myName] })
                     ));
-                    await load();
                   }} className="text-[10px] text-accent hover:underline">อ่านทั้งหมด</button>
                 </div>
                 <div className="max-h-80 overflow-y-auto divide-y divide-border">
-                  {myNotifs.length === 0 && <p className="text-xs text-muted text-center py-6">ไม่มีการแจ้งเตือน</p>}
-                  {myNotifs.slice(0, 20).map(n => {
-                    const myName = allUsers.find(u => u.email === currentUser?.email)?.name || currentUser?.name || "";
+                  {myPersonalNotifs.length === 0 && <p className="text-xs text-muted text-center py-6">ไม่มีการแจ้งเตือน</p>}
+                  {myPersonalNotifs.slice(0, 20).map(n => {
                     const isRead = n.read_by.includes(myName);
                     return (
                       <div key={n.id} className={`px-3 py-2.5 cursor-pointer hover:bg-card-hover ${isRead ? "opacity-50" : ""}`}
@@ -840,7 +838,6 @@ export default function PresalePage() {
                           if (!isRead && myName) {
                             const fs = await import("@/lib/firestore");
                             await fs.inAppNotifications.update(n.id!, { read_by: [...n.read_by, myName] });
-                            await load();
                           }
                           setShowNotifPanel(false);
                           setPageTab("list");
@@ -863,6 +860,8 @@ export default function PresalePage() {
               </div>
             )}
           </div>
+            );
+          })()}
           <button onClick={() => { if (showForm) { setShowForm(false); setEditId(null); } else openAdd(); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Task"}</button>
         </div>
       </div>
