@@ -361,6 +361,16 @@ export interface PresaleAttachment {
   notes?: string;
 }
 
+export interface PresaleWorkStep {
+  id: string;
+  type: "research" | "presentation" | "boq" | "bom" | "design" | "site_visit" | "other";
+  label: string;
+  start_date: string;
+  duration_days: number;
+  status: "pending" | "in_progress" | "done";
+  notes?: string;
+}
+
 export interface PresaleRequest {
   id?: string;
   tenant_id: string;
@@ -391,6 +401,8 @@ export interface PresaleRequest {
   converted_to_quotation_id?: string;
   converted_quotation_number?: string;
   converted_at?: string;
+  // Work plan steps
+  work_steps?: PresaleWorkStep[];
   // Submitter
   created_by?: string;
   // Approval workflow

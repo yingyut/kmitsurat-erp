@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import Link from "next/link";
-import type { PresaleRequest, PresaleApprovalSettings, Customer, Project, JobRequest, User, Product, QuotationItem, BomItem, PresaleAttachment, IntegrationSetting, NotificationWorkflow, NotificationChannel, InAppNotification } from "@/lib/types";
+import type { PresaleRequest, PresaleWorkStep, PresaleApprovalSettings, Customer, Project, JobRequest, User, Product, QuotationItem, BomItem, PresaleAttachment, IntegrationSetting, NotificationWorkflow, NotificationChannel, InAppNotification } from "@/lib/types";
 import { sendPresaleStatusNotification } from "@/lib/notify";
 import { useCurrentUser } from "@/lib/UserContext";
 import { generateNumber } from "@/lib/numbering";
@@ -56,7 +56,27 @@ const emptyBomItem: BomItem = { code: "", name: "", brand: "", qty: 1, unit: "pc
 const emptyBoqItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0, ref_url: "" };
 const emptyAttachment: PresaleAttachment = { type: "design", name: "", url: "", uploaded_at: "", uploaded_by: "", notes: "" };
 
-type DetailTab = "summary" | "bom" | "boq" | "artifacts";
+const STEP_META: Record<PresaleWorkStep["type"], { icon: string; label: string }> = {
+  research:     { icon: "🔍", label: "ค้นหาข้อมูล" },
+  presentation: { icon: "🎤", label: "สร้างไฟล์นำเสนอ" },
+  boq:          { icon: "💰", label: "จัดทำ BOQ" },
+  bom:          { icon: "🛒", label: "จัดทำ BOM" },
+  design:       { icon: "🎨", label: "ออกแบบระบบ" },
+  site_visit:   { icon: "📍", label: "สำรวจหน้างาน" },
+  other:        { icon: "📝", label: "อื่นๆ" },
+};
+const STEP_STATUS_COLOR: Record<string, string> = {
+  pending:     "bg-slate-800/60 text-slate-400",
+  in_progress: "bg-amber-900/50 text-amber-400",
+  done:        "bg-green-900/50 text-green-400",
+};
+const STEP_STATUS_LABEL: Record<string, string> = { pending: "รอ", in_progress: "กำลังทำ", done: "เสร็จ" };
+
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr); d.setDate(d.getDate() + days - 1); return d.toISOString().slice(0, 10);
+}
+
+type DetailTab = "summary" | "bom" | "boq" | "artifacts" | "workplan";
 
 // ─── UI Helpers ───────────────────────────────────────────────────────────────
 
@@ -318,6 +338,9 @@ export default function PresalePage() {
   const [boqLinks, setBoqLinks] = useState<{ label: string; url: string }[]>([]);
   const [boqItems, setBoqItems] = useState<QuotationItem[]>([]);
   const [attachments, setAttachments] = useState<PresaleAttachment[]>([]);
+  const [workSteps, setWorkSteps] = useState<PresaleWorkStep[]>([]);
+  const [addingStep, setAddingStep] = useState(false);
+  const [newStep, setNewStep] = useState<Omit<PresaleWorkStep,"id">>({ type: "research", label: "ค้นหาข้อมูล", start_date: todayStr(), duration_days: 3, status: "pending", notes: "" });
   const [solutionSummary, setSolutionSummary] = useState("");
   const [artifactSearch, setArtifactSearch] = useState("");
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
@@ -375,6 +398,8 @@ export default function PresalePage() {
     setBoqLinks(r.boq_links || []);
     setBoqItems(r.boq_items || []);
     setAttachments(r.attachments || []);
+    setWorkSteps(r.work_steps || []);
+    setAddingStep(false);
   }
   function closeDetail() {
     setDetail(null);
@@ -665,10 +690,51 @@ export default function PresalePage() {
         boq_total_selling: boqTotals.totalSelling,
         boq_gp_percent: boqTotals.gpPercent,
         attachments,
+        work_steps: workSteps,
       } as unknown as Record<string, unknown>);
       await load();
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
+  }
+
+  async function sendProgressNotification() {
+    if (!detail) return;
+    const doneCount = workSteps.filter(s => s.status === "done").length;
+    const currentStep = workSteps.find(s => s.status === "in_progress") || workSteps.find(s => s.status === "pending");
+    const totalDays = workSteps.reduce((s, x) => s + x.duration_days, 0);
+    const doneDays = workSteps.filter(s => s.status === "done").reduce((s, x) => s + x.duration_days, 0);
+    const requesterName = detail.created_by || "";
+    if (!requesterName) { alert("ไม่พบชื่อผู้ขอ (created_by)"); return; }
+    const title = `📋 ความคืบหน้า Presale: ${detail.customer_name}`;
+    const body = [
+      `ความคืบหน้าคำขอ ${typeLabels[detail.type]}`,
+      `ลูกค้า: ${detail.customer_name}${detail.project_name ? ` · ${detail.project_name}` : ""}`,
+      `───────────────────────────`,
+      workSteps.length > 0 ? `เสร็จแล้ว: ${doneCount}/${workSteps.length} ขั้นตอน (${doneDays}/${totalDays} วัน)` : "",
+      currentStep ? `ขั้นตอนปัจจุบัน: ${STEP_META[currentStep.type].icon} ${currentStep.label}` : "",
+      totalDays > 0 ? `ระยะเวลาทั้งหมด: ~${totalDays} วัน` : "",
+      `───────────────────────────`,
+      workSteps.map((s, i) => `${i+1}. ${STEP_META[s.type].icon} ${s.label} (${s.duration_days} วัน) — ${STEP_STATUS_LABEL[s.status]}`).join("\n"),
+    ].filter(Boolean).join("\n");
+
+    const { inAppNotifications } = await import("@/lib/firestore");
+    await inAppNotifications.add({
+      tenant_id: "kmitsurat", module: "presale", trigger: "presale_status_changed",
+      title, body, link: "/presale",
+      metadata: { task_id: detail.id },
+      recipients: [requesterName], read_by: [],
+    } as Record<string, unknown>);
+
+    const requesterUser = allUsers.find(u => u.name === requesterName);
+    if (requesterUser?.email) {
+      const emailChannel = notifChannels.find(c => c.type === "email" && c.active);
+      if (emailChannel) {
+        fetch("/api/notify", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel: emailChannel, to_emails: [requesterUser.email], subject: title, body }),
+        }).catch(() => {});
+      }
+    }
+    alert(`ส่งแจ้งเตือนถึง ${requesterName} แล้ว`);
   }
 
   // === Sample loaders ===
@@ -1234,13 +1300,14 @@ export default function PresalePage() {
 
           {/* Tabs */}
           <div className="flex gap-1 mb-3 border-b border-border overflow-x-auto">
-            {(["summary","bom","boq","artifacts"] as const).map(t => {
+            {(["summary","workplan","bom","boq","artifacts"] as const).map(t => {
               const summarySections = solutionSummary.trim() ? ((solutionSummary.match(/^#{1,3}\s/gm) || []).length || 1) : 0;
               const labels: Record<DetailTab, string> = {
-                summary: `📋 Solution${summarySections > 0 ? ` (${summarySections})` : ""}`,
-                bom: `🛒 BOM${bomItems.length > 0 ? ` (${bomItems.length})` : ""}`,
-                boq: `💰 BOQ${boqItems.length > 0 ? ` (${boqItems.length})` : ""}`,
-                artifacts: `📎 Artifacts${attachments.length > 0 ? ` (${attachments.length})` : ""}`,
+                summary:  `📋 Solution${summarySections > 0 ? ` (${summarySections})` : ""}`,
+                workplan: `📅 แผนงาน${workSteps.length > 0 ? ` (${workSteps.length})` : ""}`,
+                bom:      `🛒 BOM${bomItems.length > 0 ? ` (${bomItems.length})` : ""}`,
+                boq:      `💰 BOQ${boqItems.length > 0 ? ` (${boqItems.length})` : ""}`,
+                artifacts:`📎 Artifacts${attachments.length > 0 ? ` (${attachments.length})` : ""}`,
               };
               return (
                 <button key={t} onClick={() => setDetailTab(t)} className={`whitespace-nowrap px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${detailTab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-foreground"}`}>{labels[t]}</button>
@@ -1262,6 +1329,132 @@ export default function PresalePage() {
                 className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent min-h-64 resize-y font-mono"
               />
               <p className="text-[10px] text-muted">💡 ใช้ Markdown แสดงผลเป็นโครงสร้าง: # หัวข้อหลัก · ## หัวข้อรอง · - bullet · **เด่น** · `code`</p>
+            </div>
+          )}
+
+          {/* Work Plan tab */}
+          {detailTab === "workplan" && (
+            <div className="space-y-3">
+              {/* Summary stats */}
+              {workSteps.length > 0 && (() => {
+                const totalDays = workSteps.reduce((s, x) => s + x.duration_days, 0);
+                const doneDays  = workSteps.filter(s => s.status === "done").reduce((s, x) => s + x.duration_days, 0);
+                const doneCount = workSteps.filter(s => s.status === "done").length;
+                const inProgress = workSteps.find(s => s.status === "in_progress");
+                return (
+                  <div className="grid grid-cols-3 gap-2 mb-1">
+                    <div className="rounded-lg bg-background border border-border px-3 py-2 text-center">
+                      <p className="text-lg font-bold text-accent">{totalDays}</p>
+                      <p className="text-[10px] text-muted">วันทั้งหมด</p>
+                    </div>
+                    <div className="rounded-lg bg-background border border-border px-3 py-2 text-center">
+                      <p className="text-lg font-bold text-green-400">{doneCount}/{workSteps.length}</p>
+                      <p className="text-[10px] text-muted">ขั้นตอนเสร็จ</p>
+                    </div>
+                    <div className="rounded-lg bg-background border border-border px-3 py-2 text-center">
+                      <p className="text-xs font-medium text-amber-400 truncate">{inProgress ? `${STEP_META[inProgress.type].icon} ${inProgress.label}` : doneCount === workSteps.length ? "✅ เสร็จทั้งหมด" : "—"}</p>
+                      <p className="text-[10px] text-muted">ขั้นตอนปัจจุบัน</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Steps list */}
+              <div className="space-y-2">
+                {workSteps.map((step, idx) => (
+                  <div key={step.id} className="rounded-lg border border-border bg-background px-3 py-2.5 flex items-start gap-3">
+                    <span className="text-lg shrink-0 mt-0.5">{STEP_META[step.type].icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <input value={step.label} onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, label: e.target.value} : s))}
+                          className="text-sm font-medium bg-transparent border-0 focus:outline-none focus:border-b focus:border-accent min-w-0 flex-1" />
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] shrink-0 ${STEP_STATUS_COLOR[step.status]}`}>{STEP_STATUS_LABEL[step.status]}</span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-[11px] text-muted flex-wrap">
+                        <span>📅 {step.start_date}</span>
+                        <span>⏱ {step.duration_days} วัน</span>
+                        <span>→ สิ้นสุด {addDays(step.start_date, step.duration_days)}</span>
+                      </div>
+                      {step.notes && <p className="text-[11px] text-muted mt-0.5 italic">{step.notes}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <select value={step.status} onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, status: e.target.value as PresaleWorkStep["status"]} : s))}
+                        className={`rounded-full px-2 py-0.5 text-[10px] border-0 focus:outline-none cursor-pointer ${STEP_STATUS_COLOR[step.status]}`}>
+                        <option value="pending">รอ</option>
+                        <option value="in_progress">กำลังทำ</option>
+                        <option value="done">เสร็จ</option>
+                      </select>
+                      <input type="number" min={1} value={step.duration_days} onChange={e => setWorkSteps(prev => prev.map((s,i) => i===idx ? {...s, duration_days: Number(e.target.value)||1} : s))}
+                        className="w-12 text-center text-xs rounded bg-card border border-border px-1 py-0.5 focus:outline-none focus:border-accent" title="จำนวนวัน" />
+                      <button onClick={() => setWorkSteps(prev => prev.filter((_,i) => i!==idx))} className="text-danger hover:opacity-70 text-xs w-5 h-5 flex items-center justify-center">✕</button>
+                    </div>
+                  </div>
+                ))}
+                {workSteps.length === 0 && !addingStep && (
+                  <p className="text-xs text-muted text-center py-4">ยังไม่มีขั้นตอนงาน — กด "+ เพิ่มขั้นตอน" เพื่อเริ่มวางแผน</p>
+                )}
+              </div>
+
+              {/* Add step form */}
+              {addingStep ? (
+                <div className="rounded-lg border border-accent/30 bg-accent/5 p-3 space-y-2">
+                  <p className="text-xs font-medium">+ เพิ่มขั้นตอนงาน</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-muted">ประเภท</label>
+                      <select value={newStep.type} onChange={e => {
+                        const t = e.target.value as PresaleWorkStep["type"];
+                        setNewStep(s => ({...s, type: t, label: STEP_META[t].label}));
+                      }} className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent mt-0.5">
+                        {Object.entries(STEP_META).map(([k,v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted">ชื่อขั้นตอน</label>
+                      <input value={newStep.label} onChange={e => setNewStep(s => ({...s, label: e.target.value}))}
+                        className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent mt-0.5" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted">วันเริ่มต้น</label>
+                      <input type="date" value={newStep.start_date} onChange={e => setNewStep(s => ({...s, start_date: e.target.value}))}
+                        className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent mt-0.5" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted">ระยะเวลา (วัน)</label>
+                      <input type="number" min={1} value={newStep.duration_days} onChange={e => setNewStep(s => ({...s, duration_days: Number(e.target.value)||1}))}
+                        className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent mt-0.5" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-[10px] text-muted">หมายเหตุ (ไม่บังคับ)</label>
+                      <input value={newStep.notes||""} onChange={e => setNewStep(s => ({...s, notes: e.target.value}))}
+                        className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent mt-0.5" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setAddingStep(false)} className="rounded-lg border border-border px-3 py-1 text-xs text-muted hover:bg-card-hover">ยกเลิก</button>
+                    <button onClick={() => {
+                      if (!newStep.label.trim()) return;
+                      setWorkSteps(prev => [...prev, { ...newStep, id: `${Date.now()}-${Math.random().toString(36).slice(2,6)}` }]);
+                      setNewStep({ type: "research", label: "ค้นหาข้อมูล", start_date: todayStr(), duration_days: 3, status: "pending", notes: "" });
+                      setAddingStep(false);
+                    }} className="rounded-lg bg-accent px-3 py-1 text-xs text-white hover:bg-accent-hover">+ เพิ่ม</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setAddingStep(true)} className="w-full rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted hover:border-accent hover:text-accent transition-colors">
+                  + เพิ่มขั้นตอนงาน
+                </button>
+              )}
+
+              {/* Notify Sales button */}
+              {workSteps.length > 0 && detail?.created_by && (
+                <div className="pt-2 border-t border-border flex items-center justify-between">
+                  <p className="text-[11px] text-muted">แจ้งความคืบหน้าไปยัง <span className="text-accent">{detail.created_by}</span></p>
+                  <button onClick={sendProgressNotification} className="rounded-lg bg-blue-700/60 text-blue-200 px-3 py-1.5 text-xs hover:bg-blue-700">
+                    📤 ส่งแจ้งเตือนความคืบหน้า
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1630,11 +1823,18 @@ export default function PresalePage() {
             </div>
           )}
 
-          {/* Save artifacts button */}
-          {detailTab !== "boq" && (
+          {/* Save button — all tabs except workplan (has its own save) */}
+          {detailTab !== "boq" && detailTab !== "workplan" && (
             <div className="mt-4 pt-3 border-t border-border flex justify-end">
               <button onClick={saveArtifacts} disabled={saving} className="rounded-lg bg-accent text-white px-4 py-1.5 text-xs hover:bg-accent-hover disabled:opacity-50">
                 {saving ? "กำลังบันทึก..." : "💾 บันทึก Artifacts"}
+              </button>
+            </div>
+          )}
+          {detailTab === "workplan" && (
+            <div className="mt-4 pt-3 border-t border-border flex justify-end">
+              <button onClick={saveArtifacts} disabled={saving} className="rounded-lg bg-accent text-white px-4 py-1.5 text-xs hover:bg-accent-hover disabled:opacity-50">
+                {saving ? "กำลังบันทึก..." : "💾 บันทึกแผนงาน"}
               </button>
             </div>
           )}
