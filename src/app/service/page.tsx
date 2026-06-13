@@ -103,19 +103,22 @@ const VIEWS: Array<{ id: ServiceView; label: string; icon: string }> = [
   { id: "history", label: "ย้อนหลัง", icon: "📁" },
 ];
 
-// Quick action buttons per status (Timer system: เปิดงาน→รับงาน→เริ่มงาน→หยุดรอ→ปิดงาน)
-function getQuickActions(status: ServiceStatus): Array<{ status: ServiceStatus; label: string; primary: boolean }> {
+// Quick action buttons per status — flow: รับงาน → เดินทาง → ถึงลูกค้า → เริ่มงาน → จบงาน → ปิดงาน/เบิกอะไหล่/นัดหมายใหม่
+function getQuickActions(status: ServiceStatus): Array<{ status: ServiceStatus; label: string; primary: boolean; isReschedule?: boolean }> {
   switch (status) {
-    case "open":         return [{ status: "acknowledged", label: "📲 รับงาน",      primary: true  }, { status: "traveling",    label: "🚗 เดินทาง",   primary: false }];
-    case "acknowledged": return [{ status: "traveling",    label: "🚗 เดินทาง",    primary: true  }, { status: "on_site",      label: "📍 ถึงที่แล้ว", primary: false }];
-    case "traveling":    return [{ status: "on_site",      label: "📍 ถึงที่แล้ว", primary: true  }];
-    case "on_site":      return [{ status: "repair_start", label: "🔧 เริ่มซ่อม",  primary: true  }];
+    case "open":          return [{ status: "acknowledged",  label: "📲 รับงาน",        primary: true  }];
+    case "acknowledged":  return [{ status: "traveling",     label: "🚗 เดินทาง",       primary: true  }];
+    case "traveling":     return [{ status: "on_site",       label: "📍 ถึงลูกค้า",     primary: true  }];
+    case "on_site":       return [{ status: "repair_start",  label: "🔧 เริ่มงาน",      primary: true  }];
     case "repair_start":
     case "in_progress":
-    case "resume":       return [{ status: "resolved",     label: "✅ แก้งานแล้ว", primary: true  }, { status: "waiting_parts", label: "📦 รออะไหล่", primary: false }];
-    case "waiting_parts":return [{ status: "resume",       label: "▶️ ทำต่อ",      primary: true  }];
-    case "resolved":     return [{ status: "closed",       label: "🔒 ปิดงาน",     primary: true  }];
-    default:             return [];
+    case "resume":        return [{ status: "resolved",      label: "✅ จบงาน",          primary: true  },
+                                  { status: "waiting_parts", label: "📦 เบิกอะไหล่",     primary: false }];
+    case "waiting_parts": return [{ status: "resume",        label: "▶️ ทำต่อ",          primary: true  }];
+    case "resolved":      return [{ status: "closed",        label: "🔒 ปิดงาน",         primary: true  },
+                                  { status: "waiting_parts", label: "📦 เบิกอะไหล่",     primary: false },
+                                  { status: "acknowledged",  label: "📅 นัดหมายใหม่",   primary: false, isReschedule: true }];
+    default:              return [];
   }
 }
 
@@ -2426,7 +2429,22 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50">
                   <div className="flex gap-1.5 flex-wrap">
                     {quickActions.map(a => (
-                      <button key={a.status} onClick={() => setPendingChange({ ticket: t, newStatus: a.status })}
+                      <button key={a.status} onClick={async () => {
+                        if (a.isReschedule) {
+                          const newDate = prompt("วันนัดหมายใหม่ (YYYY-MM-DD):", new Date(Date.now() + 86400000 * 7).toISOString().slice(0,10));
+                          if (!newDate) return;
+                          const { serviceTickets } = await import("@/lib/firestore");
+                          const { arrayUnion } = await import("firebase/firestore");
+                          const now = new Date().toISOString();
+                          await serviceTickets.update(t.id!, {
+                            status: "acknowledged",
+                            service_date: newDate,
+                            status_history: arrayUnion({ status: "acknowledged", timestamp: now, by: currentUser?.name || "", note: `นัดหมายใหม่: ${newDate}` }),
+                          });
+                        } else {
+                          setPendingChange({ ticket: t, newStatus: a.status });
+                        }
+                      }}
                         className={`text-[11px] rounded-lg px-2.5 py-1 transition-colors ${
                           a.primary
                             ? "bg-accent text-white hover:bg-accent-hover"
