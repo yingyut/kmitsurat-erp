@@ -1517,12 +1517,12 @@ export default function DashboardPage() {
       <Section title="📋 สถานะใบเสนอราคา" action={<Link href="/quotations" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>} defaultOpen={false}>
         <div className="grid grid-cols-2 gap-3 mb-4">
           {[
-            { label:"Draft", sub:"ร่าง", value:qtDraft,color:"text-amber-500",bg:"bg-amber-500/10 border-amber-500/25" },
-            { label:"Sent / Follow-up", sub:"ส่งแล้ว / ติดตาม", value:qtSent,color:"text-blue-500",bg:"bg-blue-500/10 border-blue-500/25" },
-            { label:"Approved", sub:"อนุมัติแล้ว", value:qtApproved,color:"text-emerald-500",bg:"bg-emerald-500/10 border-emerald-500/25" },
-            { label:"Rejected / Expired", sub:"ปฏิเสธ / หมดอายุ", value:qtRejected,color:"text-orange-500",bg:"bg-orange-500/10 border-orange-500/25" },
+            { label:"Draft", sub:"ร่าง", value:qtDraft,color:"text-amber-500",bg:"bg-amber-500/10 border-amber-500/25", href:"/quotations?status=draft" },
+            { label:"Sent / Follow-up", sub:"ส่งแล้ว / ติดตาม", value:qtSent,color:"text-blue-500",bg:"bg-blue-500/10 border-blue-500/25", href:"/quotations?status=sent" },
+            { label:"Approved", sub:"อนุมัติแล้ว", value:qtApproved,color:"text-emerald-500",bg:"bg-emerald-500/10 border-emerald-500/25", href:"/quotations?status=approved" },
+            { label:"Rejected / Expired", sub:"ปฏิเสธ / หมดอายุ", value:qtRejected,color:"text-orange-500",bg:"bg-orange-500/10 border-orange-500/25", href:"/quotations?status=rejected" },
           ].map(s=>(
-            <Link key={s.label} href="/quotations" className={`rounded-xl border p-3 text-center hover:opacity-80 transition-opacity ${s.bg}`}>
+            <Link key={s.label} href={s.href} className={`rounded-xl border p-3 text-center hover:opacity-80 transition-opacity ${s.bg}`}>
               <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
               <p className="text-[11px] font-medium mt-0.5">{s.sub}</p>
               <p className="text-[10px] text-muted/50">{s.label}</p>

@@ -82,6 +82,9 @@ export default function QuotationsPage() {
 
   useEffect(() => {
     setMounted(true);
+    const s = new URLSearchParams(window.location.search).get("status") ?? "";
+    const valid = new Set(["draft","sent","approved","rejected","expired"]);
+    if (valid.has(s)) setStatusFilter(s as Quotation["status"]);
     const unsubs: Array<() => void> = [];
     let firstSnap = true;
     (async () => {
