@@ -3645,7 +3645,7 @@ export default function SalesPage() {
                       <select value={reassignTarget} onChange={e => setReassignTarget(e.target.value)}
                         className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-amber-500">
                         <option value="">-- เลือกเซลล์ --</option>
-                        {users.filter(u => u.id !== currentUser?.id || reassignTarget === u.name).map(u => (
+                        {users.filter(u => pureSalesRoles.includes(u.role) && u.active !== false).map(u => (
                           <option key={u.id} value={u.name}>{u.name}{u.name === a.assigned_to ? " (ปัจจุบัน)" : ""}</option>
                         ))}
                       </select>
