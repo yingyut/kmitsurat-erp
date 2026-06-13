@@ -737,7 +737,7 @@ export default function PresalePage() {
       const totalDays = workSteps.reduce((s, x) => s + x.duration_days, 0);
       const doneDays = workSteps.filter(s => s.status === "done").reduce((s, x) => s + x.duration_days, 0);
       const requesterName = detail.created_by || "";
-      const title = `📋 ความคืบหน้า Presale: ${detail.customer_name}`;
+      const title = `📋 ความคืบหน้า Presale: ${detail.customer_name}${detail.project_name ? ` · ${detail.project_name}` : ""}`;
       const body = [
         `ความคืบหน้าคำขอ ${typeLabels[detail.type]}`,
         `ลูกค้า: ${detail.customer_name}${detail.project_name ? ` · ${detail.project_name}` : ""}`,
@@ -757,8 +757,8 @@ export default function PresalePage() {
       if (requesterName) {
         await inAppNotifications.add({
           tenant_id: "kmitsurat", module: "sales", trigger: "presale_status_changed",
-          title, body, link: "/sales",
-          metadata: { task_id: detail.id },
+          title, body, link: "/sales?tab=requests",
+          metadata: { task_id: detail.id, customer_name: detail.customer_name, project_name: detail.project_name || "" },
           recipients: [requesterName], read_by: [],
         } as Record<string, unknown>);
       }

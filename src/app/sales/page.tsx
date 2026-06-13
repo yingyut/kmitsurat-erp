@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest, Quotation, InAppNotification } from "@/lib/types";
+import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest, Quotation, InAppNotification, PresaleRequest, PresaleWorkStep } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
 import { isOwnRecord, isOwner, canSeeAll, canManageQuota } from "@/lib/ownership";
@@ -78,6 +78,43 @@ async function compressImage(file: File): Promise<string> {
   });
 }
 
+// ── Presale task helpers ──────────────────────────────────────────────────────
+const PRESALE_STATUS_TH: Record<string, string> = {
+  new: "งานใหม่", pending: "รอดำเนินการ", assigned: "มอบหมายแล้ว",
+  in_progress: "กำลังดำเนินการ", waiting_info: "รอข้อมูล",
+  waiting_approval: "รออนุมัติ", completed: "เสร็จแล้ว", cancelled: "ยกเลิก",
+};
+const PRESALE_STATUS_COLOR: Record<string, string> = {
+  new: "bg-blue-900/50 text-blue-300", pending: "bg-slate-700/60 text-slate-300",
+  assigned: "bg-indigo-900/50 text-indigo-300", in_progress: "bg-amber-900/50 text-amber-300",
+  waiting_info: "bg-orange-900/50 text-orange-300", waiting_approval: "bg-purple-900/50 text-purple-300",
+  completed: "bg-green-900/50 text-green-300", cancelled: "bg-red-900/50 text-red-300",
+};
+const PRESALE_STEP_STATUS_TH: Record<string, string> = { pending: "รอ", in_progress: "กำลังทำ", done: "เสร็จ" };
+
+function getEstCompletion(steps: PresaleWorkStep[]): string | null {
+  let maxEnd = 0;
+  for (const s of steps || []) {
+    if (!s.start_date) continue;
+    const end = new Date(s.start_date).getTime() + s.duration_days * 86400000;
+    if (end > maxEnd) maxEnd = end;
+  }
+  return maxEnd > 0 ? new Date(maxEnd).toISOString().slice(0, 10) : null;
+}
+
+function findPresaleTask(jr: JobRequest, presales: PresaleRequest[]): PresaleRequest | null {
+  if (!jr.customer_name) return null;
+  const matches = presales.filter(p =>
+    p.customer_name === jr.customer_name &&
+    (!jr.project_name || !p.project_name || p.project_name === jr.project_name)
+  );
+  if (matches.length === 0) return null;
+  return matches.sort((a, b) => {
+    const ms = (x: unknown) => x && typeof x === "object" && typeof (x as {toMillis?: ()=>number}).toMillis === "function" ? (x as {toMillis:()=>number}).toMillis() : 0;
+    return ms(b.created_at) - ms(a.created_at);
+  })[0];
+}
+
 export default function SalesPage() {
   const { currentUser, hasPermission } = useCurrentUser();
   const searchParams = useSearchParams();
@@ -104,6 +141,8 @@ export default function SalesPage() {
   const [saving, setSaving] = useState(false);
   const [myNotifs, setMyNotifs] = useState<InAppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [presaleReqs, setPresaleReqs] = useState<PresaleRequest[]>([]);
+  const [selectedPresaleDetail, setSelectedPresaleDetail] = useState<PresaleRequest | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("sales_notif_sound") !== "off";
@@ -278,6 +317,7 @@ export default function SalesPage() {
         fs.inAppNotifications.subscribe(data => {
           setMyNotifs(data.filter(n => n.module === "sales"));
         }),
+        fs.presaleRequests.subscribe(data => setPresaleReqs(data)),
       );
     })();
     return () => unsubs.forEach(u => u());
@@ -906,14 +946,18 @@ export default function SalesPage() {
                       {myPersonalNotifs.slice(0, 20).map(n => {
                         const isRead = n.read_by.includes(myName);
                         return (
-                          <div key={n.id} className={`px-3 py-2.5 hover:bg-card-hover transition-colors ${isRead ? "opacity-50" : "cursor-pointer"}`}
+                          <div key={n.id} className={`px-3 py-2.5 hover:bg-card-hover transition-colors ${isRead ? "opacity-60" : "cursor-pointer"}`}
                             onClick={async () => {
                               if (!isRead && myName) {
                                 const fs = await import("@/lib/firestore");
                                 await fs.inAppNotifications.update(n.id!, { read_by: [...n.read_by, myName] });
                               }
                               setShowNotifPanel(false);
-                              setTab("activities");
+                              setTab("requests");
+                              if (n.metadata?.task_id) {
+                                const task = presaleReqs.find(p => p.id === String(n.metadata!.task_id));
+                                if (task) setSelectedPresaleDetail(task);
+                              }
                             }}>
                             <div className="flex items-start gap-2">
                               <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${isRead ? "" : "bg-accent"}`} />
@@ -3456,17 +3500,60 @@ export default function SalesPage() {
         )}
 
         {jobReqs.length === 0 ? <p className="text-muted text-sm">ไม่มี Request</p> : (
-          <div className="space-y-1.5">{jobReqs.map(r => (
+          <div className="space-y-2">{jobReqs.map(r => {
+            const pt = r.request_to_team === "presale" ? findPresaleTask(r, presaleReqs) : null;
+            const estComp = pt ? getEstCompletion(pt.work_steps || []) : null;
+            const currentStep = pt?.work_steps?.find(s => s.status === "in_progress") || pt?.work_steps?.find(s => s.status === "pending");
+            const doneSteps = pt?.work_steps?.filter(s => s.status === "done").length ?? 0;
+            const totalSteps = pt?.work_steps?.length ?? 0;
+            return (
             <div key={r.id} className="rounded-xl bg-card border border-border p-3">
               <div className="flex items-start justify-between gap-2">
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
                     <span className="text-sm font-medium">{r.title}</span>
                     <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${r.request_to_team === "presale" ? "bg-purple-900/50 text-purple-400" : "bg-rose-900/50 text-rose-400"}`}>→ {r.request_to_team}</span>
                     <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${r.status === "completed" ? "bg-green-900/50 text-green-400" : r.status === "accepted" || r.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : r.status === "rejected" ? "bg-red-900/50 text-red-400" : "bg-blue-900/50 text-blue-400"}`}>{r.status}</span>
                   </div>
-                  <p className="text-xs text-muted">{r.description}</p>
-                  <p className="text-[10px] text-muted mt-0.5">{r.customer_name}{r.due_date && ` · กำหนด: ${r.due_date}`}</p>
+                  <p className="text-xs text-foreground font-medium">{r.customer_name}{r.project_name ? ` · ${r.project_name}` : ""}</p>
+                  <p className="text-xs text-muted mt-0.5 line-clamp-2">{r.description}</p>
+                  {r.due_date && <p className="text-[10px] text-muted mt-0.5">กำหนด: {r.due_date}</p>}
+
+                  {/* Presale task status panel */}
+                  {pt && (
+                    <div className="mt-2 rounded-lg bg-violet-900/10 border border-violet-500/20 p-2.5">
+                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                        <span className="text-[10px] font-bold text-violet-400">📋 Presale</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${PRESALE_STATUS_COLOR[pt.status] || "bg-slate-700/60 text-slate-300"}`}>
+                          {PRESALE_STATUS_TH[pt.status] || pt.status}
+                        </span>
+                        {pt.assigned_to && <span className="text-[10px] text-muted">👤 {pt.assigned_to}</span>}
+                      </div>
+                      {totalSteps > 0 && (
+                        <div className="mb-1.5">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] text-muted">ความคืบหน้า {doneSteps}/{totalSteps} ขั้นตอน</span>
+                            {currentStep && <span className="text-[10px] text-amber-400">▶ {currentStep.label}</span>}
+                          </div>
+                          <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
+                            <div className="h-full bg-violet-500 rounded-full transition-all" style={{ width: `${totalSteps > 0 ? Math.round(doneSteps / totalSteps * 100) : 0}%` }} />
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-3">
+                        {estComp && (
+                          <span className={`text-[10px] font-medium ${estComp < new Date().toISOString().slice(0,10) && pt.status !== "completed" ? "text-red-400" : "text-emerald-400"}`}>
+                            🗓 ประมาณเสร็จ: {estComp}
+                          </span>
+                        )}
+                        <button onClick={() => setSelectedPresaleDetail(pt)}
+                          className="ml-auto text-[10px] text-violet-400 hover:text-violet-300 hover:underline font-medium">
+                          ดูรายละเอียด →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {(r.attachments ?? []).length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
                       {(r.attachments ?? []).map((att, i) => att.url.startsWith("data:image") ? (
@@ -3485,7 +3572,85 @@ export default function SalesPage() {
                 <button onClick={async () => { if (!confirm("ลบ?")) return; const { jobRequests } = await import("@/lib/firestore"); await jobRequests.remove(r.id!); await load(); }} className="text-[10px] text-danger hover:underline shrink-0">ลบ</button>
               </div>
             </div>
-          ))}</div>
+            );
+          })}</div>
+        )}
+
+        {/* Presale task detail panel */}
+        {selectedPresaleDetail && (
+          <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedPresaleDetail(null)}>
+            <div className="w-full max-w-sm bg-card border-l border-border shadow-2xl h-full overflow-y-auto flex flex-col"
+              style={{ animation: "slideInRight 0.2s ease-out" }} onClick={e => e.stopPropagation()}>
+              <div className="px-4 py-3 border-b border-violet-500/30 bg-violet-900/10 shrink-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold text-violet-300">📋 รายละเอียด Presale</p>
+                    <p className="text-xs text-muted mt-0.5">{selectedPresaleDetail.customer_name}{selectedPresaleDetail.project_name ? ` · ${selectedPresaleDetail.project_name}` : ""}</p>
+                  </div>
+                  <button onClick={() => setSelectedPresaleDetail(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-card-hover">✕</button>
+                </div>
+              </div>
+              <div className="flex-1 px-4 py-3 space-y-4 overflow-y-auto">
+                {/* Status row */}
+                <div className="flex flex-wrap gap-2">
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${PRESALE_STATUS_COLOR[selectedPresaleDetail.status] || "bg-slate-700/60 text-slate-300"}`}>
+                    {PRESALE_STATUS_TH[selectedPresaleDetail.status] || selectedPresaleDetail.status}
+                  </span>
+                  {selectedPresaleDetail.assigned_to && (
+                    <span className="rounded-full px-2.5 py-1 text-[10px] bg-card-hover text-muted">👤 {selectedPresaleDetail.assigned_to}</span>
+                  )}
+                  {(selectedPresaleDetail.co_workers || []).map(cw => (
+                    <span key={cw} className="rounded-full px-2.5 py-1 text-[10px] bg-card-hover text-muted">👤 {cw}</span>
+                  ))}
+                </div>
+
+                {/* Est completion */}
+                {(() => {
+                  const ec = getEstCompletion(selectedPresaleDetail.work_steps || []);
+                  const today2 = new Date().toISOString().slice(0, 10);
+                  return ec ? (
+                    <div className={`rounded-lg px-3 py-2 text-sm font-medium flex items-center gap-2 ${ec < today2 && selectedPresaleDetail.status !== "completed" ? "bg-red-900/20 border border-red-500/30 text-red-300" : "bg-emerald-900/20 border border-emerald-500/30 text-emerald-300"}`}>
+                      🗓 ประมาณการวันแล้วเสร็จ: <span className="font-bold">{ec}</span>
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* Requirement */}
+                {selectedPresaleDetail.requirement && (
+                  <div>
+                    <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-1">รายละเอียดงาน</p>
+                    <p className="text-xs text-foreground leading-relaxed">{selectedPresaleDetail.requirement}</p>
+                  </div>
+                )}
+
+                {/* Work steps */}
+                {(selectedPresaleDetail.work_steps || []).length > 0 && (
+                  <div>
+                    <p className="text-[10px] text-muted font-semibold uppercase tracking-wide mb-2">แผนงาน ({(selectedPresaleDetail.work_steps || []).filter(s => s.status === "done").length}/{(selectedPresaleDetail.work_steps || []).length} เสร็จ)</p>
+                    <div className="space-y-1.5">
+                      {(selectedPresaleDetail.work_steps || []).map((s, i) => (
+                        <div key={s.id || i} className={`rounded-lg px-3 py-2 border text-xs ${s.status === "done" ? "bg-green-900/10 border-green-500/20" : s.status === "in_progress" ? "bg-amber-900/10 border-amber-500/20" : "bg-card-hover border-border"}`}>
+                          <div className="flex items-center gap-1.5">
+                            <span>{s.status === "done" ? "✅" : s.status === "in_progress" ? "🔄" : "⬜"}</span>
+                            <span className="flex-1 font-medium">{s.label}</span>
+                            <span className={`text-[9px] rounded-full px-1.5 py-0.5 ${s.status === "done" ? "bg-green-900/50 text-green-300" : s.status === "in_progress" ? "bg-amber-900/50 text-amber-300" : "bg-slate-700/60 text-slate-400"}`}>
+                              {PRESALE_STEP_STATUS_TH[s.status] || s.status}
+                            </span>
+                          </div>
+                          <div className="flex gap-2 mt-0.5 text-[10px] text-muted pl-5">
+                            {s.start_date && <span>เริ่ม {s.start_date}</span>}
+                            {s.duration_days > 0 && <span>{s.duration_days} วัน</span>}
+                            {s.assignee && <span>· {s.assignee}</span>}
+                          </div>
+                          {s.notes && <p className="text-[10px] text-muted mt-0.5 pl-5 italic">{s.notes}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </>)}
 
