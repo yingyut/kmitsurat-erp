@@ -110,6 +110,15 @@ export default function QuotationsPage() {
     }
   }, [users, currentUser]);
 
+  // Auto-open quotation from ?open=<id> URL param (deep-link from customer detail)
+  useEffect(() => {
+    if (list.length === 0) return;
+    const openId = new URLSearchParams(window.location.search).get("open");
+    if (!openId) return;
+    const found = list.find(q => q.id === openId);
+    if (found) setSelectedQ(found);
+  }, [list]);
+
   // Own-data isolation: sale / avenger / Sales Executive (and any new role without view_all_projects) see only their own quotations
   const myRole = currentUser?.role ?? "";
   const ownOnly = !!currentUser && !hasPermission("view_all_projects") &&

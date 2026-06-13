@@ -386,7 +386,9 @@ export default function CustomerDetailPage() {
               </tr></thead>
               <tbody>{quotations.map(q => (
                 <tr key={q.id} className="border-b border-border last:border-0 hover:bg-card-hover">
-                  <td className="px-4 py-2.5 font-mono text-xs">{q.quotation_number}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs">
+                    <Link href={`/quotations?open=${q.id}`} className="underline underline-offset-2 hover:text-accent transition-colors">{q.quotation_number}</Link>
+                  </td>
                   <td className="px-4 py-2.5 text-muted">{q.project_name || "-"}</td>
                   <td className="px-4 py-2.5 text-right text-muted">{q.items?.length ?? 0}</td>
                   <td className="px-4 py-2.5 text-right font-semibold">{(q.grand_total || q.total_selling || 0).toLocaleString()}</td>
