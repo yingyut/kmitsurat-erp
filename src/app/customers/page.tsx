@@ -7,6 +7,7 @@ import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
 import CsvImportExport from "@/components/CsvImportExport";
 import { DISTRICTS, SUBDISTRICTS } from "@/lib/thailand-geo";
+import MapPicker from "@/components/MapPicker";
 import type { CustomerIndustry } from "@/lib/types";
 
 const CUST_COLS = [
@@ -69,6 +70,8 @@ const emptyForm = {
   notes: "",
   assigned_to: "",
   co_owners: [] as string[],
+  lat: undefined as number | undefined,
+  lng: undefined as number | undefined,
 };
 
 export default function CustomersPage() {
@@ -247,6 +250,8 @@ export default function CustomersPage() {
       notes: c.notes,
       assigned_to: c.assigned_to || "",
       co_owners: c.co_owners || [],
+      lat: c.lat,
+      lng: c.lng,
     });
     setNameSearch(""); setNameDropOpen(false); setDupMatch(null);
     setShowForm(true);
@@ -266,6 +271,7 @@ export default function CustomersPage() {
         facebook: form.facebook, website: form.website,
         assigned_to: form.assigned_to || (!canViewAll ? (currentUser?.name ?? "") : ""),
         co_owners: form.co_owners.filter(Boolean),
+        ...(form.lat != null && form.lng != null ? { lat: form.lat, lng: form.lng } : {}),
       };
       if (!editId) saveData.created_by = currentUser?.name ?? "";
       if (editId) {
@@ -555,6 +561,13 @@ export default function CustomersPage() {
                 className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent disabled:opacity-40" />
             )}
             <input placeholder="ที่อยู่ (บ้านเลขที่ ถนน ฯลฯ)" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full" />
+
+            {/* Map Picker */}
+            <MapPicker
+              lat={form.lat}
+              lng={form.lng}
+              onChange={(lat, lng) => setForm(f => ({ ...f, lat, lng }))}
+            />
 
             {/* ── Section 4: CRM ───────────────────────────────── */}
             <div className="col-span-full flex items-center gap-2 mt-1">

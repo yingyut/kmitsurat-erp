@@ -204,6 +204,8 @@ export interface Customer {
   co_owners?: string[];   // shared CRM ownership
   created_by?: string;    // user.name ที่สร้าง record
   parent_id?: string;     // ลูกค้าหลัก (สำหรับสาขา)
+  lat?: number;            // ละติจูด
+  lng?: number;            // ลองจิจูด
   // Social / contact channels
   tax_id?: string;        // เลขที่ผู้เสียภาษี
   phone2?: string;        // เบอร์สำรอง
