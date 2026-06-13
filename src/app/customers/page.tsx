@@ -21,9 +21,11 @@ const CUST_COLS = [
 
 const ThailandMap = lazy(() => import("@/components/ThailandMap"));
 
-const orgTypes = ["government", "private", "education", "hospital", "hotel", "other"] as const;
-const orgLabels: Record<string, string> = { government: "หน่วยงานราชการ", private: "เอกชน", education: "สถานศึกษา", hospital: "โรงพยาบาล", hotel: "โรงแรม", other: "อื่นๆ" };
-const orgColor: Record<string, string> = { government: "bg-blue-900/50 text-blue-400", private: "bg-emerald-900/50 text-emerald-400", education: "bg-purple-900/50 text-purple-400", hospital: "bg-rose-900/50 text-rose-400", hotel: "bg-amber-900/50 text-amber-400", other: "bg-gray-700 text-gray-400" };
+const BUILTIN_ORG_TYPES = ["government","private","education","hospital","hotel","factory","construction","other"] as const;
+const orgLabels: Record<string, string> = { government:"หน่วยงานราชการ", private:"เอกชน", education:"สถานศึกษา", hospital:"โรงพยาบาล", hotel:"โรงแรม/รีสอร์ท", factory:"โรงงาน", construction:"ก่อสร้าง/รับเหมา", other:"อื่นๆ" };
+const orgColor: Record<string, string> = { government:"bg-blue-900/50 text-blue-400", private:"bg-emerald-900/50 text-emerald-400", education:"bg-purple-900/50 text-purple-400", hospital:"bg-rose-900/50 text-rose-400", hotel:"bg-amber-900/50 text-amber-400", factory:"bg-orange-900/50 text-orange-400", construction:"bg-yellow-900/50 text-yellow-400", other:"bg-gray-700 text-gray-400" };
+function getOrgLabel(t: string) { return orgLabels[t] ?? t; }
+function getOrgColor(t: string) { return orgColor[t] ?? "bg-gray-700 text-gray-400"; }
 
 const provinces = ["กรุงเทพ","กระบี่","กาญจนบุรี","กาฬสินธุ์","กำแพงเพชร","ขอนแก่น","จันทบุรี","ฉะเชิงเทรา","ชลบุรี","ชัยนาท","ชัยภูมิ","ชุมพร","เชียงราย","เชียงใหม่","ตรัง","ตราด","ตาก","นครนายก","นครปฐม","นครพนม","นครราชสีมา","นครศรีธรรมราช","นครสวรรค์","นนทบุรี","นราธิวาส","น่าน","บึงกาฬ","บุรีรัมย์","ปทุมธานี","ประจวบคีรีขันธ์","ปราจีนบุรี","ปัตตานี","พระนครศรีอยุธยา","พะเยา","พังงา","พัทลุง","พิจิตร","พิษณุโลก","เพชรบุรี","เพชรบูรณ์","แพร่","ภูเก็ต","มหาสารคาม","มุกดาหาร","แม่ฮ่องสอน","ยโสธร","ยะลา","ร้อยเอ็ด","ระนอง","ระยอง","ราชบุรี","ลพบุรี","ลำปาง","ลำพูน","เลย","ศรีสะเกษ","สกลนคร","สงขลา","สตูล","สมุทรปราการ","สมุทรสงคราม","สมุทรสาคร","สระแก้ว","สระบุรี","สิงห์บุรี","สุโขทัย","สุพรรณบุรี","สุราษฎร์ธานี","สุรินทร์","หนองคาย","หนองบัวลำภู","อ่างทอง","อำนาจเจริญ","อุดรธานี","อุตรดิตถ์","อุทัยธานี","อุบลราชธานี"];
 
@@ -62,6 +64,28 @@ export default function CustomersPage() {
   const [nameSearch, setNameSearch] = useState("");
   const [nameDropOpen, setNameDropOpen] = useState(false);
   const [dupMatch, setDupMatch] = useState<Customer | null>(null); // exact duplicate found
+
+  // Custom org types (localStorage)
+  const [customOrgTypes, setCustomOrgTypes] = useState<string[]>([]);
+  const [newOrgType, setNewOrgType] = useState("");
+  useEffect(() => {
+    try { setCustomOrgTypes(JSON.parse(localStorage.getItem("kmit_org_types") || "[]")); } catch { /* */ }
+  }, []);
+  function addCustomOrgType(label: string) {
+    const t = label.trim();
+    if (!t || BUILTIN_ORG_TYPES.map(k => orgLabels[k]).includes(t) || customOrgTypes.includes(t)) return;
+    const next = [...customOrgTypes, t];
+    setCustomOrgTypes(next);
+    localStorage.setItem("kmit_org_types", JSON.stringify(next));
+    setForm(f => ({ ...f, org_type: t }));
+    setNewOrgType("");
+  }
+  function deleteCustomOrgType(label: string) {
+    const next = customOrgTypes.filter(t => t !== label);
+    setCustomOrgTypes(next);
+    localStorage.setItem("kmit_org_types", JSON.stringify(next));
+    if (form.org_type === label) setForm(f => ({ ...f, org_type: "other" }));
+  }
 
   // Hover popup
   const [hoverCust, setHoverCust] = useState<Customer | null>(null);
@@ -172,7 +196,7 @@ export default function CustomersPage() {
       case "name_asc": return (a.company_name ?? "").localeCompare(b.company_name ?? "", "th");
       case "name_desc":return (b.company_name ?? "").localeCompare(a.company_name ?? "", "th");
       case "province": return (a.province ?? "").localeCompare(b.province ?? "", "th");
-      case "org_type": return (orgLabels[a.org_type] ?? a.org_type ?? "").localeCompare(orgLabels[b.org_type] ?? b.org_type ?? "", "th");
+      case "org_type": return getOrgLabel(a.org_type ?? "").localeCompare(getOrgLabel(b.org_type ?? ""), "th");
       default: return 0;
     }
   });
@@ -316,7 +340,8 @@ export default function CustomersPage() {
         </select>
         <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)} className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
           <option value="all">ทุกประเภท</option>
-          {orgTypes.map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
+          {BUILTIN_ORG_TYPES.map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
+          {customOrgTypes.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
           <option value="newest">เรียง: ใหม่ที่สุด</option>
@@ -444,9 +469,36 @@ export default function CustomersPage() {
               })()}
             </div>
 
-            <select value={form.org_type} onChange={e => setForm({...form, org_type: e.target.value as Customer["org_type"]})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-              {orgTypes.map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
-            </select>
+            <div className="space-y-1.5">
+              <select value={form.org_type} onChange={e => { setForm({...form, org_type: e.target.value}); setNewOrgType(""); }}
+                className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                {BUILTIN_ORG_TYPES.filter(t => t !== "other").map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
+                {customOrgTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                <option value="other">อื่นๆ…</option>
+              </select>
+              {form.org_type === "other" && (
+                <div className="flex gap-1">
+                  <input value={newOrgType} onChange={e => setNewOrgType(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCustomOrgType(newOrgType); }}}
+                    placeholder="ชื่อหมวดธุรกิจใหม่…"
+                    className="flex-1 rounded-lg bg-background border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                  <button type="button" onClick={() => addCustomOrgType(newOrgType)}
+                    disabled={!newOrgType.trim()}
+                    className="px-3 rounded-lg bg-accent text-white text-sm disabled:opacity-40 hover:bg-accent-hover">+</button>
+                </div>
+              )}
+              {customOrgTypes.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {customOrgTypes.map(t => (
+                    <span key={t} className="inline-flex items-center gap-0 rounded-full border border-border bg-background text-[10px] overflow-hidden">
+                      <span className="px-2 py-0.5">{t}</span>
+                      <button type="button" onClick={() => deleteCustomOrgType(t)}
+                        className="px-1.5 py-0.5 text-muted/50 hover:bg-red-500/20 hover:text-red-400 transition-colors">✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
             <input placeholder="เลขที่ผู้เสียภาษี" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <input placeholder="เว็บไซต์" value={form.website} onChange={e => setForm({...form, website: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
 
@@ -595,7 +647,7 @@ export default function CustomersPage() {
                     <td className="px-4 py-2.5 text-muted">{c.phone}</td>
                     <td className="px-4 py-2.5 text-muted">{c.province || "—"}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${orgColor[c.org_type] || "bg-gray-700"}`}>{orgLabels[c.org_type] || c.org_type}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${getOrgColor(c.org_type)}`}>{getOrgLabel(c.org_type)}</span>
                     </td>
                     {showOwnerCol && (
                       <td className="px-4 py-2.5">

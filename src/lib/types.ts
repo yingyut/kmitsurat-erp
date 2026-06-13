@@ -183,7 +183,7 @@ export interface Customer {
   province: string;
   district?: string;      // อำเภอ
   subdistrict?: string;   // ตำบล
-  org_type: "government" | "private" | "education" | "hospital" | "hotel" | "other";
+  org_type: string; // built-in: government|private|education|hospital|hotel|factory|other; or custom label
   notes: string;
   assigned_to?: string;   // primary owner (user.name)
   co_owners?: string[];   // shared CRM ownership
