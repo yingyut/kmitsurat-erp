@@ -405,6 +405,13 @@ export default function CustomersPage() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+
+            {/* ── Section 1: หน่วยงาน ─────────────────────────── */}
+            <div className="col-span-full flex items-center gap-2">
+              <span className="text-[10px] font-semibold text-muted uppercase tracking-wider whitespace-nowrap">🏢 ข้อมูลหน่วยงาน</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+
             {/* Company name with autocomplete */}
             <div className="relative">
               <input placeholder="ชื่อบริษัท / หน่วยงาน *"
@@ -437,16 +444,31 @@ export default function CustomersPage() {
               })()}
             </div>
 
-            <input placeholder="ชื่อผู้ติดต่อ" value={form.contact_name} onChange={e => setForm({...form, contact_name: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <input placeholder="เบอร์โทร" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <input placeholder="เบอร์สำรอง" value={form.phone2} onChange={e => setForm({...form, phone2: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <input placeholder="อีเมล" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <select value={form.org_type} onChange={e => setForm({...form, org_type: e.target.value as Customer["org_type"]})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+              {orgTypes.map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
+            </select>
             <input placeholder="เลขที่ผู้เสียภาษี" value={form.tax_id} onChange={e => setForm({...form, tax_id: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <input placeholder="LINE ID" value={form.line_id} onChange={e => setForm({...form, line_id: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-            <input placeholder="Facebook (URL หรือชื่อ page)" value={form.facebook} onChange={e => setForm({...form, facebook: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
             <input placeholder="เว็บไซต์" value={form.website} onChange={e => setForm({...form, website: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
 
-            {/* Province → District → Subdistrict cascade */}
+            {/* ── Section 2: ผู้ติดต่อ ─────────────────────────── */}
+            <div className="col-span-full flex items-center gap-2 mt-1">
+              <span className="text-[10px] font-semibold text-muted uppercase tracking-wider whitespace-nowrap">👤 ผู้ติดต่อ</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+
+            <input placeholder="ชื่อผู้ติดต่อ" value={form.contact_name} onChange={e => setForm({...form, contact_name: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="เบอร์โทรหลัก" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="เบอร์สำรอง" value={form.phone2} onChange={e => setForm({...form, phone2: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="อีเมล" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="LINE ID" value={form.line_id} onChange={e => setForm({...form, line_id: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="Facebook (URL หรือชื่อ page)" value={form.facebook} onChange={e => setForm({...form, facebook: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+
+            {/* ── Section 3: ที่ตั้ง ───────────────────────────── */}
+            <div className="col-span-full flex items-center gap-2 mt-1">
+              <span className="text-[10px] font-semibold text-muted uppercase tracking-wider whitespace-nowrap">📍 ที่ตั้ง</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+
             <select value={form.province} onChange={e => setForm({...form, province: e.target.value, district: "", subdistrict: ""})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
               <option value="">-- จังหวัด --</option>
               {provinces.map(p => <option key={p} value={p}>{p}</option>)}
@@ -468,33 +490,31 @@ export default function CustomersPage() {
                 disabled={!form.district}
                 className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent disabled:opacity-40" />
             )}
+            <input placeholder="ที่อยู่ (บ้านเลขที่ ถนน ฯลฯ)" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full" />
 
-            <select value={form.org_type} onChange={e => setForm({...form, org_type: e.target.value as Customer["org_type"]})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-              {orgTypes.map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
-            </select>
-
-            {/* ── Owner assignment ── */}
-            <div className="flex flex-col gap-1">
-              <p className="text-[10px] text-muted uppercase tracking-wide">เจ้าของลูกค้า (Owner)</p>
-              {canAssign ? (
-                <select value={form.assigned_to} onChange={e => setForm({...form, assigned_to: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-                  <option value="">— ไม่ระบุ —</option>
-                  {crmTeam.map(u => (
-                    <option key={u.id ?? u.name} value={u.name}>{u.nickname || u.name} · {u.role}</option>
-                  ))}
-                </select>
-              ) : (
-                <div className="rounded-lg bg-background/50 border border-border/50 px-3 py-2 text-sm text-muted flex items-center justify-between">
-                  <span>{form.assigned_to || currentUser?.name || "—"}</span>
-                  <span className="text-[10px] text-muted/50">(ถูกกำหนดให้คุณ)</span>
-                </div>
-              )}
+            {/* ── Section 4: CRM ───────────────────────────────── */}
+            <div className="col-span-full flex items-center gap-2 mt-1">
+              <span className="text-[10px] font-semibold text-muted uppercase tracking-wider whitespace-nowrap">⚙️ CRM</span>
+              <div className="flex-1 h-px bg-border" />
             </div>
 
-            {/* ── Co-owners (shared CRM) — managers only ── */}
+            {canAssign ? (
+              <select value={form.assigned_to} onChange={e => setForm({...form, assigned_to: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                <option value="">— เจ้าของลูกค้า —</option>
+                {crmTeam.map(u => (
+                  <option key={u.id ?? u.name} value={u.name}>{u.nickname || u.name} · {u.role}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="rounded-lg bg-background/50 border border-border/50 px-3 py-2 text-sm text-muted flex items-center justify-between">
+                <span>{form.assigned_to || currentUser?.name || "—"}</span>
+                <span className="text-[10px] text-muted/50">(ถูกกำหนดให้คุณ)</span>
+              </div>
+            )}
+
             {canAssign && crmTeam.length > 1 && (
-              <div className="col-span-full">
-                <p className="text-[10px] text-muted uppercase tracking-wide mb-1.5">ทีมร่วมดูแล (Co-owners)</p>
+              <div className="col-span-2">
+                <p className="text-[10px] text-muted mb-1.5">ทีมร่วมดูแล (Co-owners)</p>
                 <div className="flex flex-wrap gap-1.5">
                   {crmTeam.filter(u => u.name !== form.assigned_to).map(u => {
                     const on = form.co_owners.includes(u.name);
@@ -510,8 +530,7 @@ export default function CustomersPage() {
               </div>
             )}
 
-            <input placeholder="ที่อยู่" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full" />
-            <textarea placeholder="หมายเหตุ" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y" />
+            <textarea placeholder="หมายเหตุ" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent col-span-full min-h-16 resize-y mt-1" />
           </div>
           <div className="flex gap-2">
             <button onClick={handleSave} disabled={saving || !form.company_name.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">
