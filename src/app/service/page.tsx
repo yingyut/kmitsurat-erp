@@ -2451,18 +2451,41 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                         { key:"cls",  label:"🔒 ปิดงาน",   state: 6<=cur?"done": cur===5&&!isWaiting?"active":"future", onClick:()=>setPendingChange({ticket:t,newStatus:"closed"}) },
                       ];
 
-                      // Extra options only when resolved
-                      const extras: Step[] = t.status==="resolved" ? [
-                        { key:"xparts", label:"📦 เบิกอะไหล่", state:"active", onClick:()=>setPendingChange({ticket:t,newStatus:"waiting_parts"}) },
-                        { key:"xreschedule", label:"📅 นัดหมายใหม่", state:"active", onClick: async()=>{
-                          const newDate=prompt("วันนัดหมายใหม่ (YYYY-MM-DD):", new Date(Date.now()+86400000*7).toISOString().slice(0,10));
-                          if(!newDate) return;
-                          const {serviceTickets}=await import("@/lib/firestore");
-                          const {arrayUnion}=await import("firebase/firestore");
-                          const now=new Date().toISOString();
-                          await serviceTickets.update(t.id!,{status:"acknowledged",service_date:newDate,status_history:arrayUnion({status:"acknowledged",timestamp:now,by:currentUser?.name||"",note:`นัดหมายใหม่: ${newDate}`})});
-                        }},
-                      ] : [];
+                      // helper: resolve via phone or remote (skip site visit)
+                      async function quickResolve(method: "phone"|"remote") {
+                        const label = method==="phone" ? "โทรศัพท์" : "รีโมท";
+                        const note = prompt(`บันทึก (${label}):`, `แก้ไขแล้วผ่าน${label}`) || `แก้ไขแล้วผ่าน${label}`;
+                        const {serviceTickets}=await import("@/lib/firestore");
+                        const {arrayUnion}=await import("firebase/firestore");
+                        const now=new Date().toISOString();
+                        await serviceTickets.update(t.id!,{
+                          status:"resolved",
+                          report_channel: method==="phone" ? "phone" : "system",
+                          resolved_at: now,
+                          status_history: arrayUnion({status:"resolved",timestamp:now,by:currentUser?.name||"",note:`[${label}] ${note}`}),
+                        });
+                      }
+
+                      // Extra options shown as alternatives based on status
+                      const extras: Step[] = [
+                        // ปิดทางโทร / รีโมท — ใช้ได้ตั้งแต่ open ถึง in_progress (ก่อน resolved)
+                        ...( cur < 5 && !isWaiting ? [
+                          { key:"xphone",  label:"📞 ปิดทางโทร", state:"active" as const, onClick:()=>quickResolve("phone")  },
+                          { key:"xremote", label:"💻 รีโมท",     state:"active" as const, onClick:()=>quickResolve("remote") },
+                        ] : []),
+                        // หลัง resolved
+                        ...( t.status==="resolved" ? [
+                          { key:"xparts",      label:"📦 เบิกอะไหล่",  state:"active" as const, onClick:()=>setPendingChange({ticket:t,newStatus:"waiting_parts"}) },
+                          { key:"xreschedule", label:"📅 นัดหมายใหม่", state:"active" as const, onClick: async()=>{
+                            const newDate=prompt("วันนัดหมายใหม่ (YYYY-MM-DD):", new Date(Date.now()+86400000*7).toISOString().slice(0,10));
+                            if(!newDate) return;
+                            const {serviceTickets}=await import("@/lib/firestore");
+                            const {arrayUnion}=await import("firebase/firestore");
+                            const now=new Date().toISOString();
+                            await serviceTickets.update(t.id!,{status:"acknowledged",service_date:newDate,status_history:arrayUnion({status:"acknowledged",timestamp:now,by:currentUser?.name||"",note:`นัดหมายใหม่: ${newDate}`})});
+                          }},
+                        ] : []),
+                      ];
 
                       if (isDone) return (
                         <select value={t.status} onChange={e=>setPendingChange({ticket:t,newStatus:e.target.value as ServiceStatus})}
@@ -2471,18 +2494,40 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                         </select>
                       );
 
-                      return [...steps, ...extras].map((s,i) => (
-                        <button key={s.key} disabled={s.state!=="active"}
-                          onClick={s.state==="active" ? s.onClick : undefined}
-                          className={`text-[10px] rounded-lg px-2 py-1 transition-all whitespace-nowrap
-                            ${s.state==="done"    ? "opacity-35 cursor-default bg-muted/20 text-muted line-through"    : ""}
-                            ${s.state==="active"  ? "bg-accent text-white hover:bg-accent-hover shadow-sm font-semibold" : ""}
-                            ${s.state==="future"  ? "opacity-30 cursor-not-allowed border border-border/50 text-muted"  : ""}
-                          `}>
-                          {s.label}
-                          {i < steps.length-1+extras.length && s.state!=="active" && extras.indexOf(s)<0 && <span className="ml-0.5 opacity-50">›</span>}
-                        </button>
-                      ));
+                      const btnCls = (state: "done"|"active"|"future") =>
+                        `text-[10px] rounded-lg px-2 py-1 transition-all whitespace-nowrap ` +
+                        (state==="done"   ? "opacity-35 cursor-default bg-muted/20 text-muted line-through" :
+                         state==="active" ? "bg-accent text-white hover:bg-accent-hover shadow-sm font-semibold" :
+                                            "opacity-30 cursor-not-allowed border border-border/50 text-muted");
+
+                      return (
+                        <>
+                          {/* Main flow */}
+                          {steps.map(s => (
+                            <button key={s.key} disabled={s.state!=="active"}
+                              onClick={s.state==="active" ? s.onClick : undefined}
+                              className={btnCls(s.state)}>
+                              {s.label}
+                            </button>
+                          ))}
+                          {/* Alternative actions — separated by divider */}
+                          {extras.length > 0 && (
+                            <>
+                              <span className="text-border/60 px-0.5 select-none">|</span>
+                              {extras.map(s => (
+                                <button key={s.key} disabled={s.state!=="active"}
+                                  onClick={s.state==="active" ? s.onClick : undefined}
+                                  className={`${btnCls(s.state)} ${
+                                    s.key.startsWith("xphone")  ? "bg-sky-700 hover:bg-sky-600"  :
+                                    s.key.startsWith("xremote") ? "bg-violet-700 hover:bg-violet-600" : ""
+                                  }`}>
+                                  {s.label}
+                                </button>
+                              ))}
+                            </>
+                          )}
+                        </>
+                      );
                     })()}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
