@@ -7,7 +7,7 @@ import { db } from "./firebase";
 
 // Import types for generic params
 import type {
-  User, Team, Customer, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
+  User, Team, Customer, CustomerIndustry, Project, ProjectType, ProjectTask, JobRequest, SalesActivity, PresaleRequest,
   ServiceTicket, ServiceContract, ServiceCost, ServiceAttachment, ServiceCostPreset, Product, ProductCategory, Vendor, VendorPrice, PriceHistory, Quotation, SalesQuota,
   NumberingSetting, IntegrationSetting, NotificationChannel, NotificationWorkflow,
   PresaleMultiProject, ProjectTool, ToolBOQItem, ProjectBOQItem, PresaleCatalogItem, PresalePreset,
@@ -117,6 +117,7 @@ function svc<T extends { id?: string }>(col: string, sortField = "created_at") {
 export const users = svc<User>("users");
 export const teams = svc<Team>("teams");
 export const customers = svc<Customer>("customers");
+export const customerIndustries = svc<CustomerIndustry>("customer_industries", "label");
 export const projects = svc<Project>("projects");
 export const salesActivities = svc<SalesActivity>("sales_activities");
 export const presaleRequests = svc<PresaleRequest>("presale_requests");

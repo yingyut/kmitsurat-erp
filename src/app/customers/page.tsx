@@ -6,6 +6,7 @@ import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
 import CsvImportExport from "@/components/CsvImportExport";
 import { DISTRICTS, SUBDISTRICTS } from "@/lib/thailand-geo";
+import type { CustomerIndustry } from "@/lib/types";
 
 const CUST_COLS = [
   { key: "company_name", label: "ชื่อบริษัท/องค์กร" },
@@ -21,18 +22,48 @@ const CUST_COLS = [
 
 const ThailandMap = lazy(() => import("@/components/ThailandMap"));
 
-const BUILTIN_ORG_TYPES = ["government","private","education","hospital","hotel","factory","construction","other"] as const;
-const orgLabels: Record<string, string> = { government:"หน่วยงานราชการ", private:"เอกชน", education:"สถานศึกษา", hospital:"โรงพยาบาล", hotel:"โรงแรม/รีสอร์ท", factory:"โรงงาน", construction:"ก่อสร้าง/รับเหมา", other:"อื่นๆ" };
-const orgColor: Record<string, string> = { government:"bg-blue-900/50 text-blue-400", private:"bg-emerald-900/50 text-emerald-400", education:"bg-purple-900/50 text-purple-400", hospital:"bg-rose-900/50 text-rose-400", hotel:"bg-amber-900/50 text-amber-400", factory:"bg-orange-900/50 text-orange-400", construction:"bg-yellow-900/50 text-yellow-400", other:"bg-gray-700 text-gray-400" };
-function getOrgLabel(t: string) { return orgLabels[t] ?? t; }
-function getOrgColor(t: string) { return orgColor[t] ?? "bg-gray-700 text-gray-400"; }
+// ── Sector (ภาคส่วน) — fixed 4 options ──────────────────────────────────────
+const ORG_SECTORS = [
+  { value: "private",    label: "เอกชน",          color: "bg-emerald-900/50 text-emerald-400" },
+  { value: "government", label: "ราชการ/รัฐบาล",   color: "bg-blue-900/50 text-blue-400" },
+  { value: "ngo",        label: "NGO/มูลนิธิ",     color: "bg-purple-900/50 text-purple-400" },
+  { value: "other",      label: "อื่นๆ",           color: "bg-gray-700 text-gray-400" },
+] as const;
+const SECTOR_LABEL: Record<string, string> = Object.fromEntries(ORG_SECTORS.map(s => [s.value, s.label]));
+const SECTOR_COLOR: Record<string, string> = Object.fromEntries(ORG_SECTORS.map(s => [s.value, s.color]));
+
+// ── Default industries seeded to Firestore on first use ──────────────────────
+const DEFAULT_INDUSTRIES: Omit<CustomerIndustry, "id" | "tenant_id">[] = [
+  { label: "โรงงาน/อุตสาหกรรม",    sector: "private",    color: "bg-orange-900/50 text-orange-400",  order: 1 },
+  { label: "โรงแรม/รีสอร์ท",        sector: "private",    color: "bg-amber-900/50 text-amber-400",    order: 2 },
+  { label: "ก่อสร้าง/รับเหมา",      sector: "private",    color: "bg-yellow-900/50 text-yellow-400",  order: 3 },
+  { label: "ค้าปลีก/ค้าส่ง",        sector: "private",    color: "bg-cyan-900/50 text-cyan-400",      order: 4 },
+  { label: "อสังหาริมทรัพย์",        sector: "private",    color: "bg-lime-900/50 text-lime-400",      order: 5 },
+  { label: "ขนส่ง/โลจิสติกส์",      sector: "private",    color: "bg-sky-900/50 text-sky-400",        order: 6 },
+  { label: "อาหาร/เครื่องดื่ม",     sector: "private",    color: "bg-rose-900/50 text-rose-400",      order: 7 },
+  { label: "เทคโนโลยี/IT",          sector: "private",    color: "bg-indigo-900/50 text-indigo-400",  order: 8 },
+  { label: "โรงพยาบาลเอกชน",        sector: "private",    color: "bg-pink-900/50 text-pink-400",      order: 9 },
+  { label: "สถานศึกษาเอกชน",        sector: "private",    color: "bg-violet-900/50 text-violet-400",  order: 10 },
+  { label: "โรงพยาบาล/สาธารณสุข",   sector: "government", color: "bg-pink-900/50 text-pink-400",      order: 20 },
+  { label: "เทศบาล/อบต.",            sector: "government", color: "bg-blue-900/50 text-blue-400",      order: 21 },
+  { label: "โรงเรียน/มหาวิทยาลัย",  sector: "government", color: "bg-violet-900/50 text-violet-400",  order: 22 },
+  { label: "หน่วยงานรัฐ/กรม/กระทรวง",sector:"government", color: "bg-sky-900/50 text-sky-400",        order: 23 },
+  { label: "รัฐวิสาหกิจ",            sector: "government", color: "bg-teal-900/50 text-teal-400",      order: 24 },
+  { label: "ทหาร/ตำรวจ",            sector: "government", color: "bg-slate-700 text-slate-300",       order: 25 },
+  { label: "NGO/มูลนิธิ",           sector: "ngo",        color: "bg-purple-900/50 text-purple-400",  order: 30 },
+];
+
+function getOrgColor(t: string, industries: CustomerIndustry[]): string {
+  return industries.find(i => i.label === t)?.color ?? SECTOR_COLOR[t] ?? "bg-gray-700 text-gray-400";
+}
 
 const provinces = ["กรุงเทพ","กระบี่","กาญจนบุรี","กาฬสินธุ์","กำแพงเพชร","ขอนแก่น","จันทบุรี","ฉะเชิงเทรา","ชลบุรี","ชัยนาท","ชัยภูมิ","ชุมพร","เชียงราย","เชียงใหม่","ตรัง","ตราด","ตาก","นครนายก","นครปฐม","นครพนม","นครราชสีมา","นครศรีธรรมราช","นครสวรรค์","นนทบุรี","นราธิวาส","น่าน","บึงกาฬ","บุรีรัมย์","ปทุมธานี","ประจวบคีรีขันธ์","ปราจีนบุรี","ปัตตานี","พระนครศรีอยุธยา","พะเยา","พังงา","พัทลุง","พิจิตร","พิษณุโลก","เพชรบุรี","เพชรบูรณ์","แพร่","ภูเก็ต","มหาสารคาม","มุกดาหาร","แม่ฮ่องสอน","ยโสธร","ยะลา","ร้อยเอ็ด","ระนอง","ระยอง","ราชบุรี","ลพบุรี","ลำปาง","ลำพูน","เลย","ศรีสะเกษ","สกลนคร","สงขลา","สตูล","สมุทรปราการ","สมุทรสงคราม","สมุทรสาคร","สระแก้ว","สระบุรี","สิงห์บุรี","สุโขทัย","สุพรรณบุรี","สุราษฎร์ธานี","สุรินทร์","หนองคาย","หนองบัวลำภู","อ่างทอง","อำนาจเจริญ","อุดรธานี","อุตรดิตถ์","อุทัยธานี","อุบลราชธานี"];
 
 const emptyForm = {
   company_name: "", contact_name: "", phone: "", phone2: "", email: "",
   address: "", province: "สุราษฎร์ธานี", district: "", subdistrict: "",
-  org_type: "private" as Customer["org_type"],
+  org_sector: "private" as string,
+  org_type: "" as string,
   tax_id: "", line_id: "", facebook: "", website: "",
   notes: "",
   assigned_to: "",
@@ -54,6 +85,7 @@ export default function CustomersPage() {
   const [sortBy, setSortBy]             = useState<"newest"|"oldest"|"name_asc"|"name_desc"|"province"|"org_type">("newest");
   const [ownerFilter, setOwnerFilter]   = useState<"mine"|"team"|"all">("mine");
   const [saving, setSaving]             = useState(false);
+  const [industries, setIndustries]     = useState<CustomerIndustry[]>([]);
 
   // Form state
   const [showForm, setShowForm] = useState(false);
@@ -65,26 +97,19 @@ export default function CustomersPage() {
   const [nameDropOpen, setNameDropOpen] = useState(false);
   const [dupMatch, setDupMatch] = useState<Customer | null>(null); // exact duplicate found
 
-  // Custom org types (localStorage)
-  const [customOrgTypes, setCustomOrgTypes] = useState<string[]>([]);
-  const [newOrgType, setNewOrgType] = useState("");
-  useEffect(() => {
-    try { setCustomOrgTypes(JSON.parse(localStorage.getItem("kmit_org_types") || "[]")); } catch { /* */ }
-  }, []);
-  function addCustomOrgType(label: string) {
+  // Industry management (Firestore)
+  const [newIndustryLabel, setNewIndustryLabel] = useState("");
+  async function addIndustry(label: string) {
     const t = label.trim();
-    if (!t || BUILTIN_ORG_TYPES.map(k => orgLabels[k]).includes(t) || customOrgTypes.includes(t)) return;
-    const next = [...customOrgTypes, t];
-    setCustomOrgTypes(next);
-    localStorage.setItem("kmit_org_types", JSON.stringify(next));
+    if (!t || industries.some(i => i.label === t)) return;
+    const fs = await import("@/lib/firestore");
+    await fs.customerIndustries.add({ label: t, sector: form.org_sector || "all", order: 99, active: true } as Record<string, unknown>);
     setForm(f => ({ ...f, org_type: t }));
-    setNewOrgType("");
+    setNewIndustryLabel("");
   }
-  function deleteCustomOrgType(label: string) {
-    const next = customOrgTypes.filter(t => t !== label);
-    setCustomOrgTypes(next);
-    localStorage.setItem("kmit_org_types", JSON.stringify(next));
-    if (form.org_type === label) setForm(f => ({ ...f, org_type: "other" }));
+  async function deleteIndustry(id: string) {
+    const fs = await import("@/lib/firestore");
+    await fs.customerIndustries.remove(id);
   }
 
   // Hover popup
@@ -110,6 +135,14 @@ export default function CustomersPage() {
         fs.quotations.subscribe(data => setQuotations(data)),
         fs.serviceTickets.subscribe(data => setServiceTickets(data)),
         fs.users.subscribe(data => setUsers(data.filter(x => x.active !== false))),
+        fs.customerIndustries.subscribe(data => {
+          const sorted = data.sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+          setIndustries(sorted);
+          // Seed defaults if collection is empty
+          if (sorted.length === 0) {
+            DEFAULT_INDUSTRIES.forEach(ind => fs.customerIndustries.add(ind as Record<string, unknown>));
+          }
+        }),
       );
     })();
     return () => unsubs.forEach(u => u());
@@ -196,7 +229,7 @@ export default function CustomersPage() {
       case "name_asc": return (a.company_name ?? "").localeCompare(b.company_name ?? "", "th");
       case "name_desc":return (b.company_name ?? "").localeCompare(a.company_name ?? "", "th");
       case "province": return (a.province ?? "").localeCompare(b.province ?? "", "th");
-      case "org_type": return getOrgLabel(a.org_type ?? "").localeCompare(getOrgLabel(b.org_type ?? ""), "th");
+      case "org_type": return (a.org_sector ?? "").localeCompare(b.org_sector ?? "", "th") || (a.org_type ?? "").localeCompare(b.org_type ?? "", "th");
       default: return 0;
     }
   });
@@ -219,7 +252,8 @@ export default function CustomersPage() {
       company_name: c.company_name, contact_name: c.contact_name,
       phone: c.phone, phone2: c.phone2 || "", email: c.email, address: c.address,
       province: c.province || "", district: c.district || "", subdistrict: c.subdistrict || "",
-      org_type: c.org_type || "other",
+      org_sector: c.org_sector || "private",
+      org_type: c.org_type || "",
       tax_id: c.tax_id || "", line_id: c.line_id || "",
       facebook: c.facebook || "", website: c.website || "",
       notes: c.notes,
@@ -239,7 +273,7 @@ export default function CustomersPage() {
         company_name: form.company_name, contact_name: form.contact_name,
         phone: form.phone, phone2: form.phone2, email: form.email, address: form.address,
         province: form.province, district: form.district, subdistrict: form.subdistrict,
-        org_type: form.org_type, notes: form.notes,
+        org_sector: form.org_sector, org_type: form.org_type, notes: form.notes,
         tax_id: form.tax_id, line_id: form.line_id,
         facebook: form.facebook, website: form.website,
         assigned_to: form.assigned_to || (!canViewAll ? (currentUser?.name ?? "") : ""),
@@ -340,8 +374,10 @@ export default function CustomersPage() {
         </select>
         <select value={orgFilter} onChange={e => setOrgFilter(e.target.value)} className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
           <option value="all">ทุกประเภท</option>
-          {BUILTIN_ORG_TYPES.map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
-          {customOrgTypes.map(t => <option key={t} value={t}>{t}</option>)}
+          {ORG_SECTORS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          <optgroup label="กลุ่มธุรกิจ">
+            {industries.map(i => <option key={i.id} value={i.label}>{i.label}</option>)}
+          </optgroup>
         </select>
         <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} className="rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
           <option value="newest">เรียง: ใหม่ที่สุด</option>
@@ -469,33 +505,32 @@ export default function CustomersPage() {
               })()}
             </div>
 
+            {/* Sector */}
+            <select value={form.org_sector} onChange={e => setForm({...form, org_sector: e.target.value, org_type: ""})}
+              className="rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
+              {ORG_SECTORS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+
+            {/* Industry (from Firestore) */}
             <div className="space-y-1.5">
-              <select value={form.org_type} onChange={e => { setForm({...form, org_type: e.target.value}); setNewOrgType(""); }}
+              <select value={form.org_type}
+                onChange={e => { if (e.target.value !== "__add__") setForm({...form, org_type: e.target.value}); else setNewIndustryLabel(""); }}
                 className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent">
-                {BUILTIN_ORG_TYPES.filter(t => t !== "other").map(t => <option key={t} value={t}>{orgLabels[t]}</option>)}
-                {customOrgTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                <option value="other">อื่นๆ…</option>
+                <option value="">-- กลุ่มธุรกิจ --</option>
+                {industries.filter(i => !i.sector || i.sector === "all" || i.sector === form.org_sector)
+                  .map(i => <option key={i.id} value={i.label}>{i.label}</option>)}
+                <option value="__add__">+ เพิ่มกลุ่มธุรกิจใหม่…</option>
               </select>
-              {form.org_type === "other" && (
+              {(form.org_type === "__add__" || (form.org_type === "" && newIndustryLabel !== "")) && (
                 <div className="flex gap-1">
-                  <input value={newOrgType} onChange={e => setNewOrgType(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCustomOrgType(newOrgType); }}}
-                    placeholder="ชื่อหมวดธุรกิจใหม่…"
+                  <input value={newIndustryLabel} onChange={e => setNewIndustryLabel(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addIndustry(newIndustryLabel); }}}
+                    placeholder="ชื่อกลุ่มธุรกิจใหม่…"
+                    autoFocus
                     className="flex-1 rounded-lg bg-background border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
-                  <button type="button" onClick={() => addCustomOrgType(newOrgType)}
-                    disabled={!newOrgType.trim()}
+                  <button type="button" onClick={() => addIndustry(newIndustryLabel)}
+                    disabled={!newIndustryLabel.trim()}
                     className="px-3 rounded-lg bg-accent text-white text-sm disabled:opacity-40 hover:bg-accent-hover">+</button>
-                </div>
-              )}
-              {customOrgTypes.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-0.5">
-                  {customOrgTypes.map(t => (
-                    <span key={t} className="inline-flex items-center gap-0 rounded-full border border-border bg-background text-[10px] overflow-hidden">
-                      <span className="px-2 py-0.5">{t}</span>
-                      <button type="button" onClick={() => deleteCustomOrgType(t)}
-                        className="px-1.5 py-0.5 text-muted/50 hover:bg-red-500/20 hover:text-red-400 transition-colors">✕</button>
-                    </span>
-                  ))}
                 </div>
               )}
             </div>
@@ -647,7 +682,8 @@ export default function CustomersPage() {
                     <td className="px-4 py-2.5 text-muted">{c.phone}</td>
                     <td className="px-4 py-2.5 text-muted">{c.province || "—"}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${getOrgColor(c.org_type)}`}>{getOrgLabel(c.org_type)}</span>
+                      {c.org_sector && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${SECTOR_COLOR[c.org_sector] ?? "bg-gray-700 text-gray-400"}`}>{SECTOR_LABEL[c.org_sector] ?? c.org_sector}</span>}
+                      {c.org_type && c.org_type !== c.org_sector && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${getOrgColor(c.org_type, industries)}`}>{c.org_type}</span>}
                     </td>
                     {showOwnerCol && (
                       <td className="px-4 py-2.5">

@@ -172,6 +172,16 @@ export interface ProductCategory {
   icon?: string; // emoji shortcut
 }
 
+export interface CustomerIndustry {
+  id?: string;
+  tenant_id: string;
+  label: string;           // ชื่อกลุ่มธุรกิจ เช่น "โรงงาน"
+  sector?: string;         // "private" | "government" | "all" — ภาคส่วนที่เกี่ยวข้อง
+  color?: string;          // Tailwind class สำหรับ badge
+  order?: number;
+  active?: boolean;
+}
+
 export interface Customer {
   id?: string;
   tenant_id: string;
@@ -183,7 +193,8 @@ export interface Customer {
   province: string;
   district?: string;      // อำเภอ
   subdistrict?: string;   // ตำบล
-  org_type: string; // built-in: government|private|education|hospital|hotel|factory|other; or custom label
+  org_sector?: "private" | "government" | "ngo" | "other"; // ภาคส่วนหลัก: เอกชน/ราชการ/NGO/อื่นๆ
+  org_type: string;    // กลุ่มธุรกิจ เช่น โรงงาน, โรงพยาบาล (managed in customer_industries collection)
   notes: string;
   assigned_to?: string;   // primary owner (user.name)
   co_owners?: string[];   // shared CRM ownership
