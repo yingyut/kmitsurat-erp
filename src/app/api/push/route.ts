@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import webpush from "web-push";
 
-webpush.setVapidDetails(
-  process.env.VAPID_MAILTO || "mailto:admin@kmitsurat.com",
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!,
-);
-
 export async function POST(req: NextRequest) {
+  const pubKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const privKey = process.env.VAPID_PRIVATE_KEY;
+  if (!pubKey || !privKey) {
+    return NextResponse.json({ error: "VAPID keys not configured" }, { status: 503 });
+  }
+
+  webpush.setVapidDetails(
+    process.env.VAPID_MAILTO || "mailto:admin@kmitsurat.com",
+    pubKey,
+    privKey,
+  );
+
   try {
     const { subscriptions, title, body, url } = await req.json() as {
       subscriptions: PushSubscriptionJSON[];
