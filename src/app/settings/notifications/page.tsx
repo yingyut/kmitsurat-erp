@@ -23,6 +23,7 @@ const triggers: { value: NotifyTrigger; label: string; thai: string; module: str
   { value: "contract_expiring", label: "Contract Expiring Soon", thai: "สัญญาใกล้หมดอายุ", module: "contracts" },
   { value: "service_ticket_created", label: "Service Ticket Created", thai: "สร้าง Service Ticket ใหม่", module: "service" },
   { value: "ticket_status_changed", label: "Ticket Status Changed", thai: "เปลี่ยนสถานะ Ticket", module: "service" },
+  { value: "sales_reassign", label: "Sales Task Reassigned", thai: "โยกงาน/มอบหมายงานให้เซลล์", module: "sales" },
 ];
 
 const roles = ["admin", "sale", "presale", "service", "avenger"];

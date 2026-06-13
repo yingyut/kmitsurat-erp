@@ -1,4 +1,3 @@
-"use client";
 import type { PresaleRequest, NotificationWorkflow, NotificationChannel, User, InAppNotification } from "./types";
 
 const TENANT = "kmitsurat";
@@ -116,4 +115,90 @@ export async function sendPresaleStatusNotification(opts: PresaleNotifyOptions):
       } catch (e) { console.warn(`[notify] channel ${ch.type} failed`, e); }
     }
   }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Sales Reassign Notification
+// ──────────────────────────────────────────────────────────────
+export interface SalesReassignNotifyOptions {
+  activityId: string;
+  activityDesc: string;
+  fromUser: string;
+  toUser: string;
+  byUser: string;   // manager who reassigned
+  note?: string;
+  users: User[];
+  workflows: NotificationWorkflow[];
+  channels: NotificationChannel[];
+}
+
+export async function sendSalesReassignNotification(opts: SalesReassignNotifyOptions): Promise<void> {
+  const { activityId, activityDesc, fromUser, toUser, byUser, note, users, workflows, channels } = opts;
+
+  const title = `📋 งานถูกมอบหมายให้คุณ`;
+  const body = [
+    `${byUser} โยกงาน "${activityDesc}" ให้คุณ`,
+    fromUser ? `(จาก ${fromUser})` : "",
+    note ? `หมายเหตุ: ${note}` : "",
+  ].filter(Boolean).join(" | ");
+
+  // 1. Active workflows for sales_reassign
+  const activeWorkflows = workflows.filter(
+    (w) => w.active && w.module === "sales" && w.trigger === "sales_reassign"
+  );
+
+  const channelMap = Object.fromEntries(channels.map((c) => [c.id!, c]));
+
+  for (const wf of activeWorkflows) {
+    const subject = fillTemplate(wf.subject_template || title, { to: toUser, by: byUser, activity: activityDesc, note: note || "" });
+    const bodyText = fillTemplate(wf.body_template || body, { to: toUser, by: byUser, activity: activityDesc, note: note || "" });
+
+    // Email / LINE / Teams / Webhook
+    const toEmails = resolveRecipientEmails(wf, users, []);
+    // Always include the new assignee's email
+    const assigneeUser = users.find((u) => u.name === toUser);
+    if (assigneeUser?.email) toEmails.push(assigneeUser.email);
+
+    for (const chId of wf.channel_ids) {
+      const ch = channelMap[chId];
+      if (!ch?.active) continue;
+      try {
+        await fetch("/api/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel: ch, to_emails: [...new Set(toEmails)], subject, body: bodyText }),
+        });
+      } catch (e) { console.warn(`[notify] sales_reassign channel ${ch.type} failed`, e); }
+    }
+  }
+
+  // 2. Web Push — always send to the new assignee regardless of workflow
+  try {
+    const assigneeUser = users.find((u) => u.name === toUser);
+    if (assigneeUser?.push_subscription) {
+      await fetch("/api/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscriptions: [assigneeUser.push_subscription],
+          title,
+          body,
+          url: "/sales?tab=activities",
+        }),
+      });
+    }
+  } catch (e) { console.warn("[notify] push failed", e); }
+
+  // 3. Log activity (non-blocking)
+  try {
+    const { logActivity } = await import("./firestore");
+    await logActivity({
+      user_name: byUser,
+      user_role: "",
+      action: "notify",
+      module: "sales",
+      resource_id: activityId,
+      details: `ส่งแจ้งเตือนโยกงาน → ${toUser}`,
+    });
+  } catch { /* non-blocking */ }
 }

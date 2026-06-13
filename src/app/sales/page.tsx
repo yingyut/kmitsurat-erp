@@ -281,6 +281,37 @@ export default function SalesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Register service worker + subscribe Web Push (once after currentUser is known)
+  useEffect(() => {
+    if (!currentUser?.name || typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!vapidKey) return;
+    (async () => {
+      try {
+        const reg = await navigator.serviceWorker.register("/sw.js");
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") return;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: vapidKey,
+          });
+        }
+        const subJson = sub.toJSON();
+        const fs = await import("@/lib/firestore");
+        const me = (await fs.users.list()).find(u => u.name === currentUser.name);
+        if (me?.id) {
+          const existing = JSON.stringify(me.push_subscription);
+          if (existing !== JSON.stringify(subJson)) {
+            await fs.users.update(me.id, { push_subscription: subJson } as Record<string, unknown>);
+          }
+        }
+      } catch (e) { console.warn("[push] subscription failed", e); }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.name]);
+
   // Auto-open activity detail modal from ?open=<id>
   const openId = searchParams.get("open");
   useEffect(() => {
@@ -603,11 +634,11 @@ export default function SalesPage() {
         resource_id: id,
         details: `โยกงานจาก ${oldAssignee || "ไม่ระบุ"} → ${newAssignee}${note.trim() ? ` | หมายเหตุ: ${note.trim()}` : ""}`,
       });
-      // Send in-app notification to new assignee
+      // 1. In-app notification
       await inAppNotifications.add({
         tenant_id: "kmitsurat",
         module: "sales",
-        trigger: "reassign",
+        trigger: "sales_reassign",
         title: `📋 งานถูกมอบหมายให้คุณ`,
         body: `${currentUser?.name ?? "ผู้จัดการ"} โยกงาน${actDesc ? ` "${actDesc}"` : ""} ให้คุณ${note.trim() ? ` | หมายเหตุ: ${note.trim()}` : ""}`,
         link: "/sales?tab=activities",
@@ -615,6 +646,21 @@ export default function SalesPage() {
         recipients: [newAssignee],
         read_by: [],
       } as Record<string, unknown>);
+      // 2. Email + Web Push via workflow channels
+      const { notificationWorkflows, notificationChannels } = await import("@/lib/firestore");
+      const [wfSnap, chSnap] = await Promise.all([notificationWorkflows.list(), notificationChannels.list()]);
+      const { sendSalesReassignNotification } = await import("@/lib/notify");
+      await sendSalesReassignNotification({
+        activityId: id,
+        activityDesc: actDesc,
+        fromUser: oldAssignee,
+        toUser: newAssignee,
+        byUser: currentUser?.name ?? "",
+        note: note.trim() || undefined,
+        users,
+        workflows: wfSnap,
+        channels: chSnap,
+      });
       setReassignTarget(""); setReassignNote(""); setShowReassignPanel(false);
       setSelectedActivity(null);
       await load();

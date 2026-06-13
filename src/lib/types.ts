@@ -30,6 +30,7 @@ export interface User {
   extra_roles?: string[];  // บทบาทเพิ่มเติม — รวม permissions จากทุก role
   theme?: string;          // ธีมที่เลือก เช่น "midnight", "snow", "custom"
   theme_custom?: Record<string, string>; // CSS vars สำหรับ custom theme
+  push_subscription?: PushSubscriptionJSON; // Web Push subscription object
 }
 
 export interface ActivityLog {
@@ -113,7 +114,8 @@ export type NotifyTrigger =
   | "ticket_status_changed"
   | "presale_status_changed"
   | "presale_task_created"
-  | "presale_task_overdue";
+  | "presale_task_overdue"
+  | "sales_reassign";
 
 export interface InAppNotification {
   id?: string;
