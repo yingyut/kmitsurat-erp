@@ -388,7 +388,7 @@ export default function CustomerDetailPage() {
                 <tr key={q.id} className="border-b border-border last:border-0 hover:bg-card-hover">
                   <td className="px-4 py-2.5 font-mono text-xs">{q.quotation_number}</td>
                   <td className="px-4 py-2.5 text-muted">{q.project_name || "-"}</td>
-                  <td className="px-4 py-2.5 text-right text-muted">{q.items.length}</td>
+                  <td className="px-4 py-2.5 text-right text-muted">{q.items?.length ?? 0}</td>
                   <td className="px-4 py-2.5 text-right font-semibold">{(q.grand_total || q.total_selling || 0).toLocaleString()}</td>
                   <td className={`px-4 py-2.5 text-right ${q.gp_percent >= 20 ? "text-green-400" : q.gp_percent >= 10 ? "text-yellow-400" : "text-red-400"}`}>{(q.gp_percent || 0).toFixed(1)}%</td>
                   <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${quotStatusColor[q.status]}`}>{quotStatusLabel[q.status]}</span></td>
