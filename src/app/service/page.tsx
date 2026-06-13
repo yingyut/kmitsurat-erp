@@ -828,8 +828,23 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
     if (!form.issue.trim()) return; setSaving(true);
     const { serviceTickets } = await import("@/lib/firestore");
     const now = new Date().toISOString();
-    const initHistory = [{ status: form.status, timestamp: now, by: currentUser?.name || "", note: "สร้าง Ticket" }];
-    const payload = { ...form, gross_profit: (form.service_value || 0) - (form.service_cost || 0), opened_at: now, status_history: initHistory };
+    // ธุรการ/Manager เปิดงานพร้อมระบุช่าง → auto-accept ทันที ไม่ต้องรอช่างกดรับ
+    const autoAccept = !isTechView && !!form.technician.trim();
+    const initStatus = autoAccept ? "acknowledged" : form.status;
+    const initHistory = autoAccept
+      ? [
+          { status: "open",         timestamp: now, by: currentUser?.name || "", note: "เปิดงาน" },
+          { status: "acknowledged", timestamp: now, by: currentUser?.name || "", note: `มอบหมายช่าง: ${form.technician}` },
+        ]
+      : [{ status: form.status, timestamp: now, by: currentUser?.name || "", note: "สร้าง Ticket" }];
+    const payload = {
+      ...form,
+      status: initStatus,
+      gross_profit: (form.service_value || 0) - (form.service_cost || 0),
+      opened_at: now,
+      ...(autoAccept ? { accepted_at: now, accepted_by: currentUser?.name || "" } : {}),
+      status_history: initHistory,
+    };
     try {
       await serviceTickets.add(payload as unknown as Record<string, unknown>);
       try { const { logActivity } = await import("@/lib/firestore"); await logActivity({ user_name: currentUser?.name ?? "", user_role: currentUser?.role ?? "", action: "create", module: "service", resource_name: form.issue, details: `สร้าง Ticket: ${form.customer_name}` }); } catch {}
@@ -2265,6 +2280,13 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
             <div><label className="text-[10px] text-muted">รายได้เรียกเก็บ (THB)</label><input type="number" placeholder="0" value={form.service_value || ""} onChange={(e) => updateMoney("service_value", Number(e.target.value))} className="w-full rounded-lg bg-background border border-purple-800/40 px-3 py-2 text-sm focus:outline-none focus:border-purple-500 mt-1" /></div>
             <div><label className="text-[10px] text-muted">ชั่วโมงทำงาน (ไม่บังคับ)</label><input type="number" step="0.5" placeholder="0" value={form.hours_spent || ""} onChange={(e) => updateMoney("hours_spent", Number(e.target.value))} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
           </div>
+          {/* Auto-accept notice — แสดงเมื่อ manager ระบุช่าง */}
+          {!isTechView && form.assignment_mode === "individual" && form.technician && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-900/15 border border-green-800/30 px-3 py-2">
+              <span className="text-green-400 text-sm">✅</span>
+              <p className="text-[11px] text-green-300">งานนี้จะ <b>รับทราบอัตโนมัติ</b> และมอบหมายให้ <b>{form.technician}</b> ทันทีที่สร้าง — ไม่ต้องรอช่างกดรับ</p>
+            </div>
+          )}
           <button onClick={handleSave} disabled={saving || !form.issue.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
         </div>
       )}
