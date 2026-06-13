@@ -103,6 +103,11 @@ export default function SalesPage() {
   const [saving, setSaving] = useState(false);
   const [myNotifs, setMyNotifs] = useState<InAppNotification[]>([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("sales_notif_sound") !== "off";
+  });
+  const prevUnreadRef = useRef(0);
   const [reassignTarget, setReassignTarget] = useState("");
   const [selectedActivity, setSelectedActivity] = useState<SalesActivity | null>(null);
   const [editingActId, setEditingActId] = useState<string | null>(null);
@@ -176,6 +181,20 @@ export default function SalesPage() {
   const [showReassignPanel, setShowReassignPanel] = useState(false);
   const [reassignNote,      setReassignNote]      = useState("");
   const openReassignOnLoad = useRef(false);
+
+  function playNotifSound() {
+    try {
+      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.35);
+    } catch { /* ไม่รองรับ AudioContext */ }
+  }
 
   // Inline quick-report state (inside selectedActivity modal)
   const [qrOpen,       setQrOpen]       = useState(false);
@@ -458,6 +477,16 @@ export default function SalesPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedActivity?.id]);
+
+  // Play sound when new unread notification arrives
+  useEffect(() => {
+    if (!mounted) return;
+    const myName = currentUser?.name ?? "";
+    const unread = myNotifs.filter(n => n.recipients.includes(myName) && !n.read_by.includes(myName)).length;
+    if (unread > prevUnreadRef.current && soundEnabled) playNotifSound();
+    prevUnreadRef.current = unread;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myNotifs]);
 
   // Sync calendar popup edit state when a different plan is selected
   useEffect(() => {
@@ -798,6 +827,16 @@ export default function SalesPage() {
                   <div className="absolute right-0 top-11 z-50 w-80 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
                     <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
                       <p className="text-xs font-semibold">🔔 การแจ้งเตือน</p>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => {
+                          const next = !soundEnabled;
+                          setSoundEnabled(next);
+                          localStorage.setItem("sales_notif_sound", next ? "on" : "off");
+                          if (next) playNotifSound();
+                        }} title={soundEnabled ? "ปิดเสียงแจ้งเตือน" : "เปิดเสียงแจ้งเตือน"}
+                          className="text-sm text-muted hover:text-foreground transition-colors">
+                          {soundEnabled ? "🔊" : "🔇"}
+                        </button>
                       {unreadCount > 0 && (
                         <button onClick={async () => {
                           if (!myName) return;
@@ -807,6 +846,7 @@ export default function SalesPage() {
                           ));
                         }} className="text-[10px] text-accent hover:underline">อ่านทั้งหมด</button>
                       )}
+                      </div>
                     </div>
                     <div className="max-h-80 overflow-y-auto divide-y divide-border">
                       {myPersonalNotifs.length === 0 && <p className="text-xs text-muted text-center py-6">ไม่มีการแจ้งเตือน</p>}
