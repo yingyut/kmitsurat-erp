@@ -56,17 +56,22 @@ function KpiCard({ label, value, sub, color, href, pct, alert, size }: {
 }) {
   const valColor = { green: "text-emerald-500", blue: "text-blue-500", purple: "text-violet-500", amber: "text-amber-500", red: "text-orange-500", cyan: "text-sky-500", muted: "text-muted" }[color];
   const barColor = { green: "bg-emerald-500", blue: "bg-blue-500", purple: "bg-violet-500", amber: "bg-amber-500", red: "bg-orange-500", cyan: "bg-sky-500", muted: "bg-muted" }[color];
+  const topBar   = { green: "bg-emerald-500", blue: "bg-blue-500", purple: "bg-violet-500", amber: "bg-amber-500", red: "bg-orange-500", cyan: "bg-sky-500", muted: "bg-border" }[color];
   const inner = (
-    <div className={`rounded-xl bg-card border ${size === "sm" ? "p-2 @md:p-3 min-h-[72px] @md:min-h-[90px]" : "p-3 @md:p-4 min-h-[95px] @md:min-h-[110px]"} flex flex-col justify-between transition-all duration-150 ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18),0_1px_4px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(234,88,12,0.2),0_2px_6px_rgba(0,0,0,0.1)]" : "border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09),0_2px_6px_rgba(0,0,0,0.08)]"} active:translate-y-[2px] active:shadow-none`}>
-      <p className={`font-medium text-muted/60 uppercase leading-none truncate ${size === "sm" ? "text-[9px] @md:text-[10px] tracking-normal" : "text-[10px] @md:text-[11px] tracking-wider"}`}>{label}</p>
-      <p className={`${size === "sm" ? "text-base @md:text-xl" : "text-xl @md:text-[1.75rem]"} font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
-      <div className="space-y-1">
-        {pct !== undefined && (
-          <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
-            <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
-          </div>
-        )}
-        <p className={`text-[9px] @md:text-[11px] text-muted/60 leading-snug min-h-[12px] truncate`}>{sub ?? ""}</p>
+    <div className={`rounded-xl bg-card border overflow-hidden ${size === "sm" ? "min-h-[72px] @md:min-h-[90px]" : "min-h-[95px] @md:min-h-[110px]"} flex flex-col transition-all duration-150 ${alert ? "border-orange-500/50 shadow-[0_4px_0_0_rgba(234,88,12,0.18),0_1px_4px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(234,88,12,0.2),0_2px_6px_rgba(0,0,0,0.1)]" : "border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09),0_2px_6px_rgba(0,0,0,0.08)]"} active:translate-y-[2px] active:shadow-none`}>
+      {/* Colored accent bar at top */}
+      <div className={`h-[3px] w-full ${alert ? "bg-orange-500" : topBar} opacity-80`} />
+      <div className={`flex-1 flex flex-col justify-between ${size === "sm" ? "p-2 @md:p-3" : "p-3 @md:p-4"}`}>
+        <p className={`font-medium text-muted/60 uppercase leading-none truncate ${size === "sm" ? "text-[9px] @md:text-[10px] tracking-normal" : "text-[10px] @md:text-[11px] tracking-wider"}`}>{label}</p>
+        <p className={`${size === "sm" ? "text-base @md:text-xl" : "text-xl @md:text-[1.75rem]"} font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
+        <div className="space-y-1">
+          {pct !== undefined && (
+            <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
+              <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
+            </div>
+          )}
+          <p className={`text-[9px] @md:text-[11px] text-muted/60 leading-snug min-h-[12px] truncate`}>{sub ?? ""}</p>
+        </div>
       </div>
     </div>
   );
@@ -75,12 +80,17 @@ function KpiCard({ label, value, sub, color, href, pct, alert, size }: {
 
 // ── Alert Row ──────────────────────────────────────────────────────────────────
 function AlertRow({ level, msg, href }: { level: "red" | "orange" | "green"; msg: string; href: string }) {
-  const dot = level === "red" ? "bg-red-600" : level === "orange" ? "bg-amber-600" : "bg-green-600";
+  const bar  = level === "red" ? "bg-red-500"   : level === "orange" ? "bg-amber-500"  : "bg-emerald-500";
+  const icon = level === "red" ? "⚠"            : level === "orange" ? "●"             : "✓";
+  const ic   = level === "red" ? "text-red-500" : level === "orange" ? "text-amber-500": "text-emerald-500";
   return (
-    <Link href={href} className="flex items-center gap-3 rounded-lg border border-border/50 bg-card px-3 py-2 text-xs hover:bg-card-hover transition-colors">
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
-      <span className="text-foreground/80 line-clamp-1 flex-1">{msg}</span>
-      <span className="text-muted/50 shrink-0">→</span>
+    <Link href={href} className="flex items-stretch rounded-lg border border-border/50 bg-card overflow-hidden hover:bg-card-hover hover:border-border transition-colors group">
+      <div className={`w-1 shrink-0 ${bar}`} />
+      <div className="flex items-center gap-2.5 px-3 py-2 flex-1 min-w-0">
+        <span className={`text-[11px] shrink-0 font-bold ${ic}`}>{icon}</span>
+        <span className="text-xs text-foreground/80 line-clamp-1 flex-1">{msg}</span>
+        <span className="text-muted/40 shrink-0 text-[11px] group-hover:text-accent transition-colors">→</span>
+      </div>
     </Link>
   );
 }
@@ -104,8 +114,8 @@ function Section({ title, action, children, defaultOpen = true }: {
   }
   const onHide = useContext(HideCtx);
   return (
-    <div className="rounded-xl bg-card border border-border/70 overflow-hidden h-full">
-      <div className="flex items-center px-4 py-3 border-b border-border/40 gap-2">
+    <div className="rounded-xl bg-card border border-border/60 overflow-hidden h-full shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+      <div className="flex items-center px-4 py-3 border-b border-border/40 gap-2 bg-card-hover/30">
         <button onClick={toggle} className="flex-1 text-left min-w-0">
           <span className="text-sm font-semibold text-foreground/90">{title}</span>
         </button>
@@ -1043,25 +1053,37 @@ export default function DashboardPage() {
             const totalAlerts = salesOverdue.length+salesPlanOverdue.length;
             return (<>
               <div className="grid grid-cols-2 @md:grid-cols-3 @xl:grid-cols-6 gap-3">
-                <div className="rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)]">
-                  <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ยอดขาย</p>
-                  <p className="text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
-                  <div>{targetPct>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}<p className="text-[9px] text-muted/60 mt-0.5">{filterLabel}</p></div>
+                <div className="rounded-xl bg-card border border-border/60 overflow-hidden min-h-[95px] flex flex-col shadow-[0_4px_0_0_rgba(0,0,0,0.07)]">
+                  <div className="h-[3px] bg-emerald-500 opacity-80"/>
+                  <div className="flex-1 flex flex-col justify-between p-3 @md:p-4">
+                    <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ยอดขาย</p>
+                    <p className="text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
+                    <div>{targetPct>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}<p className="text-[9px] text-muted/60 mt-0.5">{filterLabel}</p></div>
+                  </div>
                 </div>
-                <div className="rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)]">
-                  <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
-                  <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${pctCol}`}>{target>0?`${targetPct.toFixed(0)}%`:"—"}</p>
-                  <div>{target>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className={`h-full rounded-full ${barCol} transition-all`} style={{width:`${Math.min(targetPct,100)}%`}}/></div>}<p className="text-[9px] text-muted/60 mt-0.5">{target>0?`${Math.round(actual/1000)}K / ${mgTgtM}`:"ยังไม่มีเป้า"}</p></div>
+                <div className="rounded-xl bg-card border border-border/60 overflow-hidden min-h-[95px] flex flex-col shadow-[0_4px_0_0_rgba(0,0,0,0.07)]">
+                  <div className={`h-[3px] opacity-80 ${barCol}`}/>
+                  <div className="flex-1 flex flex-col justify-between p-3 @md:p-4">
+                    <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
+                    <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${pctCol}`}>{target>0?`${targetPct.toFixed(0)}%`:"—"}</p>
+                    <div>{target>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className={`h-full rounded-full ${barCol} transition-all`} style={{width:`${Math.min(targetPct,100)}%`}}/></div>}<p className="text-[9px] text-muted/60 mt-0.5">{target>0?`${Math.round(actual/1000)}K / ${mgTgtM}`:"ยังไม่มีเป้า"}</p></div>
+                  </div>
                 </div>
-                <div className="rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)]">
-                  <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">กำไร GP</p>
-                  <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${gpColor}`}>{profitK>0?`${profitK.toLocaleString()}K`:"—"}</p>
-                  <p className="text-[9px] text-muted/60 mt-0.5">{gpPctMe>0?`${gpPctMe}% margin`:"ยังไม่มีข้อมูล"}</p>
+                <div className="rounded-xl bg-card border border-border/60 overflow-hidden min-h-[95px] flex flex-col shadow-[0_4px_0_0_rgba(0,0,0,0.07)]">
+                  <div className={`h-[3px] opacity-80 ${gpColor.includes("emerald")?"bg-emerald-500":gpColor.includes("amber")?"bg-amber-500":"bg-border"}`}/>
+                  <div className="flex-1 flex flex-col justify-between p-3 @md:p-4">
+                    <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">กำไร GP</p>
+                    <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${gpColor}`}>{profitK>0?`${profitK.toLocaleString()}K`:"—"}</p>
+                    <p className="text-[9px] text-muted/60 mt-0.5">{gpPctMe>0?`${gpPctMe}% margin`:"ยังไม่มีข้อมูล"}</p>
+                  </div>
                 </div>
-                <div className={`rounded-xl bg-card border p-3 @md:p-4 min-h-[95px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] ${salesOverdue.length>0?"border-orange-600/40":"border-border/60"}`}>
-                  <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">Follow-up ค้าง</p>
-                  <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${salesOverdue.length>0?"text-orange-500":"text-muted"}`}>{salesOverdue.length}</p>
-                  <p className="text-[9px] text-muted/60 mt-0.5">{salesOverdue.length>0?"ต้องติดตาม":"ทุกงานปกติ"}</p>
+                <div className={`rounded-xl bg-card border overflow-hidden min-h-[95px] flex flex-col shadow-[0_4px_0_0_rgba(0,0,0,0.07)] ${salesOverdue.length>0?"border-orange-500/40":"border-border/60"}`}>
+                  <div className={`h-[3px] opacity-80 ${salesOverdue.length>0?"bg-orange-500":"bg-border"}`}/>
+                  <div className="flex-1 flex flex-col justify-between p-3 @md:p-4">
+                    <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">Follow-up ค้าง</p>
+                    <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${salesOverdue.length>0?"text-orange-500":"text-muted"}`}>{salesOverdue.length}</p>
+                    <p className="text-[9px] text-muted/60 mt-0.5">{salesOverdue.length>0?"ต้องติดตาม":"ทุกงานปกติ"}</p>
+                  </div>
                 </div>
                 <button onClick={()=>{setShowPipeBreakdown(v=>!v);setShowOdBreakdown(false);setShowSalesBreakdown(false);setShowAchievBreakdown(false);}}
                   className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
@@ -2473,32 +2495,43 @@ export default function DashboardPage() {
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              {view==="executive"?"Executive Dashboard":view==="sales"?(seeAll?"Sales Dashboard":myName||"Sales Dashboard"):view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":"Projects Dashboard"}
-            </h1>
-            {view==="sales" && !seeAll && myMonthTarget > 0 && (
-              <span className="text-[11px] font-medium text-muted/70 bg-card border border-border/60 rounded-full px-2.5 py-0.5 flex items-center gap-1">
-                เป้า <span className="text-blue-500 font-semibold">{(myMonthTarget/1000).toFixed(0)}K</span>
-                <span className="text-muted/40">·</span>
-                <span className={`font-semibold ${myMonthPct >= 100 ? "text-emerald-500" : myMonthPct >= 70 ? "text-amber-500" : "text-red-500"}`}>{myMonthPct}%</span>
-              </span>
-            )}
-            {!loading&&(
-              <span className="flex items-center gap-1.5">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"/>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"/>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl font-bold tracking-tight text-foreground">
+                {view==="executive"?"Executive Dashboard":view==="sales"?(seeAll?"Sales Dashboard":myName||"Sales Dashboard"):view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":"Projects Dashboard"}
+              </h1>
+              {!loading&&(
+                <span className="flex items-center gap-1.5">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"/>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"/>
+                  </span>
+                  <span className="text-[11px] text-emerald-500/80 font-medium">Live</span>
                 </span>
-                <span className="text-[11px] text-emerald-500/80 font-medium">Live</span>
-              </span>
-            )}
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-muted/60 mt-0.5">
+              <span>{filterLabel}</span>
+              {lastUpdated&&<><span>·</span><span>อัปเดต {lastUpdated.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</span></>}
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-muted/70">
-            <span>{filterLabel}</span>
-            {lastUpdated&&<><span>·</span><span>{lastUpdated.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</span></>}
-          </div>
+          {view==="sales" && !seeAll && myMonthTarget > 0 && (
+            <div className="rounded-xl bg-card border border-border/60 px-4 py-2.5 flex items-center gap-3 shadow-sm shrink-0">
+              <div className="text-center">
+                <p className="text-[9px] text-muted/60 uppercase tracking-wider font-medium leading-none mb-1">เป้าเดือนนี้</p>
+                <p className="text-sm font-bold text-foreground">{(myMonthTarget/1000).toFixed(0)}K</p>
+              </div>
+              <div className="w-px h-8 bg-border/40" />
+              <div className="text-center">
+                <p className="text-[9px] text-muted/60 uppercase tracking-wider font-medium leading-none mb-1">Achievement</p>
+                <p className={`text-sm font-bold ${myMonthPct>=100?"text-emerald-500":myMonthPct>=70?"text-amber-500":"text-orange-500"}`}>{myMonthPct}%</p>
+              </div>
+              <div className="w-12 h-1.5 rounded-full bg-border/40 overflow-hidden self-center">
+                <div className={`h-full rounded-full transition-all ${myMonthPct>=100?"bg-emerald-500":myMonthPct>=70?"bg-amber-500":"bg-orange-500"}`} style={{width:`${Math.min(myMonthPct,100)}%`}}/>
+              </div>
+            </div>
+          )}
         </div>
         <div className="overflow-x-auto -mx-1 px-1 pb-0.5">
           <div className="flex items-center gap-1.5 w-max">
@@ -2566,30 +2599,30 @@ export default function DashboardPage() {
       {!loading&&(<>
 
         {/* ── ALERTS BANNER ──────────────────────────────────────────────── */}
-        {alerts.length>0 ? (
-          <div className="rounded-xl border border-border/60 bg-card p-4 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+        {alerts.length>0 ? (() => {
+          const redCount = alerts.filter(a=>a.level==="red").length;
+          const orangeCount = alerts.filter(a=>a.level==="orange").length;
+          const hasRed = redCount > 0;
+          return (
+          <div className={`rounded-xl border overflow-hidden ${hasRed ? "border-red-500/30 bg-red-500/[0.03]" : "border-amber-500/25 bg-amber-500/[0.03]"}`}>
+            <div className={`flex items-center justify-between gap-2 px-4 py-3 border-b ${hasRed ? "border-red-500/15" : "border-amber-500/15"}`}>
+              <div className="flex items-center gap-2.5">
+                <span className={`text-base ${hasRed ? "text-red-500" : "text-amber-500"}`}>🔔</span>
                 <span className="text-sm font-semibold text-foreground/90">การแจ้งเตือน</span>
-                {alerts.filter(a=>a.level==="red").length>0&&(
-                  <span className="rounded-full bg-red-500/10 text-red-500 border border-red-500/25 text-[10px] px-2 py-0.5 font-semibold">
-                    {alerts.filter(a=>a.level==="red").length} เรื่องด่วน
-                  </span>
-                )}
+                {redCount>0&&<span className="rounded-full bg-red-500/10 text-red-500 border border-red-500/25 text-[10px] px-2 py-0.5 font-semibold">{redCount} ด่วน</span>}
+                {orangeCount>0&&<span className="rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/25 text-[10px] px-2 py-0.5 font-semibold">{orangeCount} ควรดำเนินการ</span>}
               </div>
-              {alerts.length>5&&(
-                <Link href="/sales" className="text-[11px] text-accent hover:underline shrink-0">
-                  ดูทั้งหมด {alerts.length} รายการ →
-                </Link>
-              )}
+              {alerts.length>5&&<Link href="/sales" className="text-[11px] text-accent hover:underline shrink-0">ดูทั้งหมด {alerts.length} รายการ →</Link>}
             </div>
-            <div className="grid grid-cols-1 @md:grid-cols-2 @lg:grid-cols-3 gap-1.5">
-              {alerts.slice(0,5).map(a=><AlertRow key={a.id} {...a}/>)}
+            <div className="p-3 grid grid-cols-1 @md:grid-cols-2 @lg:grid-cols-3 gap-1.5">
+              {alerts.slice(0,6).map(a=><AlertRow key={a.id} {...a}/>)}
             </div>
           </div>
-        ) : !seeAll && (
-          <div className="rounded-xl border border-border/40 p-3 text-center text-xs text-muted/70">
-            ไม่มีงานเร่งด่วน
+          );
+        })() : !seeAll && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] px-4 py-3 flex items-center gap-2.5">
+            <span className="text-emerald-500 text-base">✓</span>
+            <span className="text-sm text-emerald-600/80 font-medium">ทุกงานเป็นปกติ ไม่มีเรื่องด่วน</span>
           </div>
         )}
 
