@@ -2425,38 +2425,65 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                   </p>
                 )}
 
-                {/* Action bar: Quick status buttons (Timer system) + Detail + Delete */}
+                {/* Action bar: Flow steps + Detail + Delete */}
                 <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50">
-                  <div className="flex gap-1.5 flex-wrap">
-                    {quickActions.map(a => (
-                      <button key={a.status} onClick={async () => {
-                        if (a.isReschedule) {
-                          const newDate = prompt("วันนัดหมายใหม่ (YYYY-MM-DD):", new Date(Date.now() + 86400000 * 7).toISOString().slice(0,10));
-                          if (!newDate) return;
-                          const { serviceTickets } = await import("@/lib/firestore");
-                          const { arrayUnion } = await import("firebase/firestore");
-                          const now = new Date().toISOString();
-                          await serviceTickets.update(t.id!, {
-                            status: "acknowledged",
-                            service_date: newDate,
-                            status_history: arrayUnion({ status: "acknowledged", timestamp: now, by: currentUser?.name || "", note: `นัดหมายใหม่: ${newDate}` }),
-                          });
-                        } else {
-                          setPendingChange({ ticket: t, newStatus: a.status });
-                        }
-                      }}
-                        className={`text-[11px] rounded-lg px-2.5 py-1 transition-colors ${
-                          a.primary
-                            ? "bg-accent text-white hover:bg-accent-hover"
-                            : "bg-card-hover border border-border text-muted hover:text-foreground"
-                        }`}>{a.label}</button>
-                    ))}
-                    {quickActions.length === 0 && (
-                      <select value={t.status} onChange={(e) => setPendingChange({ ticket: t, newStatus: e.target.value as ServiceStatus })}
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${statusColor[t.status]}`}>
-                        {ALL_STATUSES.map(s => <option key={s} value={s}>{statusIcon[s]} {statusLabel[s]}</option>)}
-                      </select>
-                    )}
+                  <div className="flex gap-1 flex-wrap items-center">
+                    {(() => {
+                      const RANK: Partial<Record<ServiceStatus,number>> = {
+                        open:0, acknowledged:1, traveling:2, on_site:3,
+                        repair_start:4, in_progress:4, resume:4,
+                        resolved:5, closed:6,
+                      };
+                      const cur = RANK[t.status] ?? 0;
+                      const isWaiting = t.status === "waiting_parts";
+                      const isDone = ["closed","cancelled"].includes(t.status);
+
+                      type Step = { key: string; label: string; state: "done"|"active"|"future"; onClick: ()=>void };
+                      const steps: Step[] = [
+                        { key:"ack",  label:"📲 รับงาน",    state: 1<=cur?"done": cur===0&&!isWaiting?"active":"future", onClick:()=>setPendingChange({ticket:t,newStatus:"acknowledged"}) },
+                        { key:"trv",  label:"🚗 เดินทาง",   state: 2<=cur?"done": cur===1&&!isWaiting?"active":"future", onClick:()=>setPendingChange({ticket:t,newStatus:"traveling"}) },
+                        { key:"site", label:"📍 ถึงลูกค้า", state: 3<=cur?"done": cur===2&&!isWaiting?"active":"future", onClick:()=>setPendingChange({ticket:t,newStatus:"on_site"}) },
+                        { key:"rep",  label:"🔧 เริ่มงาน",  state: 4<=cur?"done": cur===3&&!isWaiting?"active":"future", onClick:()=>setPendingChange({ticket:t,newStatus:"repair_start"}) },
+                        // waiting_parts replaces "จบงาน" active slot
+                        ...(isWaiting ? [{ key:"parts", label:"▶️ ทำต่อ", state:"active" as const, onClick:()=>setPendingChange({ticket:t,newStatus:"resume"}) }] : [
+                          { key:"res",  label:"✅ จบงาน",    state: 5<=cur?"done": cur===4?"active":"future" as "done"|"active"|"future", onClick:()=>setPendingChange({ticket:t,newStatus:"resolved"}) },
+                        ]),
+                        { key:"cls",  label:"🔒 ปิดงาน",   state: 6<=cur?"done": cur===5&&!isWaiting?"active":"future", onClick:()=>setPendingChange({ticket:t,newStatus:"closed"}) },
+                      ];
+
+                      // Extra options only when resolved
+                      const extras: Step[] = t.status==="resolved" ? [
+                        { key:"xparts", label:"📦 เบิกอะไหล่", state:"active", onClick:()=>setPendingChange({ticket:t,newStatus:"waiting_parts"}) },
+                        { key:"xreschedule", label:"📅 นัดหมายใหม่", state:"active", onClick: async()=>{
+                          const newDate=prompt("วันนัดหมายใหม่ (YYYY-MM-DD):", new Date(Date.now()+86400000*7).toISOString().slice(0,10));
+                          if(!newDate) return;
+                          const {serviceTickets}=await import("@/lib/firestore");
+                          const {arrayUnion}=await import("firebase/firestore");
+                          const now=new Date().toISOString();
+                          await serviceTickets.update(t.id!,{status:"acknowledged",service_date:newDate,status_history:arrayUnion({status:"acknowledged",timestamp:now,by:currentUser?.name||"",note:`นัดหมายใหม่: ${newDate}`})});
+                        }},
+                      ] : [];
+
+                      if (isDone) return (
+                        <select value={t.status} onChange={e=>setPendingChange({ticket:t,newStatus:e.target.value as ServiceStatus})}
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${statusColor[t.status]}`}>
+                          {ALL_STATUSES.map(s=><option key={s} value={s}>{statusIcon[s]} {statusLabel[s]}</option>)}
+                        </select>
+                      );
+
+                      return [...steps, ...extras].map((s,i) => (
+                        <button key={s.key} disabled={s.state!=="active"}
+                          onClick={s.state==="active" ? s.onClick : undefined}
+                          className={`text-[10px] rounded-lg px-2 py-1 transition-all whitespace-nowrap
+                            ${s.state==="done"    ? "opacity-35 cursor-default bg-muted/20 text-muted line-through"    : ""}
+                            ${s.state==="active"  ? "bg-accent text-white hover:bg-accent-hover shadow-sm font-semibold" : ""}
+                            ${s.state==="future"  ? "opacity-30 cursor-not-allowed border border-border/50 text-muted"  : ""}
+                          `}>
+                          {s.label}
+                          {i < steps.length-1+extras.length && s.state!=="active" && extras.indexOf(s)<0 && <span className="ml-0.5 opacity-50">›</span>}
+                        </button>
+                      ));
+                    })()}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <button onClick={() => setSelectedTicket(t)} className="text-[10px] text-accent hover:underline">👁 Detail</button>
