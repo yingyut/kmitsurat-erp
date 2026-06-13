@@ -1018,6 +1018,8 @@ export default function DashboardPage() {
       // ใช้ค่าเดียวกับ hero strip (filter-based) เพื่อให้สอดคล้องกัน
       const mgActM = actual >= 1e6 ? `${(actual/1e6).toFixed(2)}M` : actual > 0 ? `${Math.round(actual/1000)}K` : "—";
       const mgTgtM = target >= 1e6 ? `${(target/1e6).toFixed(1)}M` : target > 0 ? `${Math.round(target/1000)}K` : "—";
+      // canSeeTeam: มองเห็นข้อมูลทีมได้ (admin / manager เท่านั้น)
+      const canSeeTeam = seeAll || canManageQuota(currentUser);
       // breakdown รายบุคคล — field sales เท่านั้น เรียงตามยอดขาย
       const fieldSalesRoles = new Set(["sale","Sales Executive"]);
       const breakdownRows = activeSalesData
@@ -1028,11 +1030,11 @@ export default function DashboardPage() {
           {/* 4 KPI cards — ทุกใบกดเพื่อดู breakdown ด้านล่าง */}
           <div className="grid grid-cols-2 @md:grid-cols-4 gap-3">
             {/* ① ยอดขายรวม */}
-            <button onClick={()=>{setShowSalesBreakdown(v=>!v);setShowAchievBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
-              className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+            <button onClick={()=>{if(!canSeeTeam)return;setShowSalesBreakdown(v=>!v);setShowAchievBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
+              className={`text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] transition-all duration-150 ${canSeeTeam?"hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none":""}`}>
               <div className="flex items-center justify-between">
-                <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ยอดขายรวม</p>
-                <span className="text-[10px] text-accent font-bold">{showSalesBreakdown?"▲":"▼"}</span>
+                <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">{canSeeTeam?"ยอดขายรวม":"ยอดขายของฉัน"}</p>
+                {canSeeTeam&&<span className="text-[10px] text-accent font-bold">{showSalesBreakdown?"▲":"▼"}</span>}
               </div>
               <p className="text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
               <div>
@@ -1046,11 +1048,11 @@ export default function DashboardPage() {
               const pctCol=targetPct>=80?"text-emerald-500":targetPct>=50?"text-amber-500":target>0?"text-orange-500":"text-muted";
               const barCol=targetPct>=80?"bg-emerald-500":targetPct>=50?"bg-amber-500":target>0?"bg-orange-500":"bg-muted/20";
               return (
-                <button onClick={()=>{setShowAchievBreakdown(v=>!v);setShowSalesBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
-                  className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                <button onClick={()=>{if(!canSeeTeam)return;setShowAchievBreakdown(v=>!v);setShowSalesBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
+                  className={`text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] transition-all duration-150 ${canSeeTeam?"hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none":""}`}>
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
-                    <span className="text-[10px] text-accent font-bold">{showAchievBreakdown?"▲":"▼"}</span>
+                    {canSeeTeam&&<span className="text-[10px] text-accent font-bold">{showAchievBreakdown?"▲":"▼"}</span>}
                   </div>
                   <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${pctCol}`}>{target>0?`${targetPct.toFixed(0)}%`:"—"}</p>
                   <div>
@@ -1103,7 +1105,7 @@ export default function DashboardPage() {
           {/* ── Breakdown panels ── */}
 
           {/* ① ยอดขายรายบุคคล */}
-          {showSalesBreakdown&&(
+          {canSeeTeam&&showSalesBreakdown&&(
             <div className="rounded-xl border border-border/60 bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-card-hover/50">
                 <p className="text-xs font-semibold">ยอดขายรายบุคคล — {filterLabel}</p>
@@ -1143,7 +1145,7 @@ export default function DashboardPage() {
           )}
 
           {/* ② Achievement รายบุคคล */}
-          {showAchievBreakdown&&(
+          {canSeeTeam&&showAchievBreakdown&&(
             <div className="rounded-xl border border-border/60 bg-card overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/40 bg-card-hover/50">
                 <p className="text-xs font-semibold">Achievement รายบุคคล — {filterLabel}</p>
