@@ -335,6 +335,9 @@ export interface SalesActivity {
   completed_at?: string;                     // วันที่บันทึกว่าเสร็จ
   auto_followup_created?: boolean;
   plan_time?: string;            // HH:mm — เวลาเริ่มต้นของแผน
+  next_action_time?: string;     // HH:mm — เวลานัดหมาย next action
+  participants?: string[];       // รายชื่อผู้เข้าร่วมนัดหมาย
+  reminder_before_days?: number; // แจ้งเตือนก่อนกี่วัน
   rescheduled_reason?: string;   // เหตุผลที่เลื่อน
   // Attachments (files as base64 dataUrl or external links)
   attachments?: { name: string; url: string; type: "file" | "link"; uploaded_at: string; uploaded_by: string }[];

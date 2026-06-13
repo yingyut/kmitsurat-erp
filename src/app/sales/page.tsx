@@ -265,13 +265,16 @@ export default function SalesPage() {
   }
 
   // Inline quick-report state (inside selectedActivity modal)
-  const [qrOpen,       setQrOpen]       = useState(false);
-  const [qrOutcome,    setQrOutcome]    = useState("");
-  const [qrStatus,     setQrStatus]     = useState<"completed"|"rescheduled">("completed");
-  const [qrNextAction, setQrNextAction] = useState("");
-  const [qrNextDate,   setQrNextDate]   = useState("");
-  const [qrFiles,      setQrFiles]      = useState<QrFile[]>([]);
-  const [qrLinkUrl,    setQrLinkUrl]    = useState("");
+  const [qrOpen,             setQrOpen]             = useState(false);
+  const [qrOutcome,          setQrOutcome]          = useState("");
+  const [qrStatus,           setQrStatus]           = useState<"completed"|"rescheduled">("completed");
+  const [qrNextAction,       setQrNextAction]       = useState("");
+  const [qrNextDate,         setQrNextDate]         = useState("");
+  const [qrNextTime,         setQrNextTime]         = useState("");
+  const [qrParticipants,     setQrParticipants]     = useState<string[]>([]);
+  const [qrReminderDays,     setQrReminderDays]     = useState<number>(1);
+  const [qrFiles,            setQrFiles]            = useState<QrFile[]>([]);
+  const [qrLinkUrl,          setQrLinkUrl]          = useState("");
   const [qrLinkLabel,  setQrLinkLabel]  = useState("");
 
   // Derived calendar values — lifted out of IIFE so nav functions are cheap
@@ -575,7 +578,8 @@ export default function SalesPage() {
   // Reset quick-report & reassign fields whenever a different activity is opened
   useEffect(() => {
     setQrOpen(false); setQrOutcome(""); setQrStatus("completed");
-    setQrNextAction(""); setQrNextDate(""); setQrFiles([]); setQrLinkUrl(""); setQrLinkLabel("");
+    setQrNextAction(""); setQrNextDate(""); setQrNextTime(""); setQrParticipants([]); setQrReminderDays(1);
+    setQrFiles([]); setQrLinkUrl(""); setQrLinkLabel("");
     if (openReassignOnLoad.current) {
       openReassignOnLoad.current = false;
     } else {
@@ -661,7 +665,7 @@ export default function SalesPage() {
     if (!a.id || !qrOutcome.trim()) return;
     setSaving(true);
     try {
-      const { salesActivities } = await import("@/lib/firestore");
+      const { salesActivities, inAppNotifications } = await import("@/lib/firestore");
       const sm = { completed: "done", rescheduled: "new" } as const;
       const newAttachments = [
         ...qrFiles.map(f => ({ name: f.name, url: f.dataUrl, type: "file" as const, uploaded_at: today, uploaded_by: currentUser?.name || "" })),
@@ -674,11 +678,57 @@ export default function SalesPage() {
       };
       if (qrStatus === "completed") upd.completed_at = today;
       if (qrNextAction.trim()) upd.next_action = qrNextAction.trim();
-      if (qrNextDate) upd.next_action_date = qrNextDate;
+      if (qrNextDate) {
+        upd.next_action_date = qrNextDate;
+        upd.next_action_time = qrNextTime || "";
+        upd.participants = qrParticipants;
+        upd.reminder_before_days = qrReminderDays;
+      }
       if (newAttachments.length > 0) {
         upd.attachments = [...(a.attachments || []), ...newAttachments];
       }
       await salesActivities.update(a.id, upd);
+
+      // Auto-create calendar plan event when next action date is set
+      if (qrNextDate && qrNextAction.trim()) {
+        const tid = (currentUser as unknown as Record<string,string>)?.tenant_id || "";
+        const eventTitle = `${qrNextAction.trim()}${a.customer_name ? ` — ${a.customer_name}` : ""}`;
+        const allParticipants = Array.from(new Set([a.assigned_to || currentUser?.name || "", ...qrParticipants].filter(Boolean)));
+        // Create one plan activity per participant so it shows in each person's calendar
+        for (const person of allParticipants) {
+          await salesActivities.add({
+            tenant_id: tid,
+            type: "meeting",
+            customer_id: a.customer_id || "",
+            customer_name: a.customer_name || "",
+            project_id: a.project_id || "",
+            project_name: a.project_name || "",
+            assigned_to: person,
+            description: eventTitle,
+            objective: eventTitle,
+            status: "new",
+            next_follow_up: "",
+            is_plan: true,
+            plan_date: qrNextDate,
+            plan_time: qrNextTime || "",
+            plan_status: "planned",
+            participants: allParticipants,
+            reminder_before_days: qrReminderDays,
+          } as unknown as Record<string, unknown>);
+        }
+        // Notify all participants via inAppNotification
+        const notifBody = `${a.customer_name ? `${a.customer_name} · ` : ""}${qrNextDate}${qrNextTime ? ` ${qrNextTime}` : ""} · โดย ${a.assigned_to || currentUser?.name || ""}`;
+        await inAppNotifications.add({
+          module: "sales",
+          title: `📅 นัดหมาย: ${eventTitle}`,
+          body: notifBody,
+          link: "/sales?tab=workplan",
+          recipients: allParticipants,
+          read_by: [],
+          created_at: new Date().toISOString(),
+        } as unknown as Record<string, unknown>);
+      }
+
       await load();
       setSelectedActivity(null);
     } finally { setSaving(false); }
@@ -4235,12 +4285,67 @@ export default function SalesPage() {
                           placeholder="สรุปผล / สิ่งที่คุยกัน / ความต้องการของลูกค้า..."
                           className="w-full rounded-lg bg-background border border-border px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-accent placeholder:text-muted/40 leading-relaxed" />
                         {/* Next action row */}
-                        <div className="grid grid-cols-2 gap-2">
-                          <input value={qrNextAction} onChange={e => setQrNextAction(e.target.value)}
-                            placeholder="Next Action (ถ้ามี)"
-                            className="rounded-lg bg-background border border-border px-3 py-2 text-xs focus:outline-none focus:border-accent placeholder:text-muted/40" />
-                          <input type="date" value={qrNextDate} onChange={e => setQrNextDate(e.target.value)}
-                            className="rounded-lg bg-background border border-border px-3 py-2 text-xs focus:outline-none focus:border-accent text-muted" />
+                        <div className="space-y-1.5">
+                          <div className="grid grid-cols-2 gap-2">
+                            <select value={qrNextAction} onChange={e => setQrNextAction(e.target.value)}
+                              className="rounded-lg bg-background border border-border px-3 py-2 text-xs focus:outline-none focus:border-accent text-foreground">
+                              <option value="">— Next Action —</option>
+                              <option value="โทรติดตาม">📞 โทรติดตาม</option>
+                              <option value="เข้าพบ">🤝 เข้าพบ</option>
+                              <option value="ประชุมออนไลน์">💻 ประชุมออนไลน์</option>
+                              <option value="นำเสนอสินค้า">📊 นำเสนอสินค้า</option>
+                              <option value="ส่งใบเสนอราคา">📋 ส่งใบเสนอราคา</option>
+                              <option value="ติดตามใบเสนอราคา">🔄 ติดตามใบเสนอราคา</option>
+                              <option value="ปิดดีล">✅ ปิดดีล</option>
+                            </select>
+                            <input value={qrNextAction} onChange={e => setQrNextAction(e.target.value)}
+                              placeholder="หรือพิมพ์เอง..."
+                              className="rounded-lg bg-background border border-border px-3 py-2 text-xs focus:outline-none focus:border-accent placeholder:text-muted/40" />
+                          </div>
+                          {/* Date + Time */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[9px] text-muted block mb-0.5">📅 วันนัดหมาย</label>
+                              <input type="date" value={qrNextDate} onChange={e => setQrNextDate(e.target.value)}
+                                className="w-full rounded-lg bg-background border border-border px-3 py-2 text-xs focus:outline-none focus:border-accent text-foreground" />
+                            </div>
+                            <div>
+                              <label className="text-[9px] text-muted block mb-0.5">⏰ เวลา</label>
+                              <input type="time" value={qrNextTime} onChange={e => setQrNextTime(e.target.value)}
+                                className="w-full rounded-lg bg-background border border-border px-3 py-2 text-xs focus:outline-none focus:border-accent text-foreground" />
+                            </div>
+                          </div>
+                          {/* Participants + Reminder — show only when date is set */}
+                          {qrNextDate && (
+                            <div className="rounded-lg border border-accent/20 bg-accent/5 p-2.5 space-y-2">
+                              <p className="text-[10px] font-semibold text-accent">📅 สร้างนัดในปฎิทิน</p>
+                              <div>
+                                <label className="text-[9px] text-muted block mb-1">👥 ผู้เข้าร่วม (เลือกได้หลายคน)</label>
+                                <div className="flex flex-wrap gap-1">
+                                  {users.filter(u => u.active !== false).map(u => {
+                                    const sel = qrParticipants.includes(u.name);
+                                    return (
+                                      <button key={u.id} type="button"
+                                        onClick={() => setQrParticipants(p => sel ? p.filter(x => x !== u.name) : [...p, u.name])}
+                                        className={`rounded-full px-2 py-0.5 text-[10px] border transition-colors ${sel ? "bg-accent text-white border-accent" : "border-border text-muted hover:border-accent/50"}`}>
+                                        {u.nickname || u.name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              <div>
+                                <label className="text-[9px] text-muted block mb-1">🔔 แจ้งเตือนก่อน</label>
+                                <select value={qrReminderDays} onChange={e => setQrReminderDays(Number(e.target.value))}
+                                  className="w-full rounded-lg bg-background border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-accent">
+                                  <option value={0}>วันเดียวกัน</option>
+                                  <option value={1}>1 วันล่วงหน้า</option>
+                                  <option value={3}>3 วันล่วงหน้า</option>
+                                  <option value={7}>1 สัปดาห์ล่วงหน้า</option>
+                                </select>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* ── Attachments ── */}
