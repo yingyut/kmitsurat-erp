@@ -553,6 +553,8 @@ export interface ServiceTicket {
   // Asset linking
   asset_id?: string;
   km_number?: string;
+  // Source reference (when created from a Sales job request)
+  job_request_id?: string;
 }
 
 export interface Vendor {

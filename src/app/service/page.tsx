@@ -945,13 +945,40 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                           /* Tech: รับงานตัวเองเท่านั้น ไม่มี dropdown / ปฏิเสธ */
                           <button onClick={async () => {
                             const myName = currentUser?.name || currentUser?.email || "";
-                            const { jobRequests } = await import("@/lib/firestore");
+                            const now = new Date().toISOString();
+                            const { jobRequests, serviceTickets } = await import("@/lib/firestore");
+                            // 1. stamp job request
                             await jobRequests.update(r.id!, {
                               status: "accepted",
                               assigned_to: myName,
                               accepted_by: myName,
-                              accepted_at: new Date().toISOString(),
+                              accepted_at: now,
                             });
+                            // 2. สร้าง ServiceTicket อัตโนมัติ → ปรากฏใน "งานของฉัน"
+                            const initHistory = [{ status: "open", timestamp: now, by: myName, note: `รับงานจาก Sales Request: ${r.title}` }];
+                            await serviceTickets.add({
+                              customer_id: r.customer_id || "",
+                              customer_name: r.customer_name || "",
+                              project_id: r.project_id || "",
+                              project_name: r.project_name || "",
+                              type: "after_sales",
+                              issue: r.title + (r.description ? `\n${r.description}` : ""),
+                              technician: myName,
+                              service_date: r.due_date || now.slice(0, 10),
+                              status: "open",
+                              priority: (r.priority === "urgent" || r.priority === "high") ? r.priority : "medium",
+                              service_value: 0, service_cost: 0, gross_profit: 0, hours_spent: 0,
+                              reported_by: r.request_from || "",
+                              report_date: now.slice(0, 10),
+                              report_channel: "system",
+                              assignment_mode: "individual",
+                              target_skill: "", target_area: "",
+                              sla_response_hours: 4, sla_resolve_hours: 48,
+                              asset_id: "", km_number: "",
+                              opened_at: now,
+                              status_history: initHistory,
+                              job_request_id: r.id || "",
+                            } as unknown as Record<string, unknown>);
                           }} className="shrink-0 text-[11px] font-semibold bg-green-800/60 text-green-300 rounded-lg px-3 py-1.5 hover:bg-green-700/70 border border-green-700/40">
                             ✓ รับงาน
                           </button>
@@ -967,14 +994,42 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
                                 const assignTo = (document.getElementById(`svc-assign-${r.id}`) as HTMLSelectElement)?.value;
                                 const note = prompt("หมายเหตุรับงาน (ไม่บังคับ)") || "";
                                 const myName = currentUser?.name || currentUser?.email || "";
-                                const { jobRequests } = await import("@/lib/firestore");
+                                const now = new Date().toISOString();
+                                const techName = assignTo || myName;
+                                const { jobRequests, serviceTickets } = await import("@/lib/firestore");
+                                // 1. stamp job request
                                 await jobRequests.update(r.id!, {
                                   status: "accepted",
-                                  assigned_to: assignTo || myName,
+                                  assigned_to: techName,
                                   accept_note: note,
                                   accepted_by: myName,
-                                  accepted_at: new Date().toISOString(),
+                                  accepted_at: now,
                                 });
+                                // 2. สร้าง ServiceTicket → ปรากฏในงานของช่าง
+                                const initHistory = [{ status: "open", timestamp: now, by: myName, note: `รับงานจาก Sales Request: ${r.title}${note ? ` · ${note}` : ""}` }];
+                                await serviceTickets.add({
+                                  customer_id: r.customer_id || "",
+                                  customer_name: r.customer_name || "",
+                                  project_id: r.project_id || "",
+                                  project_name: r.project_name || "",
+                                  type: "after_sales",
+                                  issue: r.title + (r.description ? `\n${r.description}` : ""),
+                                  technician: techName,
+                                  service_date: r.due_date || now.slice(0, 10),
+                                  status: "open",
+                                  priority: (r.priority === "urgent" || r.priority === "high") ? r.priority : "medium",
+                                  service_value: 0, service_cost: 0, gross_profit: 0, hours_spent: 0,
+                                  reported_by: r.request_from || "",
+                                  report_date: now.slice(0, 10),
+                                  report_channel: "system",
+                                  assignment_mode: "individual",
+                                  target_skill: "", target_area: "",
+                                  sla_response_hours: 4, sla_resolve_hours: 48,
+                                  asset_id: "", km_number: "",
+                                  opened_at: now,
+                                  status_history: initHistory,
+                                  job_request_id: r.id || "",
+                                } as unknown as Record<string, unknown>);
                               }} className="flex-1 text-[10px] bg-green-800/50 text-green-400 rounded px-2 py-1 hover:bg-green-800">✓ รับงาน</button>
                               <button onClick={async () => {
                                 const reason = prompt("เหตุผลที่ปฏิเสธ:");
