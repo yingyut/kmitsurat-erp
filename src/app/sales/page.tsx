@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest, Quotation } from "@/lib/types";
+import type { SalesActivity, SalesQuota, Project, Customer, User, JobRequest, Quotation, InAppNotification } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
 import { isOwnRecord, isOwner, canSeeAll, canManageQuota } from "@/lib/ownership";
@@ -101,6 +101,8 @@ export default function SalesPage() {
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [myNotifs, setMyNotifs] = useState<InAppNotification[]>([]);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [reassignTarget, setReassignTarget] = useState("");
   const [selectedActivity, setSelectedActivity] = useState<SalesActivity | null>(null);
   const [editingActId, setEditingActId] = useState<string | null>(null);
@@ -251,6 +253,9 @@ export default function SalesPage() {
         fs.users.subscribe(data => setUsers(data.filter(x => x.active !== false))),
         fs.jobRequests.subscribe(data => setJobReqs(data)),
         fs.quotations.subscribe(data => setQuotationsList(data)),
+        fs.inAppNotifications.subscribe(data => {
+          setMyNotifs(data.filter(n => n.module === "sales"));
+        }),
       );
     })();
     return () => unsubs.forEach(u => u());
@@ -549,11 +554,11 @@ export default function SalesPage() {
     const { salesActivities } = await import("@/lib/firestore"); await salesActivities.remove(id); await load();
   }
 
-  async function reassignActivity(id: string, newAssignee: string, oldAssignee: string, note = "") {
+  async function reassignActivity(id: string, newAssignee: string, oldAssignee: string, note = "", actDesc = "") {
     if (!newAssignee) return;
     setSaving(true);
     try {
-      const { salesActivities, logActivity } = await import("@/lib/firestore");
+      const { salesActivities, logActivity, inAppNotifications } = await import("@/lib/firestore");
       await salesActivities.update(id, {
         assigned_to: newAssignee,
         reassigned_from: oldAssignee || "",
@@ -569,6 +574,18 @@ export default function SalesPage() {
         resource_id: id,
         details: `โยกงานจาก ${oldAssignee || "ไม่ระบุ"} → ${newAssignee}${note.trim() ? ` | หมายเหตุ: ${note.trim()}` : ""}`,
       });
+      // Send in-app notification to new assignee
+      await inAppNotifications.add({
+        tenant_id: "kmitsurat",
+        module: "sales",
+        trigger: "reassign",
+        title: `📋 งานถูกมอบหมายให้คุณ`,
+        body: `${currentUser?.name ?? "ผู้จัดการ"} โยกงาน${actDesc ? ` "${actDesc}"` : ""} ให้คุณ${note.trim() ? ` | หมายเหตุ: ${note.trim()}` : ""}`,
+        link: "/sales?tab=activities",
+        metadata: { activity_id: id, from: oldAssignee, to: newAssignee },
+        recipients: [newAssignee],
+        read_by: [],
+      } as Record<string, unknown>);
       setReassignTarget(""); setReassignNote(""); setShowReassignPanel(false);
       setSelectedActivity(null);
       await load();
@@ -757,18 +774,76 @@ export default function SalesPage() {
   return (
     <div className="p-6 overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-bold" title="งานขาย — วางแผน บันทึกกิจกรรม ติดตามดีล">Sales</h1>
-          <p className="text-xs text-muted">Plan → Activity → Pipeline → Quotation</p>
-        </div>
-        <div className="flex gap-2">
-          {tab === "workplan" && <button onClick={() => { resetActForm(); setActForm(f => ({ ...f, is_plan: true, plan_date: today })); setShowPlanForm(!showPlanForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showPlanForm ? "Cancel" : "+ วางแผน"}</button>}
-          {tab === "activities" && <button onClick={() => { resetActForm(); setActValidate(false); setShowForm(!showForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ บันทึกกิจกรรม"}</button>}
-          {tab === "requests" && <button onClick={() => setShowReqForm(!showReqForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showReqForm ? "Cancel" : "+ Job Request"}</button>}
-          {tab === "pipeline" && <Link href="/quotations" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">→ สร้าง QT</Link>}
-        </div>
-      </div>
+      {(() => {
+        const myName = currentUser?.name ?? "";
+        const myPersonalNotifs = myNotifs.filter(n => n.recipients.includes(myName));
+        const unreadCount = myPersonalNotifs.filter(n => !n.read_by.includes(myName)).length;
+        return (
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-xl font-bold" title="งานขาย — วางแผน บันทึกกิจกรรม ติดตามดีล">Sales</h1>
+              <p className="text-xs text-muted">Plan → Activity → Pipeline → Quotation</p>
+            </div>
+            <div className="flex gap-2 items-center">
+              {/* Notification Bell */}
+              <div className="relative">
+                <button onClick={() => setShowNotifPanel(p => !p)}
+                  className="relative w-9 h-9 flex items-center justify-center rounded-lg border border-border text-muted hover:bg-card-hover transition-colors">
+                  🔔
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">{unreadCount}</span>
+                  )}
+                </button>
+                {showNotifPanel && (
+                  <div className="absolute right-0 top-11 z-50 w-80 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
+                      <p className="text-xs font-semibold">🔔 การแจ้งเตือน</p>
+                      {unreadCount > 0 && (
+                        <button onClick={async () => {
+                          if (!myName) return;
+                          const fs = await import("@/lib/firestore");
+                          await Promise.all(myPersonalNotifs.filter(n => !n.read_by.includes(myName)).map(n =>
+                            fs.inAppNotifications.update(n.id!, { read_by: [...n.read_by, myName] })
+                          ));
+                        }} className="text-[10px] text-accent hover:underline">อ่านทั้งหมด</button>
+                      )}
+                    </div>
+                    <div className="max-h-80 overflow-y-auto divide-y divide-border">
+                      {myPersonalNotifs.length === 0 && <p className="text-xs text-muted text-center py-6">ไม่มีการแจ้งเตือน</p>}
+                      {myPersonalNotifs.slice(0, 20).map(n => {
+                        const isRead = n.read_by.includes(myName);
+                        return (
+                          <div key={n.id} className={`px-3 py-2.5 hover:bg-card-hover transition-colors ${isRead ? "opacity-50" : "cursor-pointer"}`}
+                            onClick={async () => {
+                              if (!isRead && myName) {
+                                const fs = await import("@/lib/firestore");
+                                await fs.inAppNotifications.update(n.id!, { read_by: [...n.read_by, myName] });
+                              }
+                              setShowNotifPanel(false);
+                              setTab("activities");
+                            }}>
+                            <div className="flex items-start gap-2">
+                              <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${isRead ? "" : "bg-accent"}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium leading-tight">{n.title}</p>
+                                <p className="text-[10px] text-muted mt-0.5 line-clamp-3">{n.body}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {tab === "workplan" && <button onClick={() => { resetActForm(); setActForm(f => ({ ...f, is_plan: true, plan_date: today })); setShowPlanForm(!showPlanForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showPlanForm ? "Cancel" : "+ วางแผน"}</button>}
+              {tab === "activities" && <button onClick={() => { resetActForm(); setActValidate(false); setShowForm(!showForm); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ บันทึกกิจกรรม"}</button>}
+              {tab === "requests" && <button onClick={() => setShowReqForm(!showReqForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showReqForm ? "Cancel" : "+ Job Request"}</button>}
+              {tab === "pipeline" && <Link href="/quotations" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">→ สร้าง QT</Link>}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Tabs — workflow order: Plan → Activity → Pipeline → Request → QT */}
       <div className="flex gap-0.5 mb-5 border-b border-border overflow-x-auto">
@@ -3657,7 +3732,7 @@ export default function SalesPage() {
                         className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-amber-500 resize-none" />
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => reassignActivity(a.id!, reassignTarget, a.assigned_to || "", reassignNote)}
+                      <button onClick={() => reassignActivity(a.id!, reassignTarget, a.assigned_to || "", reassignNote, a.description || a.expected_outcome || "")}
                         disabled={saving || !reassignTarget || reassignTarget === a.assigned_to}
                         className="rounded-lg bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-400 disabled:opacity-40 transition-colors">
                         {saving ? "กำลังบันทึก..." : "ยืนยันโยกงาน"}
