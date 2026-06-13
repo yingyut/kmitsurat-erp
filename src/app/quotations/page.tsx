@@ -73,6 +73,29 @@ export default function QuotationsPage() {
   const [custSearch, setCustSearch] = useState("");
   const [custDropOpen, setCustDropOpen] = useState(false);
 
+  // Project name templates (localStorage)
+  const [projTemplates, setProjTemplates] = useState<string[]>([]);
+  useEffect(() => {
+    try { setProjTemplates(JSON.parse(localStorage.getItem("kmit_proj_templates") || "[]")); } catch { /* */ }
+  }, []);
+  function saveProjTemplate(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setProjTemplates(prev => {
+      if (prev.includes(trimmed)) return prev;
+      const next = [trimmed, ...prev].slice(0, 20);
+      localStorage.setItem("kmit_proj_templates", JSON.stringify(next));
+      return next;
+    });
+  }
+  function deleteProjTemplate(name: string) {
+    setProjTemplates(prev => {
+      const next = prev.filter(t => t !== name);
+      localStorage.setItem("kmit_proj_templates", JSON.stringify(next));
+      return next;
+    });
+  }
+
   // Picker
   const [pickerOpen, setPickerOpen] = useState<number | null>(null);
 
@@ -572,12 +595,28 @@ export default function QuotationsPage() {
             <div>
               <label className="text-[10px] text-muted">โปรเจค</label>
               {projId === "other" ? (
-                <div className="flex gap-1 mt-1">
-                  <input type="text" value={projName} onChange={e => setProjName(e.target.value)}
-                    placeholder="ระบุชื่อโปรเจค..."
-                    className="flex-1 rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                  <button type="button" onClick={() => { setProjId(""); setProjName(""); }}
-                    className="px-2 rounded-lg border border-border text-muted hover:text-foreground hover:bg-card-hover text-sm">✕</button>
+                <div className="mt-1 space-y-1.5">
+                  <div className="flex gap-1">
+                    <input type="text" value={projName} onChange={e => setProjName(e.target.value)}
+                      placeholder="ระบุชื่อโปรเจค..."
+                      className="flex-1 rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                    <button type="button" title="บันทึกเป็น template" onClick={() => saveProjTemplate(projName)}
+                      className="px-2.5 rounded-lg border border-border text-muted hover:text-green-400 hover:border-green-500 hover:bg-green-500/10 text-sm transition-colors" disabled={!projName.trim()}>💾</button>
+                    <button type="button" onClick={() => { setProjId(""); setProjName(""); }}
+                      className="px-2 rounded-lg border border-border text-muted hover:text-foreground hover:bg-card-hover text-sm">✕</button>
+                  </div>
+                  {projTemplates.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {projTemplates.map(t => (
+                        <span key={t} className="group inline-flex items-center gap-0 rounded-full border border-border bg-card text-xs overflow-hidden">
+                          <button type="button" onClick={() => setProjName(t)}
+                            className="px-2.5 py-0.5 hover:bg-accent hover:text-white transition-colors">{t}</button>
+                          <button type="button" onClick={() => deleteProjTemplate(t)}
+                            className="px-1.5 py-0.5 text-muted/40 hover:bg-red-500/20 hover:text-red-400 transition-colors text-[10px]">✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <select value={projId} onChange={(e) => {
