@@ -32,16 +32,27 @@ import { showSalesDashboardMenu } from "@/lib/featureFlags";
 
 const actTypes = ["phone_call","visit","quotation_created","quotation_sent","follow_up","meeting","customer_update"] as const;
 const typeLabels: Record<string, string> = { phone_call: "โทร", visit: "เยี่ยม", quotation_created: "สร้าง QT", quotation_sent: "ส่ง QT", follow_up: "Follow-up", meeting: "ประชุม", customer_update: "Update" };
+const typeColor: Record<string, string> = {
+  phone_call:        "bg-blue-900/50 text-badge",
+  visit:             "bg-orange-900/50 text-badge",
+  meeting:           "bg-purple-900/50 text-badge",
+  follow_up:         "bg-cyan-900/50 text-badge",
+  quotation_created: "bg-emerald-900/50 text-badge",
+  quotation_sent:    "bg-teal-900/50 text-badge",
+  customer_update:   "bg-indigo-900/50 text-badge",
+};
 const resultLabels: Record<string, string> = { success: "สำเร็จ", no_answer: "ไม่รับสาย", interested: "สนใจ", rejected: "ปฏิเสธ", pending: "รอผล", "": "—" };
-const resultColor: Record<string, string> = { success: "text-emerald-300 font-medium", interested: "text-sky-300 font-medium", no_answer: "text-amber-300", rejected: "text-red-300 font-medium", pending: "text-zinc-400" };
+const resultColor: Record<string, string> = { success: "bg-green-900/50 text-badge rounded px-1.5 py-0.5", interested: "bg-blue-900/50 text-badge rounded px-1.5 py-0.5", no_answer: "bg-amber-900/50 text-badge rounded px-1.5 py-0.5", rejected: "bg-red-900/50 text-badge rounded px-1.5 py-0.5", pending: "bg-yellow-900/50 text-badge rounded px-1.5 py-0.5" };
 const stages = ["lead","opportunity","proposal","negotiation","won","lost"] as const;
-const stageColor: Record<string, string> = { lead: "bg-zinc-700/80 text-zinc-200", opportunity: "bg-blue-800/70 text-blue-200", proposal: "bg-violet-800/70 text-violet-200", negotiation: "bg-amber-800/70 text-amber-200", won: "bg-emerald-800/70 text-emerald-200", lost: "bg-red-800/70 text-red-200" };
+const pureSalesRoles = ["sale","Sales Executive","Sales Manager","Branch Manager"];
+const stageColor: Record<string, string> = { lead: "bg-zinc-700/80 text-badge", opportunity: "bg-blue-900/50 text-badge", proposal: "bg-purple-900/50 text-badge", negotiation: "bg-amber-900/50 text-badge", won: "bg-green-900/50 text-badge", lost: "bg-red-900/50 text-badge" };
 
 const today = new Date().toISOString().slice(0, 10);
 const currentMonth = new Date().toISOString().slice(0, 7);
 const nextWeekStr = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
 const prevMonth = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().slice(0, 7);
 const nextMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 7);
+const archiveCutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
 
 type QrFile = { name: string; dataUrl: string; fileType: "photo" | "document" };
 
@@ -111,6 +122,10 @@ export default function SalesPage() {
   const [showReqForm, setShowReqForm] = useState(false);
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [showQuotaForm, setShowQuotaForm] = useState(false);
+  const [showBatchForm, setShowBatchForm] = useState(false);
+  const [batchTargets, setBatchTargets] = useState<Record<string, string>>({});
+  const [batchMode, setBatchMode] = useState<Record<string, "manual"|"auto">>({});
+  const [teamTargetInput, setTeamTargetInput] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
   const [timeFilter, setTimeFilter] = useState<"all"|"today"|"week"|"overdue">("all");
   const [planMonthFilter, setPlanMonthFilter] = useState(currentMonth);
@@ -118,6 +133,13 @@ export default function SalesPage() {
   const [apPersonFilter, setApPersonFilter] = useState("");
   const [showRepeatReport, setShowRepeatReport] = useState(false);
   const [expandedRepeatRow, setExpandedRepeatRow] = useState<string | null>(null);
+  const [mobileSectionOpen, setMobileSectionOpen] = useState<Record<string, boolean>>({ overdue: true, today: true });
+  const [expandedCardIds, setExpandedCardIds] = useState<Set<string>>(new Set());
+  const toggleCard = (id: string) => setExpandedCardIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
   const [actValidate, setActValidate] = useState(false);
   const [calNavDate, setCalNavDate] = useState(today.slice(0, 7));
   const [calWeekStart, setCalWeekStart] = useState(() => {
@@ -136,6 +158,7 @@ export default function SalesPage() {
   const [mgPeriod, setMgPeriod] = useState<"day"|"week"|"month">("day");
   const [sideOpen, setSideOpen] = useState({ summary: true, overview: true, overdue: true, types: true });
   const toggleSide = (k: keyof typeof sideOpen) => setSideOpen(s => ({ ...s, [k]: !s[k] }));
+  const [sideKpiFilter, setSideKpiFilter] = useState<"done" | "in_progress" | "new" | "overdue" | null>(null);
   const [calPopupPlan, setCalPopupPlan] = useState<SalesActivity | null>(null);
   const [rpOpenDays,   setRpOpenDays]   = useState<Set<string>>(new Set([today]));
   // Calendar popup edit state
@@ -529,6 +552,11 @@ export default function SalesPage() {
     } catch (e) { console.error(e); } finally { setSaving(false); }
   }
 
+  async function archiveActivity(id: string) {
+    const { salesActivities } = await import("@/lib/firestore");
+    await salesActivities.update(id, { archived: true, archived_at: today });
+  }
+
   // Convert Plan → Activity
   async function convertPlanToActivity(plan: SalesActivity) {
     const { salesActivities } = await import("@/lib/firestore");
@@ -632,6 +660,55 @@ export default function SalesPage() {
     catch (e) { console.error(e); } finally { setSaving(false); }
   }
 
+  // Batch-save quotas for all salespersons at once
+  async function saveBatchQuotas() {
+    setSaving(true);
+    try {
+      const { salesQuotas } = await import("@/lib/firestore");
+      const tid = (currentUser as unknown as Record<string,string>)?.tenant_id || "";
+      // Resolve auto values
+      const teamTotal = Number(String(teamTargetInput).replace(/,/g,"")) || 0;
+      const manualSum = Object.entries(batchTargets).reduce((s, [name, val]) => {
+        if ((batchMode[name] ?? "manual") === "manual") return s + (Number(String(val).replace(/,/g,""))||0);
+        return s;
+      }, 0);
+      const autoNames = Object.keys(batchMode).filter(n => batchMode[n] === "auto");
+      const autoValue = autoNames.length > 0 ? Math.max(0, Math.floor((teamTotal - manualSum) / autoNames.length)) : 0;
+      const resolvedTargets: Record<string,number> = {};
+      Object.keys(batchTargets).forEach(name => {
+        if ((batchMode[name] ?? "manual") === "auto") resolvedTargets[name] = autoValue;
+        else resolvedTargets[name] = Number(String(batchTargets[name]).replace(/,/g,"")) || 0;
+      });
+      for (const [userName, target] of Object.entries(resolvedTargets)) {
+        if (target <= 0) continue;
+        const u = users.find(x => x.name === userName);
+        const role: "sale"|"avenger" = u?.role === "avenger" ? "avenger" : "sale";
+        const won = projects.filter(p => p.status === "won" && p.assigned_to === userName);
+        const actualSales = won.reduce((s, p) => s + (p.value||0), 0);
+        const existing = quotas.find(q => q.user_name === userName && q.month === planMonthFilter);
+        const data = {
+          tenant_id: tid, user_name: userName, role, month: planMonthFilter,
+          quota_target: target, actual_sales: actualSales,
+          remaining: target - actualSales,
+          percent: target > 0 ? (actualSales/target*100) : 0,
+          profit_target: existing?.profit_target || 0,
+          actual_profit: existing?.actual_profit || 0,
+          profit_percent: 0,
+          target_gp_percent: existing?.target_gp_percent || 0,
+          won_deals: won.length,
+          total_activities: existing?.total_activities || 0,
+        };
+        if (existing?.id) {
+          await salesQuotas.update(existing.id, data as unknown as Record<string,unknown>);
+        } else {
+          await salesQuotas.add(data as unknown as Record<string,unknown>);
+        }
+      }
+      setShowBatchForm(false);
+      setBatchTargets({});
+    } catch(e) { console.error(e); } finally { setSaving(false); }
+  }
+
   // Pipeline update
   async function updateProjectStatus(id: string, status: string) {
     const { projects: ps } = await import("@/lib/firestore"); await ps.update(id, { status }); await load();
@@ -655,7 +732,7 @@ export default function SalesPage() {
   if (!mounted) return <div className="p-6"><p className="text-muted">Loading...</p></div>;
 
   return (
-    <div className="p-6">
+    <div className="p-6 overflow-x-hidden">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -706,7 +783,7 @@ export default function SalesPage() {
       {/* ═══ DASHBOARD ═══ */}
       {tab === "dashboard" && (<>
         {/* KPI Cards — clickable */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 @lg:grid-cols-4 gap-4 mb-6">
           <button onClick={() => setTab("plan")} className="rounded-xl bg-card border border-border p-5 text-left hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5 transition-all" title="คลิกไปหน้า Plan / Quota">
             <p className="text-xs text-muted mb-1">Monthly Target</p>
             <p className="text-3xl font-bold tracking-tight">{(totalTarget / 1e6).toFixed(1)}<span className="text-lg text-muted ml-0.5">M</span></p>
@@ -758,7 +835,7 @@ export default function SalesPage() {
         </div>
 
         {/* Today / Overdue / Plans — clean cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 @lg:grid-cols-3 gap-4">
           {/* Today */}
           <div className="rounded-xl bg-card border border-border overflow-hidden">
             <button onClick={() => { setTab("activities"); setTimeFilter("today"); }} className="w-full px-5 py-3 border-b border-border flex items-center justify-between hover:bg-card-hover transition-colors">
@@ -928,15 +1005,20 @@ export default function SalesPage() {
           );
         }
 
-        // Compact card for mobile agenda
+        // Compact card for mobile agenda — tap body to expand/collapse
         function mobileCard(plan: SalesActivity) {
           const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
-          const ovd  = (plan.plan_date||"") < today && plan.status !== "done";
-          const done = plan.status === "done";
+          const ovd      = (plan.plan_date||"") < today && plan.status !== "done";
+          const done     = plan.status === "done";
+          const expanded = plan.id ? expandedCardIds.has(plan.id) : false;
           const linkedDeal = plan.converted_to_project_id ? projects.find(p => p.id === plan.converted_to_project_id) : null;
           return (
-            <div key={plan.id} className={`rounded-xl overflow-hidden border bg-card transition-all active:scale-[0.99] ${ovd ? "border-red-500/40" : done ? "border-border/40 opacity-65" : "border-border"}`}>
-              <div className="flex items-stretch">
+            <div key={plan.id} className={`rounded-xl overflow-hidden border bg-card transition-all ${ovd ? "border-red-500/40" : done ? "border-border/40 opacity-65" : "border-border"}`}>
+              {/* ── Compact header row — always visible, tap to expand ── */}
+              <button
+                onClick={() => plan.id && toggleCard(plan.id)}
+                className="w-full flex items-stretch text-left active:bg-card-hover/40 transition-colors"
+              >
                 <div className={`w-1.5 shrink-0 ${ovd ? "bg-red-600" : done ? "bg-green-500 opacity-60" : tc.bar}`} />
                 <div className="flex-1 px-3 py-2.5 min-w-0">
                   <div className="flex items-center gap-1.5 mb-1">
@@ -951,20 +1033,97 @@ export default function SalesPage() {
                     {plan.plan_date && <span className={`text-[10px] ml-auto shrink-0 font-medium ${ovd ? "text-red-500" : "text-muted"}`}>{plan.plan_date.slice(5)}</span>}
                   </div>
                   <p className={`text-sm font-semibold leading-tight ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>{plan.expected_outcome||plan.description||"—"}</p>
-                  {(plan.customer_name||linkedDeal) && (
+                  {(plan.customer_name||linkedDeal||(!ownSalesOnly&&plan.assigned_to)) && (
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       {plan.customer_name && <span className="text-[11px] text-muted">🏢 {plan.customer_name}</span>}
                       {linkedDeal && <span className="text-[11px] text-accent">🎯 {linkedDeal.name.slice(0,16)}</span>}
+                      {!ownSalesOnly && plan.assigned_to && <span className="text-[11px] text-muted ml-auto">👤 {plan.assigned_to.split(" ")[0]}</span>}
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col items-center justify-center px-2 border-l border-border/20 shrink-0">
+                {/* Expand indicator + action button */}
+                <div className="flex flex-col items-center justify-center gap-1 px-2 border-l border-border/20 shrink-0">
+                  <span className="text-[9px] text-muted/40">{expanded ? "▲" : "▼"}</span>
+                </div>
+              </button>
+
+              {/* ── Expanded detail panel ── */}
+              {expanded && (
+                <div className="border-t border-border/30 bg-card-hover/20 px-3 py-2.5 space-y-2">
+                  {/* Objective / Description */}
+                  {plan.objective && plan.objective !== plan.expected_outcome && (
+                    <div><p className="text-[9px] text-muted/60 uppercase tracking-wide mb-0.5">วัตถุประสงค์</p><p className="text-xs text-foreground">{plan.objective}</p></div>
+                  )}
+                  {/* Outcome */}
+                  {plan.outcome && (
+                    <div><p className="text-[9px] text-muted/60 uppercase tracking-wide mb-0.5">ผลที่เกิดขึ้น</p><p className="text-xs text-foreground">{plan.outcome}</p></div>
+                  )}
+                  {/* Result badge */}
+                  {plan.result && (
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[9px] text-muted/60 uppercase tracking-wide">ผลลัพธ์</p>
+                      <span className={`text-[10px] rounded px-1.5 py-0.5 ${resultColor[plan.result]||"text-muted"}`}>{resultLabels[plan.result]||plan.result}</span>
+                    </div>
+                  )}
+                  {/* Contact person */}
+                  {plan.contact_person && (
+                    <div className="flex items-center gap-1.5"><span className="text-[9px] text-muted/60">👤 ติดต่อ</span><span className="text-xs text-foreground">{plan.contact_person}</span></div>
+                  )}
+                  {/* Next action */}
+                  {(plan.next_action||plan.next_action_type||plan.next_action_date) && (
+                    <div className="rounded-lg bg-blue-500/5 border border-blue-500/15 px-2.5 py-1.5">
+                      <p className="text-[9px] text-blue-500/70 uppercase tracking-wide mb-1">Next Action</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {plan.next_action_type && <span className="text-[10px] bg-blue-500/10 text-blue-500 rounded px-1.5 py-0.5 font-medium">{plan.next_action_type}</span>}
+                        {plan.next_action && <span className="text-xs text-foreground">{plan.next_action}</span>}
+                        {plan.next_action_date && <span className="text-[10px] text-muted ml-auto">📅 {plan.next_action_date.slice(5)}</span>}
+                      </div>
+                      {plan.next_action_by && <p className="text-[9px] text-muted mt-0.5">โดย {plan.next_action_by}</p>}
+                    </div>
+                  )}
+                  {/* Assigned to (manager view) */}
+                  {!ownSalesOnly && plan.assigned_to && (
+                    <div className="flex items-center gap-1.5"><span className="text-[9px] text-muted/60">👤 รับผิดชอบ</span><span className="text-xs text-foreground">{plan.assigned_to}</span></div>
+                  )}
+                  {/* Pipeline link */}
+                  {linkedDeal && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[9px] text-muted/60">🎯 ดีล</span>
+                      <span className="text-xs text-accent">{linkedDeal.name}</span>
+                      <span className={`text-[9px] rounded px-1.5 py-0.5 ${stageColor[linkedDeal.status]||""}`}>{linkedDeal.status}</span>
+                    </div>
+                  )}
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <button onClick={e=>{e.stopPropagation();openEditActivity(plan);}}
+                      className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors active:scale-95 ${done ? "bg-card-hover text-muted" : "bg-accent/10 text-accent border border-accent/30"}`}>
+                      {done ? "🔍 ดูรายละเอียด" : "✏️ Update"}
+                    </button>
+                    {done && plan.id && (
+                      <button onClick={e=>{e.stopPropagation();archiveActivity(plan.id!);}}
+                        className="px-3 py-1.5 rounded-lg text-[11px] text-muted border border-border/40 hover:bg-card-hover transition-colors active:scale-95">
+                        🗄 เก็บ
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Collapsed: show action button inline only ── */}
+              {!expanded && (
+                <div className="flex items-center gap-1.5 px-3 pb-2.5 -mt-1">
                   <button onClick={e=>{e.stopPropagation();openEditActivity(plan);}}
-                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors active:scale-95 ${done ? "bg-card-hover text-muted" : "bg-accent/10 text-accent border border-accent/30"}`}>
+                    className={`px-3 py-1 rounded-lg text-[11px] font-semibold transition-colors active:scale-95 ${done ? "bg-card-hover text-muted" : "bg-accent/10 text-accent border border-accent/30"}`}>
                     {done ? "ดู" : "Update"}
                   </button>
+                  {done && plan.id && (
+                    <button onClick={e=>{e.stopPropagation();archiveActivity(plan.id!);}}
+                      className="px-2.5 py-1 rounded-lg text-[10px] text-muted/60 hover:text-muted hover:bg-card-hover transition-colors active:scale-95">
+                      🗄
+                    </button>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
           );
         }
@@ -1022,7 +1181,7 @@ export default function SalesPage() {
                       </div>
 
                       {/* Date + Customer + Assigned */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 items-end">
+                      <div className="grid grid-cols-1 @md:grid-cols-2 @lg:grid-cols-3 gap-3 items-end">
                         <div className="flex gap-2">
                           <div className="flex-1 min-w-0">
                             <label className="text-[10px] text-muted">วันที่วางแผน</label>
@@ -1375,17 +1534,8 @@ export default function SalesPage() {
                       <button onClick={() => setApView("month")} className="text-[11px] text-accent border border-accent/30 rounded-lg px-2 py-1 ml-1">← อเจนด้า</button>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    {!ownSalesOnly && visibleTeam.length > 1 && (
-                      <select value={apPersonFilter} onChange={e => setApPersonFilter(e.target.value)}
-                        className="rounded-lg bg-background border border-border px-2 py-1 text-[11px] focus:outline-none max-w-[80px]">
-                        <option value="">ทุกคน</option>
-                        {visibleTeam.map(u => <option key={u.id} value={u.name}>{u.name.split(" ")[0]}</option>)}
-                      </select>
-                    )}
-                    <button onClick={() => { resetActForm(); setActForm(f => ({...f, is_plan:true, plan_date:apView==="day"?calDayDate:today})); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
-                      className="w-9 h-9 flex items-center justify-center rounded-full bg-accent text-white text-2xl font-light shadow-md active:scale-95 transition-transform">+</button>
-                  </div>
+                  <button onClick={() => { resetActForm(); setActForm(f => ({...f, is_plan:true, plan_date:apView==="day"?calDayDate:today})); setShowPlanForm(true); window.scrollTo({top:0,behavior:"smooth"}); }}
+                    className="w-9 h-9 flex items-center justify-center rounded-full bg-accent text-white text-2xl font-light shadow-md active:scale-95 transition-transform">+</button>
                 </div>
                 {/* Week strip */}
                 <div className="overflow-x-auto border-t border-border/30">
@@ -1411,6 +1561,32 @@ export default function SalesPage() {
                     })}
                   </div>
                 </div>
+                {/* Person filter chips — manager only */}
+                {!ownSalesOnly && visibleTeam.length > 1 && (
+                  <div className="overflow-x-auto border-t border-border/30">
+                    <div className="flex px-3 py-2 gap-1.5 w-max">
+                      <button onClick={() => setApPersonFilter("")}
+                        className={`flex items-center gap-1 rounded-full px-3 py-1 text-[11px] border whitespace-nowrap transition-all font-medium ${!apPersonFilter ? "bg-accent/20 border-accent/30 text-accent" : "border-border text-muted hover:border-border/80"}`}>
+                        👥 ทุกคน
+                        <span className={`text-[10px] font-bold ${!apPersonFilter ? "text-accent" : "text-muted/60"}`}>{allPlans.length}</span>
+                      </button>
+                      {visibleTeam.filter(u => pureSalesRoles.includes(u.role) || (u.extra_roles ?? []).some(r => pureSalesRoles.includes(r))).map(u => {
+                        const cnt = activities.filter(a => a.is_plan && a.assigned_to === u.name).length;
+                        const isActive = apPersonFilter === u.name;
+                        const pc = personColorMap.get(u.name) ?? "bg-muted";
+                        return (
+                          <button key={u.id} onClick={() => setApPersonFilter(isActive ? "" : u.name)}
+                            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] border whitespace-nowrap transition-all ${
+                              isActive ? "bg-accent/15 border-accent/40 text-accent font-semibold" : "border-border text-muted hover:border-border/80"}`}>
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${pc}`}/>
+                            {u.name.split(" ")[0]}
+                            {cnt > 0 && <span className={`text-[10px] font-bold ${isActive ? "text-accent" : "text-muted/50"}`}>{cnt}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 {/* Type filter chips (horizontal scroll) */}
                 <div className="overflow-x-auto border-t border-border/30">
                   <div className="flex px-3 py-2 gap-1.5 w-max">
@@ -1532,41 +1708,46 @@ export default function SalesPage() {
                   .sort((a,b) => (a.plan_date||"").localeCompare(b.plan_date||""))
                   .forEach(a => { const d=a.plan_date||""; const l=upMap.get(d)??[]; l.push(a); upMap.set(d,l); });
                 const upDates = [...upMap.keys()].slice(0, 10);
-                const donePl = viewPlans.filter(a => a.status==="done").sort((a,b)=>(b.plan_date||"").localeCompare(a.plan_date||"")).slice(0,10);
+                const donePl = viewPlans.filter(a => a.status==="done" && !a.archived && (a.plan_date||"") >= archiveCutoff).sort((a,b)=>(b.plan_date||"").localeCompare(a.plan_date||"")).slice(0,10);
                 return (
                   <div className="px-4 pt-3 pb-24 space-y-4">
                     {/* Overdue */}
                     {ovdList.length > 0 && (
                       <div>
-                        <div className="flex items-center gap-2 mb-2">
+                        <button onClick={() => setMobileSectionOpen(s => ({ ...s, overdue: !s.overdue }))} className="flex items-center gap-2 mb-2 w-full text-left">
                           <span className="w-2 h-2 rounded-full bg-red-400 shrink-0"/>
                           <h3 className="text-xs font-bold text-red-400 uppercase tracking-wide">⚠ เกินกำหนด ({ovdList.length})</h3>
-                        </div>
-                        <div className="space-y-1.5">{ovdList.map(p=>mobileCard(p))}</div>
+                          <span className="text-[10px] text-muted ml-auto">{mobileSectionOpen.overdue ? "▲" : "▼"}</span>
+                        </button>
+                        {mobileSectionOpen.overdue && <div className="space-y-1.5">{ovdList.map(p=>mobileCard(p))}</div>}
                       </div>
                     )}
                     {/* Today */}
                     <div>
-                      <div className="flex items-center gap-2 mb-2">
+                      <button onClick={() => setMobileSectionOpen(s => ({ ...s, today: !s.today }))} className="flex items-center gap-2 mb-2 w-full text-left">
                         <span className="w-2 h-2 rounded-full bg-accent shrink-0"/>
                         <h3 className="text-xs font-bold text-accent uppercase tracking-wide">📅 วันนี้ · {parseInt(today.slice(8))} {thaiM[new Date().getMonth()]} ({todayList.length})</h3>
-                      </div>
-                      {todayList.length===0
+                        <span className="text-[10px] text-muted ml-auto">{mobileSectionOpen.today ? "▲" : "▼"}</span>
+                      </button>
+                      {mobileSectionOpen.today && (todayList.length===0
                         ? <div className="rounded-xl border border-dashed border-border px-4 py-5 text-center"><p className="text-sm text-muted">ไม่มีแผนวันนี้ ✓</p></div>
-                        : <div className="space-y-1.5">{todayList.map(p=>mobileCard(p))}</div>}
+                        : <div className="space-y-1.5">{todayList.map(p=>mobileCard(p))}</div>)}
                     </div>
                     {/* Upcoming by date */}
                     {upDates.map(dateStr => {
                       const list = upMap.get(dateStr)!;
                       const dayI = (new Date(dateStr+"T12:00:00").getDay()+6)%7;
                       const lbl = dateStr===tomorrow ? `พรุ่งนี้ · ${parseInt(dateStr.slice(8))} ${thaiM[parseInt(dateStr.slice(5,7))-1]}` : `${dhNames[dayI]}. ${parseInt(dateStr.slice(8))} ${thaiM[parseInt(dateStr.slice(5,7))-1]}`;
+                      const sectionKey = `up_${dateStr}`;
+                      const isOpen = mobileSectionOpen[sectionKey] !== false;
                       return (
                         <div key={dateStr}>
-                          <div className="flex items-center gap-2 mb-2">
+                          <button onClick={() => setMobileSectionOpen(s => ({ ...s, [sectionKey]: !isOpen }))} className="flex items-center gap-2 mb-2 w-full text-left">
                             <span className="w-2 h-2 rounded-full bg-muted/40 shrink-0"/>
                             <h3 className="text-xs font-semibold text-muted">{lbl} ({list.length})</h3>
-                          </div>
-                          <div className="space-y-1.5">{list.map(p=>mobileCard(p))}</div>
+                            <span className="text-[10px] text-muted ml-auto">{isOpen ? "▲" : "▼"}</span>
+                          </button>
+                          {isOpen && <div className="space-y-1.5">{list.map(p=>mobileCard(p))}</div>}
                         </div>
                       );
                     })}
@@ -1666,8 +1847,8 @@ export default function SalesPage() {
                     <div className="grid grid-cols-7 bg-card-hover border-b border-border/60">
                       {dhFull.map((d, i) => (
                         <div key={d} className={`text-center text-xs font-semibold py-2.5 tracking-wide ${i === 6 ? "text-rose-400" : i === 5 ? "text-orange-400" : "text-muted/80"}`}>
-                          <span className="hidden sm:inline">{d}</span>
-                          <span className="sm:hidden">{dhNames[i]}</span>
+                          <span className="hidden @md:inline">{d}</span>
+                          <span className="@md:hidden">{dhNames[i]}</span>
                         </div>
                       ))}
                     </div>
@@ -1930,7 +2111,7 @@ export default function SalesPage() {
                 {apView === "list" && (() => {
                   const ovdPl  = allPlans.filter(p => (p.plan_date||"") < today && p.status !== "done").sort((a,b) => (a.plan_date||"").localeCompare(b.plan_date||""));
                   const upPl   = allPlans.filter(p => (p.plan_date||"") >= today && p.status !== "done").sort((a,b) => (a.plan_date||"").localeCompare(b.plan_date||""));
-                  const donePl = allPlans.filter(p => p.status === "done").sort((a,b) => (b.plan_date||"").localeCompare(a.plan_date||"")).slice(0, 20);
+                  const donePl = allPlans.filter(p => p.status === "done" && !p.archived && (p.plan_date||"") >= archiveCutoff).sort((a,b) => (b.plan_date||"").localeCompare(a.plan_date||"")).slice(0, 20);
                   function ListCard({ plan }: { plan: SalesActivity }) {
                     const tc = TC[plan.type] ?? {bg:"bg-card",border:"border-border",text:"text-muted",dot:"bg-muted",bar:"bg-muted",label:"",icon:"📌"};
                     const ovd = (plan.plan_date||"") < today && plan.status !== "done";
@@ -1943,9 +2124,17 @@ export default function SalesPage() {
                         <div className="flex-1 p-3.5 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <p className={`text-sm font-semibold leading-snug ${done ? "line-through text-muted" : ovd ? "text-red-500" : "text-foreground"}`}>{plan.expected_outcome || plan.description || "—"}</p>
-                            <span className={`text-[10px] rounded px-2 py-0.5 font-semibold shrink-0 border ${done?"bg-green-500/10 border-green-500/25 text-green-500":plan.status==="in_progress"?"bg-amber-500/10 border-amber-500/25 text-amber-500":ovd?"bg-red-500/10 border-red-500/25 text-red-500":"bg-blue-500/10 border-blue-500/25 text-blue-500"}`}>
-                              {done?"✓ เสร็จ":plan.status==="in_progress"?"ทำอยู่":ovd?"⚠ เกิน":"รอ"}
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className={`text-[10px] rounded px-2 py-0.5 font-semibold border ${done?"bg-green-500/10 border-green-500/25 text-green-500":plan.status==="in_progress"?"bg-amber-500/10 border-amber-500/25 text-amber-500":ovd?"bg-red-500/10 border-red-500/25 text-red-500":"bg-blue-500/10 border-blue-500/25 text-blue-500"}`}>
+                                {done?"✓ เสร็จ":plan.status==="in_progress"?"ทำอยู่":ovd?"⚠ เกิน":"รอ"}
+                              </span>
+                              {done && plan.id && (
+                                <button onClick={e=>{e.stopPropagation();archiveActivity(plan.id!);}} title="จัดเก็บ"
+                                  className="text-[10px] text-muted/50 hover:text-muted border border-transparent hover:border-border/60 rounded px-1.5 py-0.5 transition-colors">
+                                  🗄
+                                </button>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             <span className={`text-[10px] rounded px-1.5 py-0.5 border font-semibold ${tc.bg} ${tc.border} ${tc.text}`}>{tc.icon} {tc.label}</span>
@@ -1966,9 +2155,9 @@ export default function SalesPage() {
                   }
                   return (
                     <div className="space-y-5">
-                      {ovdPl.length > 0 && (<div><div className="flex items-center gap-2 mb-2.5"><span className="w-2 h-2 rounded-full bg-red-500"/><h3 className="text-sm font-semibold text-red-400">เกินกำหนด ({ovdPl.length})</h3></div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{ovdPl.map(p => <ListCard key={p.id} plan={p}/>)}</div></div>)}
-                      {upPl.length > 0 ? (<div><div className="flex items-center gap-2 mb-2.5"><span className="w-2 h-2 rounded-full bg-accent"/><h3 className="text-sm font-semibold">วันนี้และกำลังจะมาถึง ({upPl.length})</h3></div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{upPl.map(p => <ListCard key={p.id} plan={p}/>)}</div></div>) : (<div className="rounded-xl border border-dashed border-border p-8 text-center"><p className="text-sm text-muted">ไม่มีแผนงาน — กด &quot;+ วางแผน&quot; เพื่อเริ่มต้น</p></div>)}
-                      {donePl.length > 0 && (<div><button onClick={()=>setExpandedRepeatRow(expandedRepeatRow==="__done__"?null:"__done__")} className="flex items-center gap-2 mb-2 text-sm text-muted hover:text-foreground"><span className="w-2 h-2 rounded-full bg-green-500"/><span className="font-semibold">เสร็จแล้ว ({donePl.length})</span><span className="text-xs">{expandedRepeatRow==="__done__"?"▲":"▼"}</span></button>{expandedRepeatRow==="__done__"&&<div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{donePl.map(p=><ListCard key={p.id} plan={p}/>)}</div>}</div>)}
+                      {ovdPl.length > 0 && (<div><div className="flex items-center gap-2 mb-2.5"><span className="w-2 h-2 rounded-full bg-red-500"/><h3 className="text-sm font-semibold text-red-400">เกินกำหนด ({ovdPl.length})</h3></div><div className="grid gap-2 @md:grid-cols-2 @xl:grid-cols-3">{ovdPl.map(p => <ListCard key={p.id} plan={p}/>)}</div></div>)}
+                      {upPl.length > 0 ? (<div><div className="flex items-center gap-2 mb-2.5"><span className="w-2 h-2 rounded-full bg-accent"/><h3 className="text-sm font-semibold">วันนี้และกำลังจะมาถึง ({upPl.length})</h3></div><div className="grid gap-2 @md:grid-cols-2 @xl:grid-cols-3">{upPl.map(p => <ListCard key={p.id} plan={p}/>)}</div></div>) : (<div className="rounded-xl border border-dashed border-border p-8 text-center"><p className="text-sm text-muted">ไม่มีแผนงาน — กด &quot;+ วางแผน&quot; เพื่อเริ่มต้น</p></div>)}
+                      {donePl.length > 0 && (<div><button onClick={()=>setExpandedRepeatRow(expandedRepeatRow==="__done__"?null:"__done__")} className="flex items-center gap-2 mb-2 text-sm text-muted hover:text-foreground"><span className="w-2 h-2 rounded-full bg-green-500"/><span className="font-semibold">เสร็จแล้ว ({donePl.length})</span><span className="text-xs">{expandedRepeatRow==="__done__"?"▲":"▼"}</span></button>{expandedRepeatRow==="__done__"&&<div className="grid gap-2 @md:grid-cols-2 @xl:grid-cols-3">{donePl.map(p=><ListCard key={p.id} plan={p}/>)}</div>}</div>)}
                       {allPlans.length === 0 && (<div className="rounded-xl border border-dashed border-border p-10 text-center"><p className="text-base text-muted">ยังไม่มีแผนงาน</p><p className="text-xs text-muted/60 mt-1">กด &quot;+ วางแผน&quot; เพื่อเพิ่มแผน</p></div>)}
                     </div>
                   );
@@ -1976,7 +2165,7 @@ export default function SalesPage() {
               </div>
 
               {/* ── Right Side Panel ── */}
-              <div className="hidden xl:flex flex-col gap-3 w-52 shrink-0">
+              <div className="hidden @xl:flex flex-col gap-3 w-52 shrink-0">
 
                 {/* ── 3-Day Plan Summary (yesterday / today / tomorrow) ── */}
                 {(() => {
@@ -2119,12 +2308,51 @@ export default function SalesPage() {
                       <span className="text-[9px] text-muted">{sideOpen.overview ? "▲" : "▼"}</span>
                     </div>
                   </button>
-                  {sideOpen.overview && <div className="px-3 pb-3">
-                  {allPlans.length > 0 && <div className="h-1.5 rounded-full bg-background overflow-hidden mb-2.5 mt-1"><div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${Math.round(kpiDone/allPlans.length*100)}%`}}/></div>}
-                  {[{label:"✓ เสร็จ",v:kpiDone,c:"text-green-500"},{label:"▷ ทำอยู่",v:kpiIP,c:"text-amber-500"},{label:"○ รอ",v:kpiNew,c:"text-blue-500"},{label:"⚠ เกิน",v:overdueItems.length,c:overdueItems.length>0?"text-red-500 font-black":"text-muted"}].map(s=>(
-                    <div key={s.label} className="flex items-center justify-between text-[11px] py-0.5"><span className="text-muted">{s.label}</span><span className={`font-bold tabular-nums ${s.c}`}>{s.v}</span></div>
-                  ))}
-                  </div>}
+                  {sideOpen.overview && (() => {
+                    const kpiRows: { label: string; v: number; c: string; key: "done"|"in_progress"|"new"|"overdue" }[] = [
+                      { label:"✓ เสร็จ",  v:kpiDone,            c:"text-green-500", key:"done" },
+                      { label:"▷ ทำอยู่", v:kpiIP,              c:"text-amber-500", key:"in_progress" },
+                      { label:"○ รอ",     v:kpiNew,             c:"text-blue-500",  key:"new" },
+                      { label:"⚠ เกิน",   v:overdueItems.length, c:overdueItems.length>0?"text-red-500 font-black":"text-muted", key:"overdue" },
+                    ];
+                    const drillPlans = sideKpiFilter === "overdue"
+                      ? overdueItems
+                      : sideKpiFilter
+                        ? allPlans.filter(p => p.status === sideKpiFilter)
+                        : [];
+                    return (
+                      <div className="px-3 pb-3">
+                        {allPlans.length > 0 && <div className="h-1.5 rounded-full bg-background overflow-hidden mb-2.5 mt-1"><div className="h-full rounded-full bg-green-500 transition-all" style={{width:`${Math.round(kpiDone/allPlans.length*100)}%`}}/></div>}
+                        {kpiRows.map(s => (
+                          <button key={s.key} onClick={() => setSideKpiFilter(sideKpiFilter === s.key ? null : s.key)}
+                            className={`w-full flex items-center justify-between text-[11px] py-1 px-1.5 rounded transition-colors ${sideKpiFilter===s.key ? "bg-card-hover" : "hover:bg-card-hover/60"}`}>
+                            <span className="text-muted">{s.label}</span>
+                            <div className="flex items-center gap-1">
+                              <span className={`font-bold tabular-nums ${s.c}`}>{s.v}</span>
+                              {s.v > 0 && <span className="text-[8px] text-muted/50">{sideKpiFilter===s.key?"▲":"▶"}</span>}
+                            </div>
+                          </button>
+                        ))}
+                        {sideKpiFilter && drillPlans.length > 0 && (
+                          <div className="mt-2 space-y-0.5 max-h-52 overflow-y-auto border-t border-border/40 pt-2">
+                            {drillPlans.map(p => (
+                              <button key={p.id} onClick={() => setSelectedActivity(p)}
+                                className="w-full flex items-stretch text-left rounded overflow-hidden border border-border/40 bg-background hover:bg-card-hover transition-all">
+                                <div className={`w-[3px] shrink-0 ${p.status==="done"?"bg-green-500":p.status==="in_progress"?"bg-amber-500":(p.plan_date||"")<today?"bg-red-600":"bg-blue-500"}`}/>
+                                <div className="flex-1 px-2 py-1.5 min-w-0">
+                                  <p className="text-[10px] font-semibold truncate text-foreground">{p.expected_outcome||p.description||"—"}</p>
+                                  <p className="text-[9px] text-muted truncate mt-0.5">{p.plan_date||""}{p.customer_name ? ` · ${p.customer_name}` : ""}{!ownSalesOnly && p.assigned_to ? ` · ${p.assigned_to.split(" ")[0]}` : ""}</p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {sideKpiFilter && drillPlans.length === 0 && (
+                          <p className="text-[10px] text-muted/60 text-center pt-2">ไม่มีรายการ</p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Overdue */}
@@ -2200,7 +2428,7 @@ export default function SalesPage() {
                   <div className="border-t border-border overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead><tr className="border-b border-border text-left text-[10px] text-muted uppercase bg-background/50">
-                        <th className="px-4 py-2">ลูกค้า / Prospect</th><th className="px-4 py-2 text-center">ทั้งหมด</th><th className="px-4 py-2 text-center">วางแผนซ้ำ</th><th className="px-4 py-2 text-center">✓ เสร็จ</th><th className="px-4 py-2 hidden md:table-cell">กิจกรรมล่าสุด</th><th className="px-4 py-2 hidden md:table-cell">เซลล์</th><th className="px-4 py-2">วันล่าสุด</th>
+                        <th className="px-4 py-2">ลูกค้า / Prospect</th><th className="px-4 py-2 text-center">ทั้งหมด</th><th className="px-4 py-2 text-center">วางแผนซ้ำ</th><th className="px-4 py-2 text-center">✓ เสร็จ</th><th className="px-4 py-2 hidden @md:table-cell">กิจกรรมล่าสุด</th><th className="px-4 py-2 hidden @md:table-cell">เซลล์</th><th className="px-4 py-2">วันล่าสุด</th>
                       </tr></thead>
                       <tbody>
                         {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-muted italic">ยังไม่มีข้อมูลแผนงาน</td></tr>}
@@ -2214,8 +2442,8 @@ export default function SalesPage() {
                               <td className="px-4 py-2.5 text-center"><span className={`rounded-full px-2 py-0.5 font-bold text-[11px] ${r.total>=5?"bg-red-900/50 text-red-400":r.total>=3?"bg-orange-900/50 text-orange-400":r.total>=2?"bg-yellow-900/50 text-yellow-400":"bg-blue-900/50 text-blue-400"}`}>{r.total}</span></td>
                               <td className="px-4 py-2.5 text-center">{repeat>0?<span className="text-orange-400 font-semibold">+{repeat} ครั้ง</span>:<span className="text-muted">—</span>}</td>
                               <td className="px-4 py-2.5 text-center text-green-400 font-semibold">{r.done}</td>
-                              <td className="px-4 py-2.5 text-muted hidden md:table-cell truncate max-w-[180px]">{r.types[r.types.length-1]||"—"}</td>
-                              <td className="px-4 py-2.5 text-muted hidden md:table-cell">{[...r.persons].join(", ")||"—"}</td>
+                              <td className="px-4 py-2.5 text-muted hidden @md:table-cell truncate max-w-[180px]">{r.types[r.types.length-1]||"—"}</td>
+                              <td className="px-4 py-2.5 text-muted hidden @md:table-cell">{[...r.persons].join(", ")||"—"}</td>
                               <td className="px-4 py-2.5 text-muted">{r.lastDate||"—"}</td>
                             </tr>
                             {isExpanded && (
@@ -2401,38 +2629,184 @@ export default function SalesPage() {
 
       {/* ═══ QUOTA SET ═══ */}
       {tab === "plan" && (<>
+        {/* ── Month picker + actions ── */}
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted font-medium">เดือน</label>
+            <input type="month" value={planMonthFilter} onChange={e => setPlanMonthFilter(e.target.value)}
+              className="rounded-lg bg-card border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent" />
+          </div>
+          {canManageQuota(currentUser) && (
+            <div className="flex gap-2 ml-auto">
+              <button onClick={() => {
+                const opening = !showBatchForm;
+                setShowBatchForm(opening); setShowQuotaForm(false);
+                if (opening) {
+                  const salesMembers = users.filter(u => pureSalesRoles.includes(u.role) || (u.extra_roles??[]).some(r=>pureSalesRoles.includes(r)));
+                  const initTargets: Record<string,string> = {};
+                  const initModes: Record<string,"manual"|"auto"> = {};
+                  let totalExisting = 0;
+                  salesMembers.forEach(u => {
+                    const ex = quotas.find(q => q.user_name===u.name && q.month===planMonthFilter);
+                    if (ex?.quota_target) { initTargets[u.name] = ex.quota_target.toLocaleString(); initModes[u.name] = "manual"; totalExisting += ex.quota_target; }
+                    else { initTargets[u.name] = ""; initModes[u.name] = "auto"; }
+                  });
+                  setBatchTargets(initTargets);
+                  setBatchMode(initModes);
+                  setTeamTargetInput(totalExisting > 0 ? totalExisting.toLocaleString() : "");
+                }
+              }} className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${showBatchForm ? "bg-card-hover border border-border text-muted" : "bg-accent text-white hover:bg-accent-hover"}`}>
+                {showBatchForm ? "✕ ยกเลิก" : "🎯 ตั้งเป้าทีม"}
+              </button>
+              <button onClick={() => { setShowQuotaForm(!showQuotaForm); setShowBatchForm(false); }}
+                className={`rounded-lg px-4 py-2 text-sm font-medium border transition-colors ${showQuotaForm ? "bg-card-hover border-border text-muted" : "border-border text-foreground hover:bg-card-hover"}`}>
+                {showQuotaForm ? "✕" : "+ รายบุคคล"}
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* ── Quota section ── */}
         {(() => {
           const tTarget = monthQuota.reduce((s,q) => s + (q.quota_target||0), 0);
-          const tActual = monthQuota.reduce((s,q) => s + liveActualSales(q.user_name, q.month||currentMonth), 0);
+          const tActual = monthQuota.reduce((s,q) => s + liveActualSales(q.user_name, q.month||planMonthFilter), 0);
           const tRemaining = tTarget - tActual;
           const tPct = tTarget > 0 ? (tActual/tTarget*100) : 0;
-          const topPerformer = [...monthQuota].sort((a,b) => liveActualSales(b.user_name, b.month||currentMonth) - liveActualSales(a.user_name, a.month||currentMonth))[0];
-          return (<>
-            {/* KPI Summary */}
+          const topPerformer = [...monthQuota].sort((a,b) => liveActualSales(b.user_name, b.month||planMonthFilter) - liveActualSales(a.user_name, a.month||planMonthFilter))[0];
+          return (
             <div className="rounded-xl bg-card border border-border p-5 mb-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold">เป้ายอดขายเดือนนี้</h3>
-                {canManageQuota(currentUser) && <button onClick={() => setShowQuotaForm(!showQuotaForm)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showQuotaForm ? "Cancel" : "+ ตั้งเป้า"}</button>}
+                <h3 className="text-base font-semibold">เป้ายอดขาย — {planMonthFilter}</h3>
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                <div><p className="text-xs text-muted mb-0.5">เป้ารวม</p><p className="text-2xl font-bold">{(tTarget/1e6).toFixed(1)}<span className="text-sm text-muted ml-0.5">M</span></p></div>
+              <div className="grid grid-cols-2 @lg:grid-cols-4 gap-4 mb-4">
+                <div><p className="text-xs text-muted mb-0.5">เป้ารวมทีม</p><p className="text-2xl font-bold">{(tTarget/1e6).toFixed(1)}<span className="text-sm text-muted ml-0.5">M</span></p></div>
                 <div><p className="text-xs text-muted mb-0.5">ยอดจริง</p><p className={`text-2xl font-bold ${tPct >= 100 ? "text-green-400" : tPct >= 70 ? "text-yellow-400" : "text-red-400"}`}>{(tActual/1e6).toFixed(1)}<span className="text-sm ml-0.5">M</span></p></div>
                 <div><p className="text-xs text-muted mb-0.5">เหลืออีก</p><p className={`text-2xl font-bold ${tRemaining <= 0 ? "text-green-400" : "text-yellow-400"}`}>{(Math.abs(tRemaining)/1e6).toFixed(1)}<span className="text-sm ml-0.5">M</span></p><p className="text-[10px] text-muted">{tRemaining <= 0 ? "เกินเป้าแล้ว! 🎉" : "ต้องทำเพิ่ม"}</p></div>
                 <div><p className="text-xs text-muted mb-0.5">Achievement</p><p className={`text-2xl font-bold ${tPct >= 100 ? "text-green-400" : tPct >= 70 ? "text-yellow-400" : "text-red-400"}`}>{tPct.toFixed(0)}<span className="text-sm ml-0.5">%</span></p>
                   <div className="h-2 rounded-full bg-background overflow-hidden mt-2"><div className={`h-full rounded-full ${tPct >= 100 ? "bg-green-500" : tPct >= 70 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${Math.min(tPct,100)}%` }} /></div>
                 </div>
               </div>
-              {topPerformer && <p className="text-xs text-muted">🏆 Top: <span className="text-accent font-medium">{topPerformer.user_name?.split(" ")[0]}</span> — {liveActualSales(topPerformer.user_name, topPerformer.month||currentMonth).toLocaleString()} THB</p>}
+              {topPerformer && <p className="text-xs text-muted">🏆 Top: <span className="text-accent font-medium">{topPerformer.user_name?.split(" ")[0]}</span> — {liveActualSales(topPerformer.user_name, topPerformer.month||planMonthFilter).toLocaleString()} THB</p>}
             </div>
-          </>);
+          );
+        })()}
+
+        {/* ── Batch team target editor ── */}
+        {showBatchForm && canManageQuota(currentUser) && (() => {
+          const BATCH_COLORS = ["bg-blue-500","bg-emerald-500","bg-purple-500","bg-orange-500","bg-pink-500","bg-cyan-500","bg-amber-600","bg-rose-500","bg-teal-500","bg-indigo-500"];
+          const salesMembers = users.filter(u => pureSalesRoles.includes(u.role) || (u.extra_roles??[]).some(r=>pureSalesRoles.includes(r)));
+          const teamTotal = Number(String(teamTargetInput).replace(/,/g,"")) || 0;
+          const manualSum = salesMembers.reduce((s, u) => {
+            if ((batchMode[u.name] ?? "manual") !== "auto") return s + (Number(String(batchTargets[u.name]||"0").replace(/,/g,""))||0);
+            return s;
+          }, 0);
+          const autoMembers = salesMembers.filter(u => (batchMode[u.name] ?? "manual") === "auto");
+          const autoValue = autoMembers.length > 0 && teamTotal > 0 ? Math.max(0, Math.floor((teamTotal - manualSum) / autoMembers.length)) : 0;
+          const allocated = manualSum + autoValue * autoMembers.length;
+          const remaining = teamTotal - allocated;
+          const allocPct = teamTotal > 0 ? Math.min(100, (allocated / teamTotal) * 100) : 0;
+          return (
+            <div className="rounded-xl bg-card border border-accent/30 p-5 mb-4">
+              <h3 className="text-sm font-semibold mb-4">🎯 ตั้งเป้าทีม — {planMonthFilter}</h3>
+
+              {/* Team total input */}
+              <div className="rounded-xl bg-background border border-border p-4 mb-4">
+                <label className="text-[10px] text-muted font-medium uppercase tracking-wide mb-1.5 block">เป้ารวมทีม (THB)</label>
+                <input
+                  type="text" inputMode="numeric" placeholder="เช่น 10,000,000"
+                  value={teamTargetInput}
+                  onChange={e => setTeamTargetInput(e.target.value)}
+                  className="w-full text-2xl font-bold font-mono bg-transparent border-none focus:outline-none text-accent placeholder:text-muted/30"
+                />
+              </div>
+
+              {/* Allocation progress bar */}
+              {teamTotal > 0 && (
+                <div className="rounded-xl bg-background border border-border p-3 mb-4">
+                  <div className="flex justify-between text-[10px] mb-1.5">
+                    <span className="text-muted">กระจายแล้ว <span className="font-semibold text-foreground">{allocated.toLocaleString()}</span></span>
+                    <span className={remaining > 0 ? "text-yellow-400 font-medium" : remaining < 0 ? "text-red-400 font-medium" : "text-green-400 font-medium"}>
+                      {remaining > 0 ? `เหลือ ${remaining.toLocaleString()}` : remaining < 0 ? `เกิน ${Math.abs(remaining).toLocaleString()}` : "ครบแล้ว ✓"}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-card overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${allocPct >= 100 ? "bg-green-500" : allocPct >= 80 ? "bg-yellow-500" : "bg-accent"}`}
+                      style={{ width: `${allocPct}%` }} />
+                  </div>
+                  <p className="text-[10px] text-muted/50 mt-1 text-right">{allocPct.toFixed(0)}% จาก {teamTotal.toLocaleString()} THB</p>
+                </div>
+              )}
+
+              {/* Per-person rows */}
+              <div className="space-y-2 mb-4">
+                {salesMembers.map((u, idx) => {
+                  const isAuto = (batchMode[u.name] ?? "manual") === "auto";
+                  const actual = liveActualSales(u.name, planMonthFilter);
+                  const displayTarget = isAuto ? autoValue : (Number(String(batchTargets[u.name]||"0").replace(/,/g,""))||0);
+                  const pct = displayTarget > 0 ? Math.round(actual / displayTarget * 100) : 0;
+                  const pc = BATCH_COLORS[idx % BATCH_COLORS.length];
+                  return (
+                    <div key={u.id} className={`rounded-lg border px-3 py-2.5 transition-all ${isAuto ? "bg-background/50 border-border/40" : "bg-background border-border"}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${pc}`} />
+                        <div className="w-24 shrink-0">
+                          <p className="text-sm font-medium truncate">{u.name.split(" ")[0]}</p>
+                          <p className="text-[9px] text-muted">{u.role}</p>
+                        </div>
+                        {/* Mode toggle */}
+                        <button
+                          onClick={() => setBatchMode(prev => ({ ...prev, [u.name]: isAuto ? "manual" : "auto" }))}
+                          className={`shrink-0 text-[9px] font-semibold rounded-full px-2.5 py-0.5 border transition-all ${isAuto ? "bg-purple-900/30 text-purple-400 border-purple-800/40" : "bg-accent/10 text-accent border-accent/30"}`}
+                        >
+                          {isAuto ? "อัตโนมัติ" : "ใส่เอง"}
+                        </button>
+                        {/* Input or computed value */}
+                        {isAuto ? (
+                          <div className="flex-1 text-right font-mono text-sm text-muted/50 tabular-nums pr-1">
+                            {teamTotal > 0 ? autoValue.toLocaleString() : "—"}
+                          </div>
+                        ) : (
+                          <input
+                            type="text" inputMode="numeric" placeholder="0"
+                            value={batchTargets[u.name] ?? ""}
+                            onChange={e => setBatchTargets(prev => ({...prev, [u.name]: e.target.value}))}
+                            className="flex-1 rounded-lg bg-card border border-border px-3 py-1 text-sm font-mono focus:outline-none focus:border-accent text-right"
+                          />
+                        )}
+                        {/* Actual + % */}
+                        <div className="w-16 shrink-0 text-right">
+                          <p className="text-[10px] text-muted tabular-nums">{(actual/1e6).toFixed(2)}M</p>
+                          <p className={`text-[10px] font-bold tabular-nums ${pct>=100?"text-green-500":pct>=70?"text-yellow-500":"text-muted/60"}`}>{pct > 0 ? `${pct}%` : "—"}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Bottom: total + actions */}
+              <div className="flex items-center gap-3 pt-3 border-t border-border/50">
+                <div className="flex-1">
+                  <p className="text-[10px] text-muted">รวมที่กระจาย</p>
+                  <p className={`text-base font-bold tabular-nums ${teamTotal > 0 && allocated === teamTotal ? "text-green-400" : "text-foreground"}`}>
+                    {allocated.toLocaleString()} <span className="text-[10px] text-muted font-normal">/ {teamTotal > 0 ? teamTotal.toLocaleString() : "—"} THB</span>
+                  </p>
+                </div>
+                <button onClick={saveBatchQuotas} disabled={saving || allocated === 0}
+                  className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">
+                  {saving ? "กำลังบันทึก…" : "✓ บันทึกทั้งหมด"}
+                </button>
+                <button onClick={() => setShowBatchForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+              </div>
+            </div>
+          );
         })()}
 
         {/* Quota form */}
         {showQuotaForm && canManageQuota(currentUser) && (
           <div className="rounded-xl bg-card border border-accent/30 p-5 mb-4">
             <h3 className="text-sm font-semibold mb-3">{quotaForm.user_name ? `แก้ไข: ${quotaForm.user_name.split(" ")[0]}` : "ตั้งเป้าใหม่"}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+            <div className="grid grid-cols-1 @md:grid-cols-2 @lg:grid-cols-4 gap-3 mb-3">
               <div><label className="text-[10px] text-muted">เซลล์ *</label><select value={quotaForm.user_name} onChange={e => { const u = users.find(x => x.name === e.target.value); const role = u?.role === "avenger" ? "avenger" : "sale"; const won = projects.filter(p => p.status === "won" && p.assigned_to === e.target.value); const autoSales = won.reduce((s, p) => s + (p.value || 0), 0); setQuotaForm({ ...quotaForm, user_name: e.target.value, role, actual_sales: autoSales, won_deals: won.length }); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="">-- เลือกเซลล์ --</option>{users.filter(u => ["sale","avenger","Sales Executive","Sales Manager"].includes(u.role)).map(u => <option key={u.id} value={u.name}>{u.name}</option>)}</select></div>
               <div><label className="text-[10px] text-muted">เป้ายอดขาย (THB)</label><input type="text" inputMode="numeric" placeholder="เช่น 2,000,000" value={quotaForm.quota_target ? quotaForm.quota_target.toLocaleString() : ""} onChange={e => { const n = Number(e.target.value.replace(/,/g, "")); if (!isNaN(n)) setQuotaForm({ ...quotaForm, quota_target: n }); }} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 font-mono" /></div>
               <div><label className="text-[10px] text-muted">ยอดจริง (THB) <span className="text-accent/70 font-normal">(จาก Won)</span></label><div className="w-full rounded-lg bg-background/40 border border-border/50 px-3 py-2 text-sm mt-1 font-mono text-green-400">{quotaForm.actual_sales ? quotaForm.actual_sales.toLocaleString() : <span className="text-muted text-xs">เลือกเซลล์ก่อน</span>}</div></div>
@@ -2512,7 +2886,7 @@ export default function SalesPage() {
         {showForm && (
           <div className="rounded-xl bg-card border border-border p-5 mb-4">
             <h2 className="text-base font-semibold mb-4">{editingActId ? "แก้ไขกิจกรรม" : "บันทึกกิจกรรม"}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+            <div className="grid grid-cols-1 @md:grid-cols-2 @lg:grid-cols-3 gap-3 mb-3">
 
               {/* ── ประเภท ── */}
               <div>
@@ -2680,7 +3054,7 @@ export default function SalesPage() {
                   </div>
                 </label>
                 {actForm.request_support && (
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 pl-7">
+                  <div className="mt-3 grid grid-cols-1 @md:grid-cols-2 gap-3 pl-7">
                     <div>
                       <label className="text-[10px] text-muted">ส่งถึงทีม</label>
                       <select value={actForm.support_team || "presale"} onChange={e => setActForm({ ...actForm, support_team: e.target.value as "presale" | "service" })} className="w-full rounded-lg bg-background border border-purple-800/60 px-3 py-2 text-sm focus:outline-none focus:border-purple-500 mt-1">
@@ -2723,26 +3097,25 @@ export default function SalesPage() {
               <div key={a.id} className={`rounded-xl bg-card border p-3 cursor-pointer hover:border-accent/30 transition-all ${isOverdue ? "border-red-800/50 hover:border-red-700/60" : "border-border"}`} onClick={() => setSelectedActivity(a)}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="text-sm">{a.description}</p>
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                      <p className="text-sm font-medium">{a.description}</p>
                       {a.assigned_to && (
-                        <span className="text-[10px] rounded-full bg-indigo-900/50 text-indigo-300 px-2 py-0.5 shrink-0">👤 {a.assigned_to}</span>
+                        <span className="text-[10px] rounded-full bg-indigo-900/50 text-badge px-2 py-0.5 shrink-0">👤 {a.assigned_to}</span>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-1.5 mt-1 text-[10px]">
-                      <span className="rounded bg-card-hover px-1.5 py-0.5">{typeLabels[a.type]}</span>
-                      {a.customer_type === "prospect"
-                        ? <span className="rounded bg-orange-900/40 text-orange-400 px-1.5 py-0.5">🔍 Prospect</span>
-                        : null
-                      }
-                      {a.customer_name && <span className="text-muted">{a.customer_name}</span>}
+                    <div className="flex flex-wrap gap-1.5 mt-1.5 text-[10px] items-center">
+                      <span className={`rounded px-1.5 py-0.5 font-medium ${typeColor[a.type] || "bg-card-hover text-foreground"}`}>{typeLabels[a.type]}</span>
+                      {a.customer_type === "prospect" && (
+                        <span className="rounded bg-orange-900/50 text-badge px-1.5 py-0.5">🔍 Prospect</span>
+                      )}
+                      {a.customer_name && <span className="text-badge">{a.customer_name}</span>}
                       {a.contact_person && <span className="text-muted">· 👤 {a.contact_person}</span>}
                       {a.result && <span className={resultColor[a.result] || "text-muted"}>{resultLabels[a.result]}</span>}
-                      {a.next_follow_up && <span className={isOverdue ? "text-red-400" : "text-muted"}>{isOverdue ? "⚠ " : ""}Follow: {a.next_follow_up}</span>}
-                      {a.next_action_type && <span className="text-blue-300">→ {a.next_action_type}</span>}
-                      {a.next_action && <span className="text-blue-400">{a.next_action}</span>}
+                      {a.next_follow_up && <span className={`rounded px-1.5 py-0.5 font-semibold ${isOverdue ? "bg-red-900/50 text-foreground" : "text-muted"}`}>{isOverdue ? "⚠ " : "📅 "}Follow: {a.next_follow_up}</span>}
+                      {a.next_action_type && <span className="text-badge bg-blue-900/50 rounded px-1.5 py-0.5">→ {a.next_action_type}</span>}
+                      {a.next_action && <span className="text-badge">{a.next_action}</span>}
                       {a.next_action_by && <span className="text-muted">โดย {a.next_action_by}</span>}
-                      {a.converted_to_project_id && <span className="text-green-400">→ Pipeline</span>}
+                      {a.converted_to_project_id && <span className="bg-green-900/50 text-badge rounded px-1.5 py-0.5">✓ Pipeline</span>}
                     </div>
                     {isReassigning && (
                       <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border">
@@ -2765,12 +3138,12 @@ export default function SalesPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
-                    <select value={a.status} onChange={e => updateActivity(a.id!, { status: e.target.value })} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border-0 cursor-pointer focus:outline-none ${a.status === "done" ? "bg-green-900/50 text-green-400" : a.status === "in_progress" ? "bg-yellow-900/50 text-yellow-400" : "bg-blue-900/50 text-blue-400"}`}><option value="new">New</option><option value="in_progress">ทำอยู่</option><option value="done">เสร็จ</option></select>
-                    {!a.converted_to_project_id && a.status !== "done" && <button onClick={() => convertActivityToPipeline(a)} title="สร้างดีล → Pipeline" className="text-[10px] bg-blue-800/50 text-blue-400 rounded px-2 py-1 hover:bg-blue-800">→ ดีล</button>}
+                    <select value={a.status} onChange={e => updateActivity(a.id!, { status: e.target.value })} className={`rounded-full px-2.5 py-1 text-[10px] font-bold cursor-pointer focus:outline-none text-foreground ${a.status === "done" ? "bg-green-900/50" : a.status === "in_progress" ? "bg-amber-900/50" : "bg-blue-900/50"}`}><option value="new">New</option><option value="in_progress">ทำอยู่</option><option value="done">เสร็จ</option></select>
+                    {!a.converted_to_project_id && a.status !== "done" && <button onClick={() => convertActivityToPipeline(a)} title="สร้างดีล → Pipeline" className="text-[10px] bg-blue-900/50 text-badge rounded px-2 py-1 hover:bg-blue-800/60 transition-colors">→ ดีล</button>}
                     {canReassign && !isReassigning && (
                       <button onClick={() => { setReassigningId(a.id!); setReassignTarget(a.assigned_to || ""); }}
                         title="โยกงานให้เซลล์คนอื่น"
-                        className="text-[10px] bg-amber-900/50 text-amber-400 rounded px-2 py-1 hover:bg-amber-800">โยก</button>
+                        className="text-[10px] bg-amber-900/50 text-badge rounded px-2 py-1 hover:bg-amber-800/60 transition-colors">โยก</button>
                     )}
                     <button onClick={() => deleteActivity(a.id!)} className="text-[10px] text-danger hover:underline">ลบ</button>
                   </div>
@@ -2787,7 +3160,16 @@ export default function SalesPage() {
           {stages.map(s => {
             const c = projects.filter(p => p.status === s).length;
             const v = projects.filter(p => p.status === s).reduce((sum, p) => sum + (p.value || 0), 0);
-            return <button key={s} onClick={() => setStageFilter(stageFilter === s ? "all" : s)} className={`rounded-lg border p-2 text-center min-w-[80px] transition-colors ${stageFilter === s ? "border-accent bg-accent/10" : "border-border bg-card hover:bg-card-hover"}`}><p className="text-base font-bold">{c}</p><p className="text-[9px] text-muted">{s}</p><p className="text-[9px] text-muted">{(v/1000).toFixed(0)}K</p></button>;
+            const sc = stageColor[s] ?? "bg-card text-badge";
+            const isActive = stageFilter === s;
+            return (
+              <button key={s} onClick={() => setStageFilter(isActive ? "all" : s)}
+                className={`rounded-lg border-2 p-2 text-center min-w-[80px] transition-all ${sc} ${isActive ? "border-foreground/40 shadow-sm scale-[1.03]" : "border-transparent opacity-80 hover:opacity-100"}`}>
+                <p className="text-base font-bold">{c}</p>
+                <p className="text-[9px] font-medium">{s}</p>
+                <p className="text-[9px] opacity-70">{(v/1000).toFixed(0)}K</p>
+              </button>
+            );
           })}
           <input placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[150px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
           <CsvImportExport filename={`pipeline-${new Date().toISOString().slice(0,10)}`} columns={PIPELINE_COLS} getData={() => filteredPipeline as unknown as Record<string, unknown>[]} />
@@ -2827,7 +3209,7 @@ export default function SalesPage() {
         {showReqForm && (
           <div className="rounded-xl bg-card border border-border p-5 mb-4">
             <h2 className="text-base font-semibold mb-3">สร้าง Job Request</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+            <div className="grid grid-cols-1 @md:grid-cols-2 @lg:grid-cols-3 gap-3 mb-3">
               <div><label className="text-[10px] text-muted">หัวข้อ *</label><input value={reqForm.title} onChange={e => setReqForm({ ...reqForm, title: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" /></div>
               <div><label className="text-[10px] text-muted">ส่งถึงทีม</label><select value={reqForm.request_to_team} onChange={e => setReqForm({ ...reqForm, request_to_team: e.target.value as JobRequest["request_to_team"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="presale">Presale</option><option value="service">Service</option></select></div>
               <div className="relative"><label className="text-[10px] text-muted">ลูกค้า</label>
@@ -3040,7 +3422,7 @@ export default function SalesPage() {
                           <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] ${active ? "bg-current/20" : ""}`}>
                             {past ? "✓" : i+1}
                           </span>
-                          <span className="hidden sm:inline">{psLabel[s]}</span>
+                          <span className="hidden @md:inline">{psLabel[s]}</span>
                         </button>
                         {i < 3 && <div className={`flex-1 h-px mx-1 ${past || active ? "bg-border" : "bg-border/30"}`} />}
                       </div>

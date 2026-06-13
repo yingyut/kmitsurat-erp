@@ -314,6 +314,8 @@ export interface SalesActivity {
   rescheduled_reason?: string;   // เหตุผลที่เลื่อน
   // Attachments (files as base64 dataUrl or external links)
   attachments?: { name: string; url: string; type: "file" | "link"; uploaded_at: string; uploaded_by: string }[];
+  archived?: boolean;          // จัดเก็บแล้ว — ซ่อนจากหน้าจอ
+  archived_at?: string;        // ISO date ที่จัดเก็บ
 }
 
 export interface BomItem {

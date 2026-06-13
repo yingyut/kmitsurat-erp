@@ -9,6 +9,7 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { isNewRole } from "@/lib/rbac";
 import { users } from "@/lib/firestore";
+import LayoutCustomizer from "@/components/LayoutCustomizer";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -452,6 +453,9 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
 
         {/* Theme switcher */}
         <ThemeSwitcher userId={currentUser?.id} />
+
+        {/* Layout density customizer */}
+        <LayoutCustomizer />
 
         {/* User footer */}
         <div className="px-3 py-2.5">

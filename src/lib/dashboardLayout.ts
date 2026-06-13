@@ -83,7 +83,7 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
     // ① ยอดขายเป็นอย่างไร
     { id: "sales-manager-kpis", visible: true,  span: "full" },
     // ② ดีลไหนต้องรีบตาม
-    { id: "sales-overdue",      visible: true,  span: "full" },
+    { id: "sales-overdue",      visible: false, span: "full" },
     { id: "sales-top-deals",    visible: true,  span: "half" },
     { id: "sales-funnel",       visible: true,  span: "half" },
     // ③ ใครต้องการความช่วยเหลือ

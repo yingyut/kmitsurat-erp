@@ -29,6 +29,7 @@ const C = { blue: "#3b82f6", purple: "#8b5cf6", rose: "#f43f5e", green: "#22c55e
 
 // Context สำหรับส่ง hide callback จาก SortableWidget → Section/KpiCardWidget
 const HideCtx = createContext<(() => void) | null>(null);
+const UserIdCtx = createContext("");
 type Filter = "today" | "week" | "month" | "q1" | "q2" | "q3" | "q4" | "year" | "custom";
 
 function quarterRange(qNum: 1 | 2 | 3 | 4, fyStart: number) {
@@ -56,16 +57,16 @@ function KpiCard({ label, value, sub, color, href, pct, alert, size }: {
   const valColor = { green: "text-emerald-500", blue: "text-blue-500", purple: "text-violet-500", amber: "text-amber-500", red: "text-orange-500", cyan: "text-sky-500", muted: "text-muted" }[color];
   const barColor = { green: "bg-emerald-500", blue: "bg-blue-500", purple: "bg-violet-500", amber: "bg-amber-500", red: "bg-orange-500", cyan: "bg-sky-500", muted: "bg-muted" }[color];
   const inner = (
-    <div className={`rounded-xl bg-card border ${size === "sm" ? "p-2 sm:p-3 min-h-[72px] sm:min-h-[90px]" : "p-3 sm:p-4 min-h-[95px] sm:min-h-[110px]"} flex flex-col justify-between transition-all duration-150 ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18),0_1px_4px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(234,88,12,0.2),0_2px_6px_rgba(0,0,0,0.1)]" : "border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09),0_2px_6px_rgba(0,0,0,0.08)]"} active:translate-y-[2px] active:shadow-none`}>
-      <p className={`font-medium text-muted/60 uppercase leading-none truncate ${size === "sm" ? "text-[9px] sm:text-[10px] tracking-normal" : "text-[10px] sm:text-[11px] tracking-wider"}`}>{label}</p>
-      <p className={`${size === "sm" ? "text-base sm:text-xl" : "text-xl sm:text-[1.75rem]"} font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
+    <div className={`rounded-xl bg-card border ${size === "sm" ? "p-2 @md:p-3 min-h-[72px] @md:min-h-[90px]" : "p-3 @md:p-4 min-h-[95px] @md:min-h-[110px]"} flex flex-col justify-between transition-all duration-150 ${alert ? "border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18),0_1px_4px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(234,88,12,0.2),0_2px_6px_rgba(0,0,0,0.1)]" : "border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07),0_1px_4px_rgba(0,0,0,0.05)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09),0_2px_6px_rgba(0,0,0,0.08)]"} active:translate-y-[2px] active:shadow-none`}>
+      <p className={`font-medium text-muted/60 uppercase leading-none truncate ${size === "sm" ? "text-[9px] @md:text-[10px] tracking-normal" : "text-[10px] @md:text-[11px] tracking-wider"}`}>{label}</p>
+      <p className={`${size === "sm" ? "text-base @md:text-xl" : "text-xl @md:text-[1.75rem]"} font-bold tracking-tight leading-none ${valColor}`}>{value}</p>
       <div className="space-y-1">
         {pct !== undefined && (
           <div className="h-0.5 rounded-full bg-border/50 overflow-hidden">
             <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
           </div>
         )}
-        <p className={`text-[9px] sm:text-[11px] text-muted/60 leading-snug min-h-[12px] truncate`}>{sub ?? ""}</p>
+        <p className={`text-[9px] @md:text-[11px] text-muted/60 leading-snug min-h-[12px] truncate`}>{sub ?? ""}</p>
       </div>
     </div>
   );
@@ -88,7 +89,8 @@ function AlertRow({ level, msg, href }: { level: "red" | "orange" | "green"; msg
 function Section({ title, action, children, defaultOpen = true }: {
   title: string; action?: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean;
 }) {
-  const storageKey = `dash_col_${title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 50)}`;
+  const userId = useContext(UserIdCtx);
+  const storageKey = `dash_col_${userId}_${title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 50)}`;
   const [open, setOpen] = useState(() => {
     try { const s = localStorage.getItem(storageKey); return s === null ? defaultOpen : s === "1"; }
     catch { return defaultOpen; }
@@ -225,6 +227,23 @@ export default function DashboardPage() {
   const [showAchievBreakdown, setShowAchievBreakdown] = useState(false);
   const [showPipeBreakdown,   setShowPipeBreakdown]   = useState(false);
   const [showOdBreakdown,     setShowOdBreakdown]     = useState(false);
+  const [openOdPersons,  setOpenOdPersons]  = useState<Set<string>>(new Set());
+  const [openPipeStages, setOpenPipeStages] = useState<Set<string>>(new Set());
+  const [widgetShowMore, setWidgetShowMore] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    try {
+      const saved = localStorage.getItem(`kmit_dash_more_${currentUser.id}`);
+      if (saved) setWidgetShowMore(JSON.parse(saved));
+    } catch {}
+  }, [currentUser?.id]);
+  function toggleShowMore(wid: string) {
+    setWidgetShowMore(prev => {
+      const next = { ...prev, [wid]: !prev[wid] };
+      try { localStorage.setItem(`kmit_dash_more_${currentUser?.id ?? ""}`, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
 
   // ── Realtime Firestore subscriptions ─────────────────────────────────────────
   useEffect(() => {
@@ -643,7 +662,7 @@ export default function DashboardPage() {
     if (id === "exec-kpis") return (
       <div>
         <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">ตัวชี้วัดหลัก · {filterLabel}</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 @md:grid-cols-3 @2xl:grid-cols-6 gap-3">
           <KpiCard label="รายได้รวม (Revenue)" value={`${(actual/1e6).toFixed(1)}M`} sub="THB" color="green" href="/sales" />
           <KpiCard label="เป้าหมาย vs จริง" value={`${targetPct.toFixed(0)}%`} sub={`${(actual/1000).toFixed(0)}K / ${(target/1000).toFixed(0)}K`} color={targetPct>=80?"green":targetPct>=50?"amber":"red"} pct={targetPct} href="/reports" />
           <KpiCard label="กำไรรวม (GP)" value={actualProfit>0?`${(actualProfit/1e6).toFixed(2)}M`:"—"} sub={`GP ${gpPct.toFixed(1)}% · เป้า ${profitPct.toFixed(0)}%`} color={gpPct>=20?"green":gpPct>=10?"amber":actualProfit>0?"red":"muted"} pct={profitPct} href="/reports" />
@@ -655,7 +674,7 @@ export default function DashboardPage() {
     );
 
     if (id === "exec-quarterly") return (
-      <Section title={`📊 ผลงานรายไตรมาส (FY ${fyYear}/${fyEndYear})`} action={<Link href="/reports" className="text-[11px] text-accent hover:underline">รายงาน →</Link>}>
+      <Section title={`📊 ผลงานรายไตรมาส (FY ${fyYear}/${fyEndYear})`} action={<Link href="/reports" className="text-[11px] text-accent hover:underline">รายงาน →</Link>} defaultOpen={false}>
         <div className="grid grid-cols-4 gap-2 mb-4">
           {quarterlyData.map(q => (
             <div key={q.name} className={`rounded-xl p-3 text-center border ${q.isCurrent?"border-accent bg-accent/10":"border-border bg-background"}`}>
@@ -723,7 +742,7 @@ export default function DashboardPage() {
     }
 
     if (id === "exec-sales-table" || id === "sales-table") return (
-      <Section title={`👥 ยอดขายรายบุคคล · ${filterLabel}`} action={<Link href="/reports" className="text-[11px] text-accent hover:underline">รายงาน →</Link>}>
+      <Section title={`👥 ยอดขายรายบุคคล · ${filterLabel}`} action={<Link href="/reports" className="text-[11px] text-accent hover:underline">รายงาน →</Link>} defaultOpen={false}>
         {personData.length === 0 ? <p className="text-xs text-muted py-4">ไม่มีข้อมูล</p> : (
           <div className="space-y-0 divide-y divide-border/40">
             {personData.map(p => {
@@ -761,7 +780,7 @@ export default function DashboardPage() {
     );
 
     if (id === "exec-presale" || id === "pre-workload") return (
-      <Section title="⚙️ Presale Workload" action={<Link href="/presale" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>}>
+      <Section title="⚙️ Presale Workload" action={<Link href="/presale" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>} defaultOpen={false}>
         {prWorkload.length===0?<p className="text-xs text-muted py-4">ไม่มีข้อมูล</p>:(
           <div className="space-y-2">
             {prWorkload.slice(0,8).map(p=>{
@@ -791,7 +810,7 @@ export default function DashboardPage() {
     );
 
     if (id === "exec-service" || id === "svc-status") return (
-      <Section title="🔧 Service Status" action={<Link href="/service" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>}>
+      <Section title="🔧 Service Status" action={<Link href="/service" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>} defaultOpen={false}>
         <div className="grid grid-cols-2 gap-2 mb-3">
           <Link href="/service" className="rounded-xl bg-green-500/10 border border-green-500/25 p-3 text-center hover:opacity-80">
             <p className="text-2xl font-bold text-green-500">{svcDone}</p>
@@ -832,7 +851,7 @@ export default function DashboardPage() {
     );
 
     if (id === "exec-contracts" || id === "prj-contracts") return (
-      <Section title="📄 สัญญาใกล้หมดอายุ" action={<Link href="/contracts" className="text-[11px] text-accent hover:underline">ดูสัญญา →</Link>}>
+      <Section title="📄 สัญญาใกล้หมดอายุ" action={<Link href="/contracts" className="text-[11px] text-accent hover:underline">ดูสัญญา →</Link>} defaultOpen={false}>
         <div className="grid grid-cols-2 gap-2 mb-3">
           <Link href="/contracts" className="rounded-xl bg-orange-500/10 border border-orange-500/25 p-3 text-center hover:opacity-80">
             <p className="text-2xl font-bold text-orange-500">{expiringContracts.length}</p>
@@ -874,7 +893,7 @@ export default function DashboardPage() {
         const overdue = myPlans.filter(p => (p.plan_date||"") < todayStr && p.status !== "done").length;
         const pct     = myPlans.length > 0 ? Math.round(done / myPlans.length * 100) : 0;
         return (
-          <Section title="📋 แผนงานของฉัน" action={<Link href="/sales?tab=workplan" className="text-[11px] text-accent hover:underline">ดูปฏิทิน →</Link>}>
+          <Section title="📋 แผนงานของฉัน" action={<Link href="/sales?tab=workplan" className="text-[11px] text-accent hover:underline">ดูปฏิทิน →</Link>} defaultOpen={false}>
             <div className="flex items-center gap-6 py-2">
               <div className="text-center"><p className="text-2xl font-bold">{myPlans.length}</p><p className="text-[11px] text-muted">ทั้งหมด</p></div>
               <div className="text-center"><p className="text-2xl font-bold text-green-500">{done}</p><p className="text-[11px] text-muted">เสร็จแล้ว</p></div>
@@ -914,7 +933,7 @@ export default function DashboardPage() {
       }).sort((a, b) => b.total - a.total);
 
       return (
-        <Section title="📋 แผนงานทีมขาย — ภาพรวมรายคน" action={<Link href="/sales?tab=workplan" className="text-[11px] text-accent hover:underline">ดูปฏิทิน →</Link>}>
+        <Section title="📋 แผนงานทีมขาย — ภาพรวมรายคน" action={<Link href="/sales?tab=workplan" className="text-[11px] text-accent hover:underline">ดูปฏิทิน →</Link>} defaultOpen={false}>
           {rows.length === 0 ? <p className="text-xs text-muted py-4">ยังไม่มีแผนงาน</p> : (
             <div className="space-y-3">
               <div className="overflow-x-auto">
@@ -1007,15 +1026,15 @@ export default function DashboardPage() {
       return (
         <div className="space-y-3">
           {/* 4 KPI cards — ทุกใบกดเพื่อดู breakdown ด้านล่าง */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 @md:grid-cols-4 gap-3">
             {/* ① ยอดขายรวม */}
             <button onClick={()=>{setShowSalesBreakdown(v=>!v);setShowAchievBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
-              className="text-left rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+              className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
               <div className="flex items-center justify-between">
-                <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ยอดขายรวม</p>
+                <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ยอดขายรวม</p>
                 <span className="text-[10px] text-accent font-bold">{showSalesBreakdown?"▲":"▼"}</span>
               </div>
-              <p className="text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
+              <p className="text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none text-emerald-500">{mgActM}</p>
               <div>
                 {targetPct>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
                 <p className="text-[9px] text-muted/60 mt-0.5">{filterLabel}</p>
@@ -1028,12 +1047,12 @@ export default function DashboardPage() {
               const barCol=targetPct>=80?"bg-emerald-500":targetPct>=50?"bg-amber-500":target>0?"bg-orange-500":"bg-muted/20";
               return (
                 <button onClick={()=>{setShowAchievBreakdown(v=>!v);setShowSalesBreakdown(false);setShowPipeBreakdown(false);setShowOdBreakdown(false);}}
-                  className="text-left rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                  className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
+                    <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">ACHIEVEMENT %</p>
                     <span className="text-[10px] text-accent font-bold">{showAchievBreakdown?"▲":"▼"}</span>
                   </div>
-                  <p className={`text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none ${pctCol}`}>{target>0?`${targetPct.toFixed(0)}%`:"—"}</p>
+                  <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${pctCol}`}>{target>0?`${targetPct.toFixed(0)}%`:"—"}</p>
                   <div>
                     {target>0&&<div className="h-0.5 rounded-full bg-border/50 overflow-hidden"><div className={`h-full rounded-full ${barCol} transition-all`} style={{width:`${Math.min(targetPct,100)}%`}}/></div>}
                     <p className="text-[9px] text-muted/60 mt-0.5">{target>0?`${Math.round(actual/1000)}K / ${mgTgtM}`:"ยังไม่มีเป้า"}</p>
@@ -1047,12 +1066,12 @@ export default function DashboardPage() {
               const pipM=pipeline>=1e6?`${(pipeline/1e6).toFixed(1)}M`:pipeline>0?`${Math.round(pipeline/1000)}K`:"—";
               return (
                 <button onClick={()=>{setShowPipeBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowOdBreakdown(false);}}
-                  className="text-left rounded-xl bg-card border border-border/60 p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
+                  className="text-left rounded-xl bg-card border border-border/60 p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] flex flex-col justify-between shadow-[0_4px_0_0_rgba(0,0,0,0.07)] hover:border-border/90 hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_rgba(0,0,0,0.09)] active:translate-y-[2px] active:shadow-none transition-all duration-150">
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">PIPELINE รวม</p>
+                    <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">PIPELINE รวม</p>
                     <span className="text-[10px] text-accent font-bold">{showPipeBreakdown?"▲":"▼"}</span>
                   </div>
-                  <p className="text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none text-violet-500">{pipM}</p>
+                  <p className="text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none text-violet-500">{pipM}</p>
                   <p className="text-[9px] text-muted/60 mt-0.5">{totalDeals} ดีล · Win {convRate.toFixed(0)}%</p>
                 </button>
               );
@@ -1064,12 +1083,12 @@ export default function DashboardPage() {
               const hasAlert=totalAlerts>0;
               return (
                 <button onClick={()=>{setShowOdBreakdown(v=>!v);setShowSalesBreakdown(false);setShowAchievBreakdown(false);setShowPipeBreakdown(false);}}
-                  className={`text-left rounded-xl bg-card border flex flex-col justify-between p-3 sm:p-4 min-h-[95px] sm:min-h-[110px] transition-all hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-none ${hasAlert?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
+                  className={`text-left rounded-xl bg-card border flex flex-col justify-between p-3 @md:p-4 min-h-[95px] @md:min-h-[110px] transition-all hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-none ${hasAlert?"border-orange-600/40 border-l-2 border-l-orange-500 shadow-[0_4px_0_0_rgba(234,88,12,0.18)]":"border-border/60 shadow-[0_4px_0_0_rgba(0,0,0,0.07)]"}`}>
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] sm:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">งานค้าง</p>
+                    <p className="text-[10px] @md:text-[11px] text-muted/60 uppercase tracking-wider font-medium leading-none">งานค้าง</p>
                     <span className="text-[10px] text-accent font-bold">{showOdBreakdown?"▲":"▼"}</span>
                   </div>
-                  <p className={`text-xl sm:text-[1.75rem] font-bold tracking-tight leading-none ${hasAlert?"text-orange-500":"text-muted"}`}>{totalAlerts}</p>
+                  <p className={`text-xl @md:text-[1.75rem] font-bold tracking-tight leading-none ${hasAlert?"text-orange-500":"text-muted"}`}>{totalAlerts}</p>
                   <div className="flex gap-1.5 mt-0.5">
                     {salesOverdue.length>0&&<span className="text-[9px] text-orange-400">FU {salesOverdue.length}</span>}
                     {salesOverdue.length>0&&salesPlanOverdue.length>0&&<span className="text-[9px] text-muted/40">·</span>}
@@ -1174,13 +1193,33 @@ export default function DashboardPage() {
                 </div>
                 {stageList.length===0?<p className="text-xs text-muted px-4 py-4 text-center">ยังไม่มีดีล</p>:(
                   <div className="divide-y divide-border/30">
-                    {stageList.map(s=>(
-                      <div key={s.key} className="flex items-center gap-3 px-4 py-2.5">
-                        <div className="w-28 shrink-0"><p className={`text-xs font-semibold ${s.colCls}`}>{s.sub}</p><p className="text-[10px] text-muted/60">{s.label}</p></div>
-                        <div className={`text-xl font-bold tabular-nums w-8 text-center ${s.colCls}`}>{s.cnt}</div>
-                        <div className="flex-1 text-right"><p className={`text-xs font-semibold ${s.colCls}`}>{fmtV(s.val)}</p><p className="text-[9px] text-muted/50">THB</p></div>
-                      </div>
-                    ))}
+                    {stageList.map(s=>{
+                      const isOpen = openPipeStages.has(s.key);
+                      const stageDeals = sc.projects.filter(p => p.status === s.key).sort((a,b)=>(b.value||0)-(a.value||0));
+                      const toggleStage = () => setOpenPipeStages(prev => { const n=new Set(prev); n.has(s.key)?n.delete(s.key):n.add(s.key); return n; });
+                      return (
+                        <div key={s.key}>
+                          <button onClick={toggleStage} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-card-hover/50 transition-colors text-left">
+                            <div className="w-28 shrink-0"><p className={`text-xs font-semibold ${s.colCls}`}>{s.sub}</p><p className="text-[10px] text-muted/60">{s.label}</p></div>
+                            <div className={`text-xl font-bold tabular-nums w-8 text-center ${s.colCls}`}>{s.cnt}</div>
+                            <div className="flex-1 text-right"><p className={`text-xs font-semibold ${s.colCls}`}>{fmtV(s.val)}</p><p className="text-[9px] text-muted/50">THB</p></div>
+                            <span className="text-[10px] text-muted/40 ml-1 shrink-0">{isOpen?"▲":"▼"}</span>
+                          </button>
+                          {isOpen && (
+                            <div className="bg-background/50 border-t border-border/20 divide-y divide-border/10">
+                              {stageDeals.map(deal=>(
+                                <Link key={deal.id} href="/projects" className="flex items-center gap-2 px-5 py-1.5 hover:bg-card-hover/50 transition-colors group">
+                                  <span className="text-[10px] text-foreground/80 truncate flex-1 group-hover:text-accent transition-colors">{deal.customer_name||deal.name||"—"}</span>
+                                  <span className="text-[10px] text-muted/60 shrink-0">{deal.assigned_to?.split(" ")[0]||"—"}</span>
+                                  <span className={`text-[10px] font-semibold shrink-0 tabular-nums ${s.colCls}`}>{fmtV(deal.value||0)}</span>
+                                  <span className="text-[9px] text-muted/40 shrink-0 w-20 text-right">{deal.next_action_date||deal.expected_close_date||"—"}</span>
+                                </Link>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1227,16 +1266,22 @@ export default function DashboardPage() {
                     : <div className="divide-y divide-border/20">
                         {fuGroups.map(([name,items])=>{
                           const short=users.find(u=>u.name===name)?.name.split(" ")[0]||name.split(" ")[0]||name;
+                          const odKey=`fu_${name}`;
+                          const isOpen=openOdPersons.has(odKey);
+                          const toggle=()=>setOpenOdPersons(prev=>{const n=new Set(prev);n.has(odKey)?n.delete(odKey):n.add(odKey);return n;});
                           return (
-                            <div key={name} className="px-4 py-2">
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-[11px] font-semibold">{short}</p>
+                            <div key={name}>
+                              <button onClick={toggle} className="w-full flex items-center gap-2 px-4 py-2 hover:bg-orange-500/5 transition-colors">
+                                <p className="text-[11px] font-semibold flex-1 text-left">{short}</p>
                                 <span className="text-[10px] bg-orange-500/10 border border-orange-500/25 text-orange-400 rounded-full px-1.5 py-0.5">{items.length}</span>
-                              </div>
-                              <div className="space-y-0.5">
-                                {items.slice(0,4).map(a=>renderRow(a,a.next_follow_up||"","orange",false))}
-                                {items.length>4&&<Link href="/sales?tab=activities" className="block text-[10px] text-accent hover:underline pl-1">+ อีก {items.length-4} →</Link>}
-                              </div>
+                                <span className="text-[10px] text-muted/40 ml-0.5">{isOpen?"▲":"▼"}</span>
+                              </button>
+                              {isOpen && (
+                                <div className="px-4 pb-2 space-y-0.5 bg-background/30">
+                                  {items.slice(0,4).map(a=>renderRow(a,a.next_follow_up||"","orange",false))}
+                                  {items.length>4&&<Link href="/sales?tab=activities" className="block text-[10px] text-accent hover:underline pl-1">+ อีก {items.length-4} →</Link>}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -1255,16 +1300,22 @@ export default function DashboardPage() {
                     : <div className="divide-y divide-border/20">
                         {planGroups.map(([name,items])=>{
                           const short=users.find(u=>u.name===name)?.name.split(" ")[0]||name.split(" ")[0]||name;
+                          const planKey=`plan_${name}`;
+                          const isOpen=openOdPersons.has(planKey);
+                          const toggle=()=>setOpenOdPersons(prev=>{const n=new Set(prev);n.has(planKey)?n.delete(planKey):n.add(planKey);return n;});
                           return (
-                            <div key={name} className="px-4 py-2">
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-[11px] font-semibold">{short}</p>
+                            <div key={name}>
+                              <button onClick={toggle} className="w-full flex items-center gap-2 px-4 py-2 hover:bg-violet-500/5 transition-colors">
+                                <p className="text-[11px] font-semibold flex-1 text-left">{short}</p>
                                 <span className="text-[10px] bg-violet-500/10 border border-violet-500/25 text-violet-400 rounded-full px-1.5 py-0.5">{items.length}</span>
-                              </div>
-                              <div className="space-y-0.5">
-                                {items.slice(0,4).map(a=>renderRow(a,a.plan_date||a.next_follow_up||"","violet",true))}
-                                {items.length>4&&<Link href="/sales?tab=workplan" className="block text-[10px] text-accent hover:underline pl-1">+ อีก {items.length-4} →</Link>}
-                              </div>
+                                <span className="text-[10px] text-muted/40 ml-0.5">{isOpen?"▲":"▼"}</span>
+                              </button>
+                              {isOpen && (
+                                <div className="px-4 pb-2 space-y-0.5 bg-background/30">
+                                  {items.slice(0,4).map(a=>renderRow(a,a.plan_date||a.next_follow_up||"","violet",true))}
+                                  {items.length>4&&<Link href="/sales?tab=workplan" className="block text-[10px] text-accent hover:underline pl-1">+ อีก {items.length-4} →</Link>}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -1283,14 +1334,15 @@ export default function DashboardPage() {
       const stageCl: Record<string,string>    = { lead:"text-blue-500",opportunity:"text-cyan-500",proposal:"text-amber-500",negotiation:"text-orange-500",won:"text-emerald-500" };
       const topDeals = sc.projects
         .filter(p => !["won","lost"].includes(p.status) && (p.value||0) > 0)
-        .sort((a,b) => (b.value||0)-(a.value||0))
-        .slice(0,10);
+        .sort((a,b) => (b.value||0)-(a.value||0));
+      const DEALS_LIMIT = 5;
+      const showAllDeals = widgetShowMore["sales-top-deals"];
       const fmtVal = (v:number) => v>=1e6?`${(v/1e6).toFixed(1)}M`:`${Math.round(v/1000)}K`;
       return (
         <Section title="🏆 Top Deals" action={<Link href="/projects" className="text-[11px] text-accent hover:underline">ดูดีลทั้งหมด →</Link>}>
           {topDeals.length===0 ? <p className="text-xs text-muted py-4 text-center">ยังไม่มีดีล</p> : (
             <div className="space-y-1">
-              {topDeals.map((p,idx) => (
+              {topDeals.slice(0, showAllDeals ? topDeals.length : DEALS_LIMIT).map((p,idx) => (
                 <Link key={p.id} href="/projects" className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border/40 hover:bg-card-hover transition-colors group">
                   <span className="text-[10px] text-muted/40 w-4 tabular-nums shrink-0">{idx+1}</span>
                   <div className="flex-1 min-w-0">
@@ -1302,6 +1354,12 @@ export default function DashboardPage() {
                   <div className="text-[10px] text-muted/50 shrink-0 w-16 text-right">{p.next_action_date||p.expected_close_date||"—"}</div>
                 </Link>
               ))}
+              {topDeals.length > DEALS_LIMIT && (
+                <button onClick={() => toggleShowMore("sales-top-deals")}
+                  className="w-full mt-2 py-1.5 text-[11px] text-accent hover:underline rounded-lg hover:bg-card-hover transition-colors">
+                  {showAllDeals ? "▲ แสดงน้อยลง" : `▼ ดูเพิ่ม ${topDeals.length - DEALS_LIMIT} รายการ`}
+                </button>
+              )}
             </div>
           )}
         </Section>
@@ -1331,7 +1389,7 @@ export default function DashboardPage() {
         const gpColor  = gpPctMe>=20?"text-emerald-500":gpPctMe>=10?"text-amber-500":profitK>0?"text-foreground/70":"text-muted";
         return (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 @md:grid-cols-4 gap-3">
               {/* Achievement */}
               <div className="rounded-xl bg-background border border-border/60 p-4 flex flex-col justify-between min-h-[110px]">
                 <p className="text-[11px] text-muted/60 truncate leading-tight">Achievement</p>
@@ -1392,8 +1450,8 @@ export default function DashboardPage() {
               {totalOD > 0 && <span className="text-[10px] bg-orange-500/10 border border-orange-500/25 text-orange-500 rounded-full px-2 py-0.5">⚠ ค้าง {totalOD}</span>}
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {myCards.map(p=>{
+          <div className="grid grid-cols-2 @md:grid-cols-3 @lg:grid-cols-4 @2xl:grid-cols-5 gap-3">
+            {myCards.slice(0, widgetShowMore["sales-person-cards"] ? myCards.length : 4).map(p=>{
               const myOverdue = salesOverdue.filter(a=>a.assigned_to===p.name).length;
               const pipM = p.pipVal>=1e6?`${(p.pipVal/1e6).toFixed(1)}M`:p.pipVal>0?`${Math.round(p.pipVal/1000)}K`:"—";
               return (
@@ -1426,6 +1484,12 @@ export default function DashboardPage() {
             })}
             {myCards.length===0&&<p className="text-xs text-muted py-4 col-span-full">ยังไม่มีข้อมูล Sales</p>}
           </div>
+          {myCards.length > 4 && (
+            <button onClick={() => toggleShowMore("sales-person-cards")}
+              className="w-full mt-2 py-1.5 text-[11px] text-accent hover:underline rounded-lg hover:bg-card-hover transition-colors">
+              {widgetShowMore["sales-person-cards"] ? "▲ แสดงน้อยลง" : `▼ ดูเพิ่ม ${myCards.length - 4} รายการ`}
+            </button>
+          )}
         </div>
       );
     }
@@ -1433,7 +1497,7 @@ export default function DashboardPage() {
     if (id === "sales-kpis") return (
       <div>
         <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">Sales KPI · {filterLabel}</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 @md:grid-cols-3 @2xl:grid-cols-6 gap-3">
           {seeAll && <KpiCard label="ยอดขายรวม" value={`${(actual/1e6).toFixed(1)}M`} sub="THB" color="green" href="/sales" />}
           {seeAll && <KpiCard label="บรรลุเป้า" value={`${targetPct.toFixed(0)}%`} sub={`${(actual/1000).toFixed(0)}K / ${(target/1000).toFixed(0)}K`} color={targetPct>=80?"green":targetPct>=50?"amber":"red"} pct={targetPct} href="/reports" />}
           {seeAll && <KpiCard label="กำไรรวม (GP)" value={actualProfit>0?`${(actualProfit/1e6).toFixed(2)}M`:"—"} sub={`GP ${gpPct.toFixed(1)}%`} color={gpPct>=20?"green":gpPct>=10?"amber":actualProfit>0?"red":"muted"} pct={profitPct} href="/reports" />}
@@ -1445,7 +1509,7 @@ export default function DashboardPage() {
     );
 
     if (id === "sales-qt-status" || id === "prj-qt-status") return (
-      <Section title="📋 สถานะใบเสนอราคา" action={<Link href="/quotations" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>}>
+      <Section title="📋 สถานะใบเสนอราคา" action={<Link href="/quotations" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>} defaultOpen={false}>
         <div className="grid grid-cols-2 gap-3 mb-4">
           {[
             { label:"Draft", sub:"ร่าง", value:qtDraft,color:"text-amber-500",bg:"bg-amber-500/10 border-amber-500/25" },
@@ -1475,8 +1539,8 @@ export default function DashboardPage() {
         {salesOverdue.length===0?(
           <p className="text-xs text-muted/60 py-3 text-center">ไม่มีงานค้าง</p>
         ):(
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5">
-            {salesOverdue.slice(0,8).map(a=>(
+          <div className="grid grid-cols-1 @xl:grid-cols-2 gap-1.5">
+            {salesOverdue.slice(0, widgetShowMore["sales-overdue"] ? salesOverdue.length : 5).map(a=>(
               <Link key={a.id} href="/sales" className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border/40 hover:bg-card-hover transition-colors">
                 <div className="text-xs text-orange-500 w-[88px] shrink-0 font-mono">{a.next_follow_up}</div>
                 <div className="flex-1 min-w-0">
@@ -1488,7 +1552,12 @@ export default function DashboardPage() {
             ))}
           </div>
         )}
-        {salesOverdue.length>8&&<Link href="/sales" className="block text-center text-[11px] text-accent hover:underline pt-2">+ อีก {salesOverdue.length-8} รายการ</Link>}
+        {salesOverdue.length > 5 && (
+          <button onClick={() => toggleShowMore("sales-overdue")}
+            className="w-full mt-2 py-1.5 text-[11px] text-accent hover:underline rounded-lg hover:bg-card-hover transition-colors">
+            {widgetShowMore["sales-overdue"] ? "▲ แสดงน้อยลง" : `▼ ดูเพิ่ม ${salesOverdue.length - 5} รายการ`}
+          </button>
+        )}
       </Section>
     );
 
@@ -1533,7 +1602,7 @@ export default function DashboardPage() {
     if (id === "pre-kpis") return (
       <div>
         <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">Presale KPI (ทั้งหมด)</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 @md:grid-cols-3 @2xl:grid-cols-6 gap-3">
           <KpiCard label="งาน Presale รวม" value={String(prTotal)} sub="ทุกสถานะ" color="blue" href="/presale" />
           <KpiCard label="รอดำเนินการ" value={String(prPending)} sub="pending" color={prPending>5?"amber":"muted"} href="/presale" />
           <KpiCard label="กำลังดำเนินการ" value={String(prInProg)} sub="in progress" color="cyan" href="/presale" />
@@ -1548,7 +1617,7 @@ export default function DashboardPage() {
       <Section title="⚠️ งาน Presale ค้าง SLA" action={<Link href="/presale" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>}>
         {presaleOverdue.length===0?<p className="text-xs text-muted py-4 text-center">✅ ไม่มีงานค้าง</p>:(
           <div className="space-y-1.5">
-            {presaleOverdue.slice(0,8).map(r=>(
+            {presaleOverdue.slice(0, widgetShowMore["pre-overdue"] ? presaleOverdue.length : 5).map(r=>(
               <Link key={r.id} href="/presale" className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover transition-colors">
                 <div className="text-xs text-orange-500 w-20 shrink-0 font-mono">{r.due_date}</div>
                 <div className="flex-1 min-w-0">
@@ -1558,7 +1627,12 @@ export default function DashboardPage() {
                 <div className="text-[10px] text-muted shrink-0">{r.assigned_to?.split(" ")[0]||"—"}</div>
               </Link>
             ))}
-            {presaleOverdue.length>8&&<Link href="/presale" className="block text-center text-[11px] text-accent hover:underline pt-1">+ อีก {presaleOverdue.length-8} รายการ</Link>}
+            {presaleOverdue.length > 5 && (
+              <button onClick={() => toggleShowMore("pre-overdue")}
+                className="w-full mt-2 py-1.5 text-[11px] text-accent hover:underline rounded-lg hover:bg-card-hover transition-colors">
+                {widgetShowMore["pre-overdue"] ? "▲ แสดงน้อยลง" : `▼ ดูเพิ่ม ${presaleOverdue.length - 5} รายการ`}
+              </button>
+            )}
           </div>
         )}
       </Section>
@@ -1567,30 +1641,38 @@ export default function DashboardPage() {
     if (id === "pre-request-list") return (
       <Section title={`📋 งาน Presale · ${filterLabel}`} action={<Link href="/presale" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>} defaultOpen={false}>
         {filtPresale.length===0?<p className="text-xs text-muted py-4">ไม่มีข้อมูลช่วงนี้</p>:(
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[500px]">
-              <thead>
-                <tr className="text-left text-[11px] text-muted border-b border-border">
-                  <th className="pb-2 font-medium">โปรเจค</th><th className="pb-2 font-medium">ลูกค้า</th>
-                  <th className="pb-2 font-medium">รับผิดชอบ</th><th className="pb-2 font-medium">Due</th><th className="pb-2 font-medium text-center">สถานะ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filtPresale.slice(0,10).map(r=>(
-                  <tr key={r.id} className="hover:bg-card-hover">
-                    <td className="py-2 text-xs truncate max-w-[180px]"><Link href="/presale" className="hover:text-accent">{r.project_name||"—"}</Link></td>
-                    <td className="py-2 text-xs text-muted truncate max-w-[120px]">{r.customer_name||"—"}</td>
-                    <td className="py-2 text-xs text-muted">{r.assigned_to?.split(" ")[0]||"—"}</td>
-                    <td className="py-2 text-xs text-muted">{r.due_date||"—"}</td>
-                    <td className="py-2 text-center">
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full border ${r.status==="completed"?"bg-green-500/10 border-green-500/25 text-green-500":r.status==="in_progress"?"bg-blue-500/10 border-blue-500/25 text-blue-500":"bg-amber-500/10 border-amber-500/25 text-amber-500"}`}>
-                        {r.status==="completed"?"เสร็จ":r.status==="in_progress"?"กำลังทำ":"รอ"}
-                      </span>
-                    </td>
+          <div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[500px]">
+                <thead>
+                  <tr className="text-left text-[11px] text-muted border-b border-border">
+                    <th className="pb-2 font-medium">โปรเจค</th><th className="pb-2 font-medium">ลูกค้า</th>
+                    <th className="pb-2 font-medium">รับผิดชอบ</th><th className="pb-2 font-medium">Due</th><th className="pb-2 font-medium text-center">สถานะ</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filtPresale.slice(0, widgetShowMore["pre-request-list"] ? filtPresale.length : 5).map(r=>(
+                    <tr key={r.id} className="hover:bg-card-hover">
+                      <td className="py-2 text-xs truncate max-w-[180px]"><Link href="/presale" className="hover:text-accent">{r.project_name||"—"}</Link></td>
+                      <td className="py-2 text-xs text-muted truncate max-w-[120px]">{r.customer_name||"—"}</td>
+                      <td className="py-2 text-xs text-muted">{r.assigned_to?.split(" ")[0]||"—"}</td>
+                      <td className="py-2 text-xs text-muted">{r.due_date||"—"}</td>
+                      <td className="py-2 text-center">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${r.status==="completed"?"bg-green-500/10 border-green-500/25 text-green-500":r.status==="in_progress"?"bg-blue-500/10 border-blue-500/25 text-blue-500":"bg-amber-500/10 border-amber-500/25 text-amber-500"}`}>
+                          {r.status==="completed"?"เสร็จ":r.status==="in_progress"?"กำลังทำ":"รอ"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {filtPresale.length > 5 && (
+              <button onClick={() => toggleShowMore("pre-request-list")}
+                className="w-full mt-2 py-1.5 text-[11px] text-accent hover:underline rounded-lg hover:bg-card-hover transition-colors">
+                {widgetShowMore["pre-request-list"] ? "▲ แสดงน้อยลง" : `▼ ดูเพิ่ม ${filtPresale.length - 5} รายการ`}
+              </button>
+            )}
           </div>
         )}
       </Section>
@@ -1639,7 +1721,7 @@ export default function DashboardPage() {
     if (id === "svc-kpis") return (
       <div>
         <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">Service KPI (ทั้งหมด)</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 @md:grid-cols-3 @2xl:grid-cols-6 gap-3">
           <KpiCard label="Ticket รวม" value={String(allSvcTotal)} sub="ทุกสถานะ" color="blue" href="/service" />
           <KpiCard label="เปิดอยู่" value={String(svcOpen)} sub="open" color={svcOpen>0?"amber":"muted"} href="/service" />
           <KpiCard label="กำลังดำเนินการ" value={String(svcInProg)} sub="in progress" color="cyan" href="/service" />
@@ -1654,7 +1736,7 @@ export default function DashboardPage() {
       <Section title="⚠️ Ticket ค้างกำหนด" action={<Link href="/service" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>}>
         {svcOverdue.length===0?<p className="text-xs text-muted py-3 text-center">✅ ไม่มี Ticket ค้าง</p>:(
           <div className="space-y-1.5">
-            {svcOverdue.slice(0,6).map(t=>(
+            {svcOverdue.slice(0, widgetShowMore["svc-overdue"] ? svcOverdue.length : 5).map(t=>(
               <Link key={t.id} href="/service" className="flex items-center gap-3 p-2 rounded-lg hover:bg-card-hover transition-colors">
                 <div className="text-xs text-orange-500 w-20 shrink-0 font-mono">{t.service_date}</div>
                 <div className="flex-1 min-w-0">
@@ -1664,14 +1746,19 @@ export default function DashboardPage() {
                 <div className="text-[10px] text-muted shrink-0">{t.technician?.split(" ")[0]||"—"}</div>
               </Link>
             ))}
-            {svcOverdue.length>6&&<Link href="/service" className="block text-center text-[11px] text-accent hover:underline pt-1">+ อีก {svcOverdue.length-6} รายการ</Link>}
+            {svcOverdue.length > 5 && (
+              <button onClick={() => toggleShowMore("svc-overdue")}
+                className="w-full mt-2 py-1.5 text-[11px] text-accent hover:underline rounded-lg hover:bg-card-hover transition-colors">
+                {widgetShowMore["svc-overdue"] ? "▲ แสดงน้อยลง" : `▼ ดูเพิ่ม ${svcOverdue.length - 5} รายการ`}
+              </button>
+            )}
           </div>
         )}
       </Section>
     );
 
     if (id === "svc-pm") return (
-      <Section title="🛠️ PM Schedule" action={<Link href="/assets/pm-schedule" className="text-[11px] text-accent hover:underline">ดูตาราง →</Link>}>
+      <Section title="🛠️ PM Schedule" action={<Link href="/assets/pm-schedule" className="text-[11px] text-accent hover:underline">ดูตาราง →</Link>} defaultOpen={false}>
         <div className="grid grid-cols-2 gap-2 mb-3">
           <Link href="/assets/pm-schedule" className="rounded-xl bg-orange-500/10 border border-orange-500/25 p-3 text-center hover:opacity-80">
             <p className="text-2xl font-bold text-orange-500">{pmOverdue.length}</p><p className="text-[10px] text-muted/70 mt-0.5">PM เลยกำหนด</p>
@@ -1705,7 +1792,7 @@ export default function DashboardPage() {
       };
       const activeTechs = techWorkload.filter(t=>!t.isPool);
       return (
-        <Section title="📋 Ticket รายคน (ละเอียด)" action={<Link href="/service" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>}>
+        <Section title="📋 Ticket รายคน (ละเอียด)" action={<Link href="/service" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>} defaultOpen={false}>
           {activeTechs.length===0?<p className="text-xs text-muted py-3 text-center">ยังไม่มีข้อมูล</p>:(
             <div className="space-y-5">
               {activeTechs.map(tech=>{
@@ -1725,7 +1812,7 @@ export default function DashboardPage() {
                           <thead>
                             <tr className="bg-card-hover text-muted text-[10px] uppercase tracking-wide">
                               <th className="text-left px-3 py-2">ลูกค้า</th>
-                              <th className="text-left px-3 py-2 hidden sm:table-cell">ปัญหา</th>
+                              <th className="text-left px-3 py-2 hidden @md:table-cell">ปัญหา</th>
                               <th className="text-center px-3 py-2">ประเภท</th>
                               <th className="text-center px-3 py-2">สถานะ</th>
                               <th className="text-center px-3 py-2">วันที่ผ่าน</th>
@@ -1738,7 +1825,7 @@ export default function DashboardPage() {
                               return (
                                 <tr key={i} className="hover:bg-card-hover transition-colors">
                                   <td className="px-3 py-2 font-medium truncate max-w-[120px]">{t.customer_name}</td>
-                                  <td className="px-3 py-2 text-muted truncate max-w-[180px] hidden sm:table-cell">{t.issue?.slice(0,50)||"—"}</td>
+                                  <td className="px-3 py-2 text-muted truncate max-w-[180px] hidden @md:table-cell">{t.issue?.slice(0,50)||"—"}</td>
                                   <td className="px-3 py-2 text-center text-muted">{TYPE_LABEL[t.type]||t.type}</td>
                                   <td className="px-3 py-2 text-center"><span className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS_STYLE[t.status]||""}`}>{STATUS_TH[t.status]||t.status}</span></td>
                                   <td className={`px-3 py-2 text-center font-medium ${isActive&&days>7?"text-red-500":isActive&&days>3?"text-amber-500":"text-muted"}`}>{days} วัน</td>
@@ -1780,7 +1867,7 @@ export default function DashboardPage() {
         return { name: t.name, active: myActive.length, longRunning: longRunning.length };
       }).filter(t=>t.active>0||t.longRunning>0);
       return (
-        <Section title="🔁 ปัญหาซ้ำ & Skill Gap">
+        <Section title="🔁 ปัญหาซ้ำ & Skill Gap" defaultOpen={false}>
           <div className="space-y-4">
             <div>
               <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">ลูกค้าเปิด Ticket ซ้ำ</p>
@@ -1828,7 +1915,7 @@ export default function DashboardPage() {
     if (id === "prj-kpis") return (
       <div>
         <p className="text-[11px] text-muted uppercase tracking-widest mb-2 font-medium">Projects & Pipeline Overview</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 @md:grid-cols-3 @2xl:grid-cols-6 gap-3">
           <KpiCard label="Pipeline (มูลค่า)" value={`${(pipeline/1e6).toFixed(1)}M`} sub="THB รอปิด" color="blue" href="/projects" />
           <KpiCard label="Win Rate" value={`${convRate.toFixed(0)}%`} sub={`${wonCount}/${totalDeals} ดีล`} color={convRate>=30?"green":convRate>=15?"amber":"red"} pct={convRate} href="/projects" />
           <KpiCard label="Lead" value={String(funnelSteps.find(s=>s.name==="Lead")?.value??0)} sub="รอประเมิน" color="muted" href="/projects" />
@@ -1840,7 +1927,7 @@ export default function DashboardPage() {
     );
 
     if (id === "prj-quarterly") return (
-      <Section title={`📊 ผลงานรายไตรมาส (FY ${fyYear}/${fyEndYear})`} action={<Link href="/reports" className="text-[11px] text-accent hover:underline">รายงาน →</Link>}>
+      <Section title={`📊 ผลงานรายไตรมาส (FY ${fyYear}/${fyEndYear})`} action={<Link href="/reports" className="text-[11px] text-accent hover:underline">รายงาน →</Link>} defaultOpen={false}>
         <div className="grid grid-cols-4 gap-2 mb-3">
           {quarterlyData.map(q=>(
             <div key={q.name} className={`rounded-xl p-2.5 text-center border ${q.isCurrent?"border-accent bg-accent/10":"border-border bg-background"}`}>
@@ -1893,7 +1980,7 @@ export default function DashboardPage() {
 
     if (id === "coord-kpis") return (
       <Section title="ภาพรวมธุรการ">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 @md:grid-cols-3 @xl:grid-cols-5 gap-3">
           <KpiCard label="รับเรื่องรอดำเนินการ"  value={String(pendingJobs.length)}    color={pendingJobs.length > 0 ? "amber" : "muted"} href="/service" alert={pendingJobs.length > 0} />
           <KpiCard label="งานอยู่ระหว่างดำเนินการ" value={String(inProgJobs.length)}   color="blue"   href="/service" />
           <KpiCard label="Ticket เปิดอยู่"         value={String(svcOpenAll.length + svcInProgAll.length)} color="purple" href="/service" />
@@ -1974,7 +2061,7 @@ export default function DashboardPage() {
     );
 
     if (id === "coord-contracts") return (
-      <Section title="สัญญาใกล้หมดอายุ" action={<Link href="/contracts" className="text-xs text-accent hover:underline">ดูทั้งหมด →</Link>}>
+      <Section title="สัญญาใกล้หมดอายุ" action={<Link href="/contracts" className="text-xs text-accent hover:underline">ดูทั้งหมด →</Link>} defaultOpen={false}>
         {expiring30.length === 0 && expiring60.length === 0 && expiring90.length === 0 ? (
           <p className="text-sm text-muted text-center py-6">ไม่มีสัญญาที่ใกล้หมดใน 90 วัน</p>
         ) : (
@@ -2028,7 +2115,7 @@ export default function DashboardPage() {
       });
       const techRows = Object.values(byTech).sort((a, b) => b.done - a.done).slice(0, 6);
       return (
-        <Section title="สรุปงานที่เสร็จ — 30 วันล่าสุด">
+        <Section title="สรุปงานที่เสร็จ — 30 วันล่าสุด" defaultOpen={false}>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-[11px] text-muted uppercase tracking-wide mb-2">งานปิดในช่วง 30 วัน</p>
@@ -2187,7 +2274,7 @@ export default function DashboardPage() {
       });
 
       return (
-        <Section title="⏱️ วิเคราะห์เวลาการทำงาน" action={<span className="text-[10px] text-muted">{closedTix.length} tickets ปิดแล้ว</span>}>
+        <Section title="⏱️ วิเคราะห์เวลาการทำงาน" action={<span className="text-[10px] text-muted">{closedTix.length} tickets ปิดแล้ว</span>} defaultOpen={false}>
           <div className="space-y-2 mb-4">
             {phases.length === 0
               ? <p className="text-xs text-muted">ยังไม่มีข้อมูล timestamp — บันทึกสถานะในใบงานเพื่อเริ่มเก็บข้อมูล</p>
@@ -2237,7 +2324,7 @@ export default function DashboardPage() {
 
     if (id === "svc-cost-dashboard") {
       if (!canSeeFinanceDash) return (
-        <Section title="💰 รายรับ / ต้นทุน Service">
+        <Section title="💰 รายรับ / ต้นทุน Service" defaultOpen={false}>
           <p className="text-xs text-muted py-6 text-center">ต้องการสิทธิ์ finance เพื่อดูข้อมูล</p>
         </Section>
       );
@@ -2251,7 +2338,7 @@ export default function DashboardPage() {
       const hoursJobs  = service.filter(t => t.hours_spent).length;
       const avgHours   = hoursJobs > 0 ? totalHours / hoursJobs : 0;
       return (
-        <Section title="💰 รายรับ / ต้นทุน Service" action={<span className="text-[10px] text-muted">{closedFin.length} งานมีข้อมูล</span>}>
+        <Section title="💰 รายรับ / ต้นทุน Service" action={<span className="text-[10px] text-muted">{closedFin.length} งานมีข้อมูล</span>} defaultOpen={false}>
           {closedFin.length === 0 ? (
             <p className="text-xs text-muted py-4">ยังไม่มีข้อมูล — กรอกรายรับ/ต้นทุนในใบงานเมื่อปิดงาน</p>
           ) : (
@@ -2299,6 +2386,7 @@ export default function DashboardPage() {
     showPipeBreakdown, setShowPipeBreakdown,
     showOdBreakdown, setShowOdBreakdown,
     activeSalesData, users, myName, salesPlanOverdue,
+    widgetShowMore, toggleShowMore,
   ]);
 
   if (!mounted) return <div className="p-6 text-muted text-sm">Loading...</div>;
@@ -2309,7 +2397,8 @@ export default function DashboardPage() {
   const viewLabel = view==="executive"?"📊 Executive":view==="sales"?"💰 Sales":view==="presale"?"⚙️ Presale":view==="service"?"🔧 Service":view==="coordinator"?"🗂️ ธุรการ":"🔽 Projects";
 
   return (
-    <div className="p-5 md:p-6 max-w-[1400px] space-y-5">
+    <UserIdCtx.Provider value={currentUser?.id ?? ""}>
+    <div className="p-5 @md:p-6 max-w-[1400px] space-y-5 overflow-x-hidden">
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3">
@@ -2423,7 +2512,7 @@ export default function DashboardPage() {
                 </Link>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-1 @md:grid-cols-2 @lg:grid-cols-3 gap-1.5">
               {alerts.slice(0,5).map(a=><AlertRow key={a.id} {...a}/>)}
             </div>
           </div>
@@ -2498,5 +2587,6 @@ export default function DashboardPage() {
 
       </>)}
     </div>
+    </UserIdCtx.Provider>
   );
 }

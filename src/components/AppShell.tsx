@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { UserProvider, useCurrentUser } from "@/lib/UserContext";
 import Sidebar from "@/components/Sidebar";
 import type { ReactNode } from "react";
+import { applyDensity, loadUserDensity, loadAdminDefault } from "@/lib/displayPrefs";
 
 type DeviceMode = "desktop" | "tablet" | "mobile";
 
@@ -102,6 +103,21 @@ function AppContent({ children }: { children: ReactNode }) {
       }
       const dm = localStorage.getItem("kmit_device_preview") as DeviceMode | null;
       if (dm && dm in DEVICE_META) setDeviceMode(dm);
+
+      // Apply UI density — find userId from localStorage key pattern
+      const uid = (() => {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i) ?? "";
+          if (k.startsWith("kmit_disp_")) return k.replace("kmit_disp_", "");
+        }
+        return null;
+      })();
+      if (uid) {
+        applyDensity(loadUserDensity(uid));
+      } else {
+        // No user-pref yet — apply admin default
+        loadAdminDefault().then(applyDensity);
+      }
     } catch {}
   }, []);
 
