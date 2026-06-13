@@ -23,6 +23,16 @@ const QT_COLS = [
 
 const emptyItem: QuotationItem = { product_id: "", product_code: "", product_name: "", qty: 1, unit: "pcs", cost_price: 0, selling_price: 0, discount: 0, total_cost: 0, total_selling: 0, margin_percent: 0, price_tier: "general" };
 
+function stripUndef(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(obj)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [k, Array.isArray(v)
+        ? v.map(i => (i && typeof i === "object") ? stripUndef(i as Record<string, unknown>) : i)
+        : v])
+  );
+}
+
 const statusLabel: Record<string, string> = { draft: "Draft", sent: "ส่งแล้ว", approved: "อนุมัติ", rejected: "ปฏิเสธ", expired: "หมดอายุ" };
 
 const vatModeLabel: Record<string, string> = { none: "ไม่มี VAT", exclusive: "ราคา + VAT", inclusive: "รวม VAT แล้ว" };
@@ -337,7 +347,7 @@ export default function QuotationsPage() {
     try {
       await quotations.add({
         quotation_number: qNum, customer_id: custId, customer_name: custName,
-        project_id: projId === "other" ? "" : projId, project_name: projName, items,
+        project_id: projId === "other" ? "" : projId, project_name: projName, items: items.map(it => stripUndef(it as unknown as Record<string, unknown>)),
         total_cost: totalCost, total_selling: subtotalSelling, total_discount: totalDiscount,
         gross_profit: grossProfit, gp_percent: gpPercent,
         vat_mode: vatMode, vat_rate: vatRate, vat_amount: vatAmount, grand_total: grandTotal,
@@ -394,8 +404,8 @@ export default function QuotationsPage() {
       const doc: Omit<QuotationDocument, "id"> = {
         quotation_id: q.id!, customer_id: q.customer_id, project_id: q.project_id || "",
         document_type: newDocType, document_name: newDocName.trim(),
-        document_url: newDocUrl.trim() || undefined,
-        owner_team: newDocOwner, note: newDocNote.trim() || undefined,
+        document_url: newDocUrl.trim() || "",
+        owner_team: newDocOwner, note: newDocNote.trim() || "",
         created_by: currentUser?.name || "", createdAt: new Date().toISOString(),
       };
       await quotationDocuments.add(doc as unknown as Record<string, unknown>);
@@ -468,7 +478,7 @@ export default function QuotationsPage() {
     const { quotations } = await import("@/lib/firestore");
     try {
       await quotations.update(revisionOf.id!, {
-        items, total_cost: totalCost, total_selling: subtotalSelling, total_discount: totalDiscount,
+        items: items.map(it => stripUndef(it as unknown as Record<string, unknown>)), total_cost: totalCost, total_selling: subtotalSelling, total_discount: totalDiscount,
         gross_profit: grossProfit, gp_percent: gpPercent,
         vat_mode: vatMode, vat_rate: vatRate, vat_amount: vatAmount, grand_total: grandTotal,
         notes, status: "revised",
