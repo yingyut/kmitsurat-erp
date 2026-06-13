@@ -292,6 +292,7 @@ export interface JobRequest {
   assigned_to: string;
   reject_reason: string;
   accept_note: string;
+  attachments?: { type: "link" | "file"; name: string; url: string }[];
 }
 
 export interface SalesActivity {

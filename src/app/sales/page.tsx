@@ -248,6 +248,8 @@ export default function SalesPage() {
 
   // Request form
   const [reqForm, setReqForm] = useState({ request_from: "", request_to_team: "presale" as JobRequest["request_to_team"], request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium" as JobRequest["priority"], status: "pending" as JobRequest["status"], assigned_to: "", reject_reason: "", accept_note: "" });
+  const [reqAttachments, setReqAttachments] = useState<{ type: "link" | "file"; name: string; url: string }[]>([]);
+  const [reqLinkInput, setReqLinkInput] = useState("");
 
   // Quota form
   const [quotaForm, setQuotaForm] = useState({ user_name: "", role: "sale" as "sale"|"avenger", month: currentMonth, quota_target: 0, actual_sales: 0, profit_target: 0, actual_profit: 0, target_gp_percent: 0, won_deals: 0, total_activities: 0 });
@@ -760,7 +762,11 @@ export default function SalesPage() {
     if (!reqForm.title.trim() || !reqForm.description.trim()) return;
     setSaving(true);
     const { jobRequests } = await import("@/lib/firestore");
-    try { await jobRequests.add(reqForm as unknown as Record<string, unknown>); setReqForm({ request_from: "", request_to_team: "presale", request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium", status: "pending", assigned_to: "", reject_reason: "", accept_note: "" }); setShowReqForm(false); await load(); }
+    try {
+      await jobRequests.add({ ...reqForm, attachments: reqAttachments } as unknown as Record<string, unknown>);
+      setReqForm({ request_from: "", request_to_team: "presale", request_to_person: "", customer_id: "", customer_name: "", project_id: "", project_name: "", title: "", description: "", value: 0, due_date: "", priority: "medium", status: "pending", assigned_to: "", reject_reason: "", accept_note: "" });
+      setReqAttachments([]); setReqLinkInput(""); setShowReqForm(false); await load();
+    }
     catch (e) { console.error(e); } finally { setSaving(false); }
   }
 
@@ -3400,9 +3406,51 @@ export default function SalesPage() {
               <div><label className="text-[10px] text-muted">ความเร่งด่วน</label><select value={reqForm.priority} onChange={e => setReqForm({ ...reqForm, priority: e.target.value as JobRequest["priority"] })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1"><option value="low">ปกติ</option><option value="medium">ค่อนข้างด่วน</option><option value="high">ด่วน</option><option value="urgent">ด่วนมาก</option></select></div>
               <div className="col-span-full"><label className="text-[10px] text-muted">รายละเอียด *</label><textarea value={reqForm.description} onChange={e => setReqForm({ ...reqForm, description: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1 min-h-16 resize-y" /></div>
             </div>
+            {/* Attachments */}
+            <div className="mb-3">
+              <p className="text-[10px] text-muted mb-1.5">📎 แนบลิงก์ / ไฟล์ / รูปภาพ</p>
+              <div className="flex gap-2 mb-2">
+                <input value={reqLinkInput} onChange={e => setReqLinkInput(e.target.value)}
+                  placeholder="วาง URL ลิงก์แล้วกด +"
+                  className="flex-1 rounded-lg bg-background border border-border px-3 py-1.5 text-sm focus:outline-none focus:border-accent"
+                  onKeyDown={e => { if (e.key === "Enter" && reqLinkInput.trim()) { setReqAttachments(a => [...a, { type: "link", name: reqLinkInput.trim(), url: reqLinkInput.trim() }]); setReqLinkInput(""); } }}
+                />
+                <button type="button" onClick={() => { if (reqLinkInput.trim()) { setReqAttachments(a => [...a, { type: "link", name: reqLinkInput.trim(), url: reqLinkInput.trim() }]); setReqLinkInput(""); } }}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-card-hover">+ ลิงก์</button>
+                <label className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:bg-card-hover cursor-pointer">
+                  📁 ไฟล์/รูป
+                  <input type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" multiple className="hidden"
+                    onChange={async e => {
+                      const files = Array.from(e.target.files || []);
+                      for (const file of files) {
+                        if (file.type.startsWith("image/")) {
+                          const dataUrl = await compressImage(file);
+                          setReqAttachments(a => [...a, { type: "file", name: file.name, url: dataUrl }]);
+                        } else {
+                          const reader = new FileReader();
+                          reader.onload = ev => setReqAttachments(a => [...a, { type: "file", name: file.name, url: ev.target?.result as string }]);
+                          reader.readAsDataURL(file);
+                        }
+                      }
+                      e.target.value = "";
+                    }} />
+                </label>
+              </div>
+              {reqAttachments.length > 0 && (
+                <div className="space-y-1">
+                  {reqAttachments.map((att, i) => (
+                    <div key={i} className="flex items-center gap-2 rounded-lg bg-background border border-border px-3 py-1.5">
+                      {att.type === "link" ? <span className="text-xs">🔗</span> : att.url.startsWith("data:image") ? <img src={att.url} className="w-6 h-6 rounded object-cover shrink-0" alt="" /> : <span className="text-xs">📄</span>}
+                      <span className="flex-1 text-xs truncate">{att.name}</span>
+                      <button onClick={() => setReqAttachments(a => a.filter((_,j) => j!==i))} className="text-danger text-xs hover:opacity-70">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex gap-2">
               <button onClick={saveRequest} disabled={saving || !reqForm.title.trim()} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">{saving ? "..." : "ส่ง Request"}</button>
-              <button onClick={() => setShowReqForm(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
+              <button onClick={() => { setShowReqForm(false); setReqAttachments([]); setReqLinkInput(""); }} className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:bg-card-hover">ยกเลิก</button>
             </div>
           </div>
         )}
@@ -3419,6 +3467,20 @@ export default function SalesPage() {
                   </div>
                   <p className="text-xs text-muted">{r.description}</p>
                   <p className="text-[10px] text-muted mt-0.5">{r.customer_name}{r.due_date && ` · กำหนด: ${r.due_date}`}</p>
+                  {(r.attachments ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {(r.attachments ?? []).map((att, i) => att.url.startsWith("data:image") ? (
+                        <a key={i} href={att.url} target="_blank" rel="noopener noreferrer">
+                          <img src={att.url} className="h-10 w-10 rounded object-cover border border-border hover:opacity-80" alt={att.name} />
+                        </a>
+                      ) : (
+                        <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 rounded-lg bg-background border border-border px-2 py-1 text-[10px] text-accent hover:underline max-w-[160px] truncate">
+                          {att.type === "link" ? "🔗" : "📄"} <span className="truncate">{att.name}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <button onClick={async () => { if (!confirm("ลบ?")) return; const { jobRequests } = await import("@/lib/firestore"); await jobRequests.remove(r.id!); await load(); }} className="text-[10px] text-danger hover:underline shrink-0">ลบ</button>
               </div>
