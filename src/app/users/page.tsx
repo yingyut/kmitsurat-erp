@@ -113,6 +113,38 @@ export default function UsersPage() {
   // Detail view
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
+  const [emailTesting, setEmailTesting] = useState(false);
+
+  async function testEmail(email: string) {
+    if (!email.trim()) return;
+    setEmailTesting(true);
+    try {
+      const fs = await import("@/lib/firestore");
+      const channels = await fs.notificationChannels.list();
+      const ch = channels.find(c => c.type === "email" && c.active && c.smtp_host && c.smtp_user);
+      if (!ch) { showToast("❌ ไม่พบการตั้งค่า Email SMTP — กรุณาตั้งค่าใน Settings → Notifications ก่อน", false); return; }
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          smtp_host: ch.smtp_host, smtp_port: ch.smtp_port || 587,
+          smtp_user: ch.smtp_user, smtp_pass: ch.smtp_pass,
+          from_email: ch.from_email || ch.smtp_user, from_name: ch.from_name || "KMITSURAT ERP",
+          to: email.trim(),
+          subject: "ทดสอบ Email — KMITSURAT ERP",
+          body: `อีเมลนี้เป็นการทดสอบระบบส่งอีเมล KMITSURAT ERP\n\nถ้าคุณได้รับอีเมลนี้แสดงว่าการตั้งค่าถูกต้องแล้ว\n\nวันที่ทดสอบ: ${new Date().toLocaleString("th-TH")}`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) showToast(`✓ ส่ง Email ทดสอบไปที่ ${email} สำเร็จ`);
+      else showToast(`❌ ส่งไม่สำเร็จ: ${data.error}`, false);
+    } catch (e) {
+      showToast("❌ เกิดข้อผิดพลาด: " + String(e), false);
+    } finally {
+      setEmailTesting(false);
+    }
+  }
+
   // Custom confirm modal (replaces window.confirm — ไม่ทำงานใน Electron)
   const [confirmModal, setConfirmModal] = useState<{ msg: string; onOk: () => void } | null>(null);
   function askConfirm(msg: string, onOk: () => void) { setConfirmModal({ msg, onOk }); }
@@ -640,7 +672,14 @@ export default function UsersPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-muted">อีเมล</label>
-                    <input placeholder="email@example.com" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                    <div className="flex gap-2 mt-1">
+                      <input placeholder="email@example.com" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} className="flex-1 rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                      <button type="button" onClick={() => testEmail(userForm.email)} disabled={emailTesting || !userForm.email.trim()}
+                        title="ส่ง Email ทดสอบไปที่ address นี้"
+                        className="shrink-0 rounded-lg border border-blue-700 text-blue-400 px-3 py-2 text-xs hover:bg-blue-900/20 disabled:opacity-40 disabled:cursor-not-allowed">
+                        {emailTesting ? "⏳..." : "📧 ทดสอบ"}
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="text-[10px] text-muted">เบอร์โทร</label>
