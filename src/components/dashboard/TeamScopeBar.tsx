@@ -52,11 +52,18 @@ const DEPT_CONFIG: DeptConfig[] = [
     roles: ["presale", "Presales Engineer", "BOQ Engineer"],
     view: "projects",
   },
+  {
+    key: "coordinator",
+    label: "ธุรการ",
+    icon: "🗂️",
+    roles: ["Coordinator", "Operations Coordinator"],
+    view: "coordinator",
+  },
 ];
 
 function getAllowedDepts(myRole: string): string[] {
   if (["admin", "Administrator", "avenger"].includes(myRole))
-    return DEPT_CONFIG.map((d) => d.key);
+    return ["executive", "sales", "presales", "service", "project", "coordinator"];
   if (myRole === "Sales Manager")    return ["executive", "sales"];
   if (myRole === "Presales Manager") return ["executive", "presales", "project"];
   if (myRole === "Service Manager")  return ["service"];

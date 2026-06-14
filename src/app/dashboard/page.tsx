@@ -3312,28 +3312,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── VIEW TABS ──────────────────────────────────────────────────────── */}
-      {(()=>{
-        const tabs = ([
-          { id:"executive",   label:"Executive", show: isAdmin || myRole === "Sales Manager" || myRole === "Presales Manager" },
-          { id:"sales",       label:"Sales",     show: isAdmin || myRole === "Sales Manager" },
-          { id:"presale",     label:"Presale",   show: isAdmin || myRole === "Presales Manager" },
-          { id:"service",     label:"Service",   show: isAdmin || myRole === "Service Manager" },
-          { id:"projects",    label:"Projects",  show: isAdmin || myRole === "Presales Manager" },
-          { id:"coordinator", label:"ธุรการ",    show: isAdmin },
-        ] as {id:DashView;label:string;show:boolean}[]).filter(v => v.show);
-        if (tabs.length < 2) return null;
-        return (
-          <div className="flex gap-0.5 rounded-lg border border-border/70 bg-card p-1 w-fit flex-wrap">
-            {tabs.map(v=>(
-              <button key={v.id} onClick={()=>{ setView(v.id); setEditMode(false); setTeamScope(null); }}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view===v.id?"bg-accent text-white shadow-sm":"text-muted hover:text-foreground"}`}>
-                {v.label}
-              </button>
-            ))}
-          </div>
-        );
-      })()}
+      {/* ── VIEW TABS — ซ่อนเมื่อ TeamScopeBar แสดงอยู่ ───────────────────── */}
 
       {/* ── TEAM SCOPE BAR ─────────────────────────────────────────────────── */}
       {(isAdmin || ["Sales Manager","Presales Manager","Service Manager"].includes(myRole)) && !loading && (
