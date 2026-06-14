@@ -67,6 +67,45 @@ export default function NotificationsPage() {
   // Test result
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testSending, setTestSending] = useState(false);
+
+  // Channel direct test
+  const [testChId, setTestChId] = useState<string | null>(null);
+  const [testChEmail, setTestChEmail] = useState("");
+  const [testChSending, setTestChSending] = useState(false);
+  const [testChResult, setTestChResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function sendTestChannel(ch: NotificationChannel) {
+    const to = testChEmail.trim() || currentUser?.email || "";
+    if (!to) { setTestChResult({ ok: false, msg: "กรุณาระบุอีเมลปลายทาง" }); return; }
+    setTestChSending(true);
+    setTestChResult(null);
+    try {
+      if (ch.type === "email") {
+        if (!ch.smtp_host || !ch.smtp_user) { setTestChResult({ ok: false, msg: "ยังไม่ได้ตั้งค่า SMTP Host / Username" }); return; }
+        const res = await fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            smtp_host: ch.smtp_host, smtp_port: ch.smtp_port || 587,
+            smtp_user: ch.smtp_user, smtp_pass: ch.smtp_pass,
+            from_email: ch.from_email || ch.smtp_user, from_name: ch.from_name || "KMITSURAT ERP",
+            to,
+            subject: `[ทดสอบ] ${ch.name} — KMITSURAT ERP`,
+            body: `อีเมลนี้เป็นการทดสอบ Channel "${ch.name}"\n\nSMTP: ${ch.smtp_host}:${ch.smtp_port || 587}\nUsername: ${ch.smtp_user}\nFrom: ${ch.from_email || ch.smtp_user}\nTo: ${to}\n\nวันที่ทดสอบ: ${new Date().toLocaleString("th-TH")}`,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) setTestChResult({ ok: true, msg: `✅ SMTP ตอบรับแล้ว (${ch.smtp_host}) — ตรวจสอบ inbox และ Spam ที่ ${to}` });
+        else setTestChResult({ ok: false, msg: `❌ SMTP Error: ${data.error}` });
+      } else {
+        setTestChResult({ ok: false, msg: `ยังไม่รองรับการทดสอบ channel ประเภท ${ch.type}` });
+      }
+    } catch (e) {
+      setTestChResult({ ok: false, msg: "❌ " + String(e) });
+    } finally {
+      setTestChSending(false);
+    }
+  }
   const { currentUser, hasPermission, loading: userLoading } = useCurrentUser();
   const canManage = hasPermission("manage_system");
 
@@ -453,10 +492,41 @@ export default function NotificationsPage() {
                   {ch.type === "ms_teams" && `Webhook: ${ch.teams_webhook_url ? "✓ ตั้งค่าแล้ว" : "ยังไม่ตั้งค่า"}`}
                   {ch.type === "webhook" && `URL: ${ch.webhook_url || "ยังไม่ตั้งค่า"}`}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-3 items-center">
                   <button onClick={() => openEditCh(ch)} className="text-xs text-accent hover:underline">แก้ไข</button>
                   <button onClick={() => deleteCh(ch.id!, ch.name)} className="text-xs text-danger hover:underline">ลบ</button>
+                  {ch.type === "email" && ch.active && (
+                    <button onClick={() => { setTestChId(testChId === ch.id ? null : ch.id!); setTestChResult(null); setTestChEmail(currentUser?.email || ""); }}
+                      className="text-xs text-blue-400 hover:underline">🧪 ทดสอบ</button>
+                  )}
                 </div>
+
+                {/* Inline test panel */}
+                {testChId === ch.id && (
+                  <div className="mt-3 rounded-xl border border-blue-700/40 bg-blue-900/10 p-3 space-y-2">
+                    <p className="text-[10px] font-semibold text-blue-400 uppercase tracking-widest">ทดสอบส่ง Email</p>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        value={testChEmail}
+                        onChange={e => setTestChEmail(e.target.value)}
+                        placeholder="อีเมลปลายทาง เช่น you@gmail.com"
+                        className="flex-1 rounded-lg bg-background border border-border px-3 py-1.5 text-xs focus:outline-none focus:border-accent"
+                      />
+                      <button
+                        onClick={() => sendTestChannel(ch)}
+                        disabled={testChSending || !testChEmail.trim()}
+                        className="rounded-lg bg-blue-700 hover:bg-blue-600 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-50">
+                        {testChSending ? "⏳ ส่ง..." : "📧 ส่งทดสอบ"}
+                      </button>
+                    </div>
+                    {testChResult && (
+                      <p className={`text-[11px] leading-snug ${testChResult.ok ? "text-green-400" : "text-red-400"}`}>
+                        {testChResult.msg}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
