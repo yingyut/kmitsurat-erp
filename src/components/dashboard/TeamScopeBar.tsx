@@ -139,7 +139,7 @@ export function TeamScopeBar({ users, myRole, scope, currentView, onScope }: Tea
 
             {/* Dropdown menu */}
             {openDept === dept.key && (
-              <div className="absolute top-full left-0 mt-1.5 z-50 bg-popover border border-border rounded-xl shadow-xl min-w-[200px] py-1.5 overflow-hidden">
+              <div className="absolute top-full left-0 mt-1.5 z-50 bg-card border border-border/80 rounded-xl shadow-lg min-w-[200px] py-1.5 overflow-hidden">
                 {/* Team overview row */}
                 <button
                   onClick={() => { onScope({ view: dept.view, user: null }); setOpenDept(null); }}
