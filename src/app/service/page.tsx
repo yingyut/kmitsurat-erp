@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { ServiceTicket, ServiceStatus, ServiceFollowup, Customer, Project, JobRequest, User, Asset, InAppNotification } from "@/lib/types";
 import { useCurrentUser } from "@/lib/UserContext";
+import { useTeamScope } from "@/lib/TeamScopeContext";
+import { TeamScopeBar } from "@/components/dashboard/TeamScopeBar";
 import { isNewRole } from "@/lib/rbac";
 import Link from "next/link";
 import { ServiceTicketDetail } from "@/components/ServiceTicketDetail";
@@ -442,7 +444,8 @@ function NotifBell({ myName, notifs, show, setShow, soundEnabled, setSoundEnable
 }
 
 export default function ServicePage() {
-  const { currentUser, hasPermission } = useCurrentUser();
+  const { currentUser, hasPermission, users: allSystemUsers } = useCurrentUser();
+  const { scopeUser, setScopeUser } = useTeamScope();
   const [list, setList]               = useState<ServiceTicket[]>([]);
   const [custs, setCusts]             = useState<Customer[]>([]);
   const [projs, setProjs]             = useState<Project[]>([]);
@@ -564,6 +567,10 @@ export default function ServicePage() {
   const baseTickets = ownTicketsOnly
     ? list.filter(t => myAllIdents.includes(t.technician || "") || (t.job_request_id && allAcceptedReqIds.has(t.job_request_id)))
     : list;
+  // Manager scope: filter by selected team member from TeamScopeBar
+  const effectiveBaseTickets = (!ownTicketsOnly && scopeUser)
+    ? list.filter(t => t.technician === scopeUser.name)
+    : baseTickets;
   const canSeeFinance = hasPermission("view_finance");
   const isAdminRole = ["admin","Administrator","avenger","ธุรการ","Branch Manager"].some(r => (currentUser?.role ?? "").includes(r));
   const custMap = new Map(custs.map(c => [c.id, c]));
@@ -579,19 +586,19 @@ export default function ServicePage() {
 
   const viewBase = (() => {
     switch (activeView) {
-      case "new":     return baseTickets.filter(t => ["open","acknowledged"].includes(t.status));
-      case "doing":   return baseTickets.filter(t => ["traveling","on_site","repair_start","in_progress","resume"].includes(t.status));
-      case "parts":   return baseTickets.filter(t => t.status === "waiting_parts");
-      case "overdue": return baseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date < today);
-      case "today":   return baseTickets.filter(t => t.service_date === today && isActive(t.status));
-      case "pm":      return baseTickets.filter(t => t.type === "pm_service" && t.service_date === today);
-      case "sla":     return baseTickets.filter(t => {
+      case "new":     return effectiveBaseTickets.filter(t => ["open","acknowledged"].includes(t.status));
+      case "doing":   return effectiveBaseTickets.filter(t => ["traveling","on_site","repair_start","in_progress","resume"].includes(t.status));
+      case "parts":   return effectiveBaseTickets.filter(t => t.status === "waiting_parts");
+      case "overdue": return effectiveBaseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date < today);
+      case "today":   return effectiveBaseTickets.filter(t => t.service_date === today && isActive(t.status));
+      case "pm":      return effectiveBaseTickets.filter(t => t.type === "pm_service" && t.service_date === today);
+      case "sla":     return effectiveBaseTickets.filter(t => {
         if (!isActive(t.status) || !t.opened_at) return false;
         return (nowMs - (parseISO(t.opened_at) || nowMs)) / 3600000 > (t.sla_resolve_hours || 48);
       });
-      case "waiting": return baseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date > today);
-      case "history": return baseTickets.filter(t => ["resolved","closed"].includes(t.status));
-      default:        return baseTickets.filter(t => isActive(t.status));
+      case "waiting": return effectiveBaseTickets.filter(t => isActive(t.status) && !!t.service_date && t.service_date > today);
+      case "history": return effectiveBaseTickets.filter(t => ["resolved","closed"].includes(t.status));
+      default:        return effectiveBaseTickets.filter(t => isActive(t.status));
     }
   })();
 
@@ -1242,6 +1249,20 @@ td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}tr:nth-child(ev
               </button>
             </div>
           </div>
+
+          {/* TeamScopeBar — manager/admin can filter by individual technician */}
+          {!ownTicketsOnly && (
+            <div className="mb-3">
+              <TeamScopeBar
+                users={allSystemUsers}
+                myRole={currentUser?.role ?? ""}
+                scope={scopeUser ? { view: "service", user: scopeUser } : null}
+                currentView="service"
+                restrictTo={["service"]}
+                onScope={(s) => setScopeUser(s?.user ?? null)}
+              />
+            </div>
+          )}
 
           {/* 8-card quick overview — always visible */}
           {!loading && (

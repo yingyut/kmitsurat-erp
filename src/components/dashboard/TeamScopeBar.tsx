@@ -76,9 +76,10 @@ export interface TeamScopeBarProps {
   scope: ScopeState | null;
   currentView: DashView;
   onScope: (s: ScopeState | null) => void;
+  restrictTo?: string[];
 }
 
-export function TeamScopeBar({ users, myRole, scope, currentView, onScope }: TeamScopeBarProps) {
+export function TeamScopeBar({ users, myRole, scope, currentView, onScope, restrictTo }: TeamScopeBarProps) {
   const [openDept, setOpenDept] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -91,7 +92,9 @@ export function TeamScopeBar({ users, myRole, scope, currentView, onScope }: Tea
   }, []);
 
   const allowedDepts = getAllowedDepts(myRole);
-  const visibleDepts = DEPT_CONFIG.filter((d) => allowedDepts.includes(d.key));
+  const visibleDepts = DEPT_CONFIG.filter((d) =>
+    allowedDepts.includes(d.key) && (!restrictTo || restrictTo.includes(d.key))
+  );
 
   if (visibleDepts.length === 0) return null;
 

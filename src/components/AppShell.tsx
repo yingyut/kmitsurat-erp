@@ -2,6 +2,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { UserProvider, useCurrentUser } from "@/lib/UserContext";
+import { TeamScopeProvider } from "@/lib/TeamScopeContext";
 import Sidebar from "@/components/Sidebar";
 import type { ReactNode } from "react";
 import { applyDensity, loadUserDensity, loadAdminDefault } from "@/lib/displayPrefs";
@@ -182,7 +183,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <UserProvider>
       <AuthGate>
-        <AppContent>{children}</AppContent>
+        <TeamScopeProvider>
+          <AppContent>{children}</AppContent>
+        </TeamScopeProvider>
       </AuthGate>
     </UserProvider>
   );

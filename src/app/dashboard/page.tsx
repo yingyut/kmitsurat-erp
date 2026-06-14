@@ -17,6 +17,7 @@ import { ServiceDashboard }    from "@/components/dashboard/views/ServiceDashboa
 import { ProjectDashboard }    from "@/components/dashboard/views/ProjectDashboard";
 import { ExecutiveDashboard }  from "@/components/dashboard/views/ExecutiveDashboard";
 import { TeamScopeBar, type ScopeState } from "@/components/dashboard/TeamScopeBar";
+import { useTeamScope } from "@/lib/TeamScopeContext";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -566,6 +567,7 @@ export default function DashboardPage() {
   const svcOverdue = sc.service.filter(t => t.service_date && t.service_date < today && !["resolved","closed"].includes(t.status));
   type AlertItem = { id: string; msg: string; level: "red"|"orange"|"green"; href: string };
   const alerts: AlertItem[] = [];
+  const { setScopeUser } = useTeamScope();
   const myRole = currentUser?.role ?? "";
   const isManagerRole = ["admin","Administrator","Branch Manager","Sales Manager","Presales Manager","Service Manager"].includes(myRole);
   const isAdminAvenger = ["admin","Administrator","avenger"].includes(myRole);
@@ -3323,6 +3325,7 @@ export default function DashboardPage() {
           currentView={view}
           onScope={(s) => {
             setTeamScope(s);
+            setScopeUser(s?.user ?? null);
             if (s) { setView(s.view); setEditMode(false); }
           }}
         />

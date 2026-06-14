@@ -4,6 +4,8 @@ import Link from "next/link";
 import type { PresaleRequest, PresaleWorkStep, PresaleApprovalSettings, Customer, Project, JobRequest, User, Product, QuotationItem, BomItem, PresaleAttachment, IntegrationSetting, NotificationWorkflow, NotificationChannel, InAppNotification } from "@/lib/types";
 import { sendPresaleStatusNotification } from "@/lib/notify";
 import { useCurrentUser } from "@/lib/UserContext";
+import { useTeamScope } from "@/lib/TeamScopeContext";
+import { TeamScopeBar } from "@/components/dashboard/TeamScopeBar";
 import { generateNumber } from "@/lib/numbering";
 import { buildProjectFolderUrl, buildSubfolderUrl } from "@/lib/integrations";
 
@@ -277,6 +279,7 @@ const GOV_LABOR_TEMPLATE: QuotationItem[] = [
 
 export default function PresalePage() {
   const { currentUser, hasPermission } = useCurrentUser();
+  const { scopeUser, setScopeUser } = useTeamScope();
 
   const [list, setList] = useState<PresaleRequest[]>([]);
   const [custs, setCusts] = useState<Customer[]>([]);
@@ -453,10 +456,13 @@ export default function PresalePage() {
     return typeMatch || valueMatch;
   }
 
+  // Manager scope: selected team member from TeamScopeBar overrides personFilter
+  const effectivePersonFilter = (isManager && scopeUser) ? scopeUser.name : personFilter;
+
   // Filter
   const filtered = list.filter((r) => {
     if (ownOnly && r.assigned_to !== myName) return false;
-    if (personFilter && r.assigned_to !== personFilter) return false;
+    if (effectivePersonFilter && r.assigned_to !== effectivePersonFilter) return false;
     if (typeFilter && r.type !== typeFilter) return false;
     const s = search.toLowerCase();
     if (s && !r.requirement.toLowerCase().includes(s) && !r.customer_name.toLowerCase().includes(s) &&
@@ -1063,6 +1069,20 @@ export default function PresalePage() {
           <button onClick={() => { if (showForm) { setShowForm(false); setEditId(null); } else openAdd(); }} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover">{showForm ? "Cancel" : "+ New Task"}</button>
         </div>
       </div>
+
+      {/* TeamScopeBar — manager/admin can filter by individual presale engineer */}
+      {isManager && (
+        <div className="mb-4">
+          <TeamScopeBar
+            users={allUsers}
+            myRole={currentUser?.role ?? ""}
+            scope={scopeUser ? { view: "presale", user: scopeUser } : null}
+            currentView="presale"
+            restrictTo={["presales", "project"]}
+            onScope={(s) => setScopeUser(s?.user ?? null)}
+          />
+        </div>
+      )}
 
       {/* Main page tabs */}
       <div className="flex gap-1 mb-4 border-b border-border">
