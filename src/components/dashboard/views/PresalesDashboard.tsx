@@ -37,10 +37,13 @@ interface PresalesDashboardProps {
 
 export function PresalesDashboard({ presale, users, loading, today, thisMonth, myName, isManager }: PresalesDashboardProps) {
 
-  const myWork = useMemo(() =>
-    isManager ? presale : presale.filter(r => r.assigned_to === myName),
-    [presale, isManager, myName]
-  );
+  const myWork = useMemo(() => {
+    if (isManager) return presale;
+    return presale.filter(r =>
+      r.assigned_to === myName ||
+      ((r as unknown as { co_workers?: string[] }).co_workers || []).includes(myName)
+    );
+  }, [presale, isManager, myName]);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {

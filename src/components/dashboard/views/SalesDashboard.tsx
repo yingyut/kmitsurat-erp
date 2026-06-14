@@ -39,10 +39,14 @@ export function SalesDashboard({
 }: SalesDashboardProps) {
 
   // ── Filter by current user (if not manager) ────────────────────────────────
-  const myProjects = useMemo(() =>
-    isManager ? projects : projects.filter(p => p.assigned_to === myName),
-    [projects, isManager, myName]
-  );
+  const myProjects = useMemo(() => {
+    if (isManager) return projects;
+    type ExtP = { co_owners?: string[] };
+    return projects.filter(p => {
+      const ep = p as unknown as ExtP;
+      return p.assigned_to === myName || (ep.co_owners ?? []).includes(myName);
+    });
+  }, [projects, isManager, myName]);
   const myQuotas = useMemo(() =>
     isManager ? quotas : quotas.filter(q => q.user_name === myName),
     [quotas, isManager, myName]

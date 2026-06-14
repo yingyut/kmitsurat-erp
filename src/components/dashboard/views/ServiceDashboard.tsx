@@ -35,10 +35,14 @@ interface ServiceDashboardProps {
 
 export function ServiceDashboard({ service, contracts, users, loading, today, thisMonth, myName, isManager }: ServiceDashboardProps) {
 
-  const myTickets = useMemo(() =>
-    isManager ? service : service.filter(t => !t.technician || t.technician === myName),
-    [service, isManager, myName]
-  );
+  const myTickets = useMemo(() => {
+    if (isManager) return service;
+    // Non-manager: เห็นเฉพาะ Ticket ที่ assign ให้ตัวเอง เท่านั้น
+    return service.filter(t =>
+      t.technician === myName ||
+      (t as unknown as Record<string, unknown>).assigned_to === myName
+    );
+  }, [service, isManager, myName]);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {

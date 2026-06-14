@@ -33,10 +33,18 @@ interface ProjectDashboardProps {
 
 export function ProjectDashboard({ projects, quotations, customers, loading, today, thisMonth, myName, isManager }: ProjectDashboardProps) {
 
-  const myProjects = useMemo(() =>
-    isManager ? projects : projects.filter(p => p.assigned_to === myName || (p.support_teams || []).some(() => true)),
-    [projects, isManager, myName]
-  );
+  const myProjects = useMemo(() => {
+    if (isManager) return projects;
+    type ExtP = { co_owners?: string[]; team_members?: string[] };
+    return projects.filter(p => {
+      const ep = p as unknown as ExtP;
+      return (
+        p.assigned_to === myName ||
+        (ep.co_owners ?? []).includes(myName) ||
+        (ep.team_members ?? []).includes(myName)
+      );
+    });
+  }, [projects, isManager, myName]);
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {

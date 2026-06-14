@@ -435,6 +435,37 @@ export default function DashboardPage() {
   const seeAllService  = seeAll || hasPermission("view_all_tickets");
   const seeAllPresale  = seeAll;
 
+  // ── v2 Dashboard scoping (เพิ่ม co_owners / co_workers / team_members) ─────────
+  // ใช้เฉพาะ v2 dashboard components — sc.* ของเดิมไม่เปลี่ยน
+  const v2Projects = useMemo(() => {
+    if (seeAll) return projects;
+    const name = myName;
+    type ExtProject = { co_owners?: string[]; team_members?: string[] };
+    return projects.filter(p => {
+      const ep = p as unknown as ExtProject;
+      return (
+        p.assigned_to === name ||
+        isOwnRecord(p, currentUser) ||
+        (ep.co_owners ?? []).includes(name) ||
+        (ep.team_members ?? []).includes(name)
+      );
+    });
+  }, [projects, seeAll, myName, currentUser]);
+
+  const v2Presale = useMemo(() => {
+    if (seeAll) return presale;
+    return presale.filter(r => {
+      const coWorkers = (r as unknown as { co_workers?: string[] }).co_workers ?? [];
+      return r.assigned_to === myName || isOwnRecord(r, currentUser) || coWorkers.includes(myName);
+    });
+  }, [presale, seeAll, myName, currentUser]);
+
+  const v2Service = useMemo(() => {
+    if (seeAllService) return service;
+    // Non-manager: เห็นเฉพาะ Ticket ที่ assign ให้ตัวเองเท่านั้น (ไม่รวม unassigned)
+    return service.filter(t => t.technician === myName);
+  }, [service, seeAllService, myName]);
+
   // ── Filtered slices ───────────────────────────────────────────────────────────
   const filtQuotas = (() => {
     if (filter === "year") return sc.quotas.filter(q => q.month?.startsWith(thisYear));
@@ -738,29 +769,29 @@ export default function DashboardPage() {
         projects={sc.projects} sales={sc.sales} quotas={sc.quotas} quotations={sc.quots}
         customers={customers} users={users}
         loading={loading} today={today} thisMonth={thisMonth}
-        myName={myName} isManager={isManagerRole}
+        myName={myName} isManager={seeAllSales}
       />
     );
     if (id === "v2-presales") return (
       <PresalesDashboard
-        presale={sc.presale} users={users}
+        presale={v2Presale} users={users}
         loading={loading} today={today} thisMonth={thisMonth}
-        myName={myName} isManager={isManagerRole}
+        myName={myName} isManager={seeAllPresale}
       />
     );
     if (id === "v2-service") return (
       <ServiceDashboard
-        service={sc.service} contracts={contracts} users={users}
+        service={v2Service} contracts={contracts} users={users}
         loading={loading} today={today} thisMonth={thisMonth}
-        myName={myName} isManager={isManagerRole}
+        myName={myName} isManager={seeAllService}
       />
     );
     if (id === "v2-projects") return (
       <ProjectDashboard
-        projects={sc.projects} quotations={sc.quots}
+        projects={v2Projects} quotations={sc.quots}
         customers={customers} users={users}
         loading={loading} today={today} thisMonth={thisMonth}
-        myName={myName} isManager={isManagerRole}
+        myName={myName} isManager={seeAll}
       />
     );
 
@@ -3139,7 +3170,8 @@ export default function DashboardPage() {
     activeSalesData, users, myName, salesPlanOverdue,
     widgetShowMore, toggleShowMore,
     // v2 dashboard deps
-    projects, sales, presale, quotas, quots, customers, loading, isManagerRole,
+    projects, sales, quotas, quots, customers, loading,
+    v2Projects, v2Presale, v2Service, seeAllSales, seeAllPresale, seeAllService, seeAll,
   ]);
 
   if (!mounted) return <div className="p-6 text-muted text-sm">Loading...</div>;
