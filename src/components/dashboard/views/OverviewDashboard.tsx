@@ -164,7 +164,7 @@ export function OverviewDashboard({
 
     return [
       { level: qtOverdue > 5 ? "red" : "yellow", icon: "📋", label: "QT ไม่มีการติดตาม > 7 วัน",    count: qtOverdue,    href: "/quotations" },
-      { level: slaBreached > 0 ? "red" : "green", icon: "🆘", label: "Ticket เกิน SLA",              count: slaBreached,  href: "/service-tickets" },
+      { level: slaBreached > 0 ? "red" : "green", icon: "🆘", label: "Ticket เกิน SLA",              count: slaBreached,  href: "/service" },
       { level: delayedProj > 0 ? "red" : "green", icon: "⏰", label: "Project เกิน Close Date",      count: delayedProj,  href: "/projects" },
       { level: lowGP > 0 ? "yellow" : "green",    icon: "📉", label: "QT ที่ได้รับ GP < 15%",         count: lowGP,        href: "/quotations" },
     ];
@@ -210,7 +210,7 @@ export function OverviewDashboard({
           value={kpis.openTickets}
           subtext={`Service tickets ที่ยังเปิดอยู่`}
           color={kpis.openTickets > 20 ? "red" : kpis.openTickets > 10 ? "amber" : "cyan"}
-          href="/service-tickets" loading={loading}
+          href="/service" loading={loading}
         />
         <KpiCard
           title="Active Projects" icon="🏗️"
@@ -223,7 +223,7 @@ export function OverviewDashboard({
           value={`${kpis.slaPct}%`}
           subtext={`Tickets ที่ปิดภายใน SLA`}
           color={kpis.slaPct >= 85 ? "green" : kpis.slaPct >= 70 ? "amber" : "red"}
-          href="/service-tickets" loading={loading}
+          href="/service" loading={loading}
           progress={{ current: kpis.slaPct, target: 100 }}
         />
       </DashboardGrid>

@@ -157,9 +157,9 @@ export function ServiceDashboard({ service, contracts, users, loading, today, th
       return (Date.now() - new Date(t.opened_at).getTime()) / 86400000 > 3;
     }).length;
     return [
-      { level: slaBreached > 0 ? "red" : "green",    icon: "🆘", label: "Ticket เกิน SLA",         count: slaBreached,   href: "/service-tickets" },
-      { level: critical > 0 ? "red" : "green",        icon: "🔴", label: "Critical Priority",        count: critical,      href: "/service-tickets" },
-      { level: longOpen > 5 ? "yellow" : "blue",      icon: "⏰", label: "เปิดนาน > 3 วัน",          count: longOpen,      href: "/service-tickets" },
+      { level: slaBreached > 0 ? "red" : "green",    icon: "🆘", label: "Ticket เกิน SLA",         count: slaBreached,   href: "/service" },
+      { level: critical > 0 ? "red" : "green",        icon: "🔴", label: "Critical Priority",        count: critical,      href: "/service" },
+      { level: longOpen > 5 ? "yellow" : "blue",      icon: "⏰", label: "เปิดนาน > 3 วัน",          count: longOpen,      href: "/service" },
       { level: expContracts > 0 ? "yellow" : "green", icon: "📜", label: "สัญญาใกล้หมด (30 วัน)",    count: expContracts,  href: "/contracts" },
     ];
   }, [myTickets, contracts, today]);
@@ -183,19 +183,19 @@ export function ServiceDashboard({ service, contracts, users, loading, today, th
         <KpiCard title="Open Tickets" icon="🎫" value={kpis.open}
           subtext="Tickets ที่ยังเปิดอยู่"
           color={kpis.open > 20 ? "red" : kpis.open > 10 ? "amber" : "blue"}
-          href="/service-tickets" loading={loading} />
+          href="/service" loading={loading} />
         <KpiCard title="ปิดแล้ว (เดือนนี้)" icon="✅" value={kpis.closed}
           subtext={`Tickets ที่แก้ไขเสร็จใน ${thisMonth}`}
-          color="green" href="/service-tickets" loading={loading} />
+          color="green" href="/service" loading={loading} />
         <KpiCard title="SLA On-Time" icon="⏱️" value={`${kpis.slaPct}%`}
           subtext="Tickets ที่ปิดภายใน SLA"
           color={kpis.slaPct >= 85 ? "green" : kpis.slaPct >= 70 ? "amber" : "red"}
-          href="/service-tickets" loading={loading}
+          href="/service" loading={loading}
           progress={{ current: kpis.slaPct, target: 100 }} />
         <KpiCard title="PM (Preventive)" icon="🔧" value={kpis.pmCount}
-          subtext="pm_service tickets" color="purple" href="/service-tickets" loading={loading} />
+          subtext="pm_service tickets" color="purple" href="/service" loading={loading} />
         <KpiCard title="CM (Corrective)" icon="🛠️" value={kpis.cmCount}
-          subtext="repair tickets" color="orange" href="/service-tickets" loading={loading} />
+          subtext="repair tickets" color="orange" href="/service" loading={loading} />
         <KpiCard title="MA Contracts" icon="📋" value={kpis.maCount}
           subtext="สัญญา MA ที่ active" color="cyan" href="/contracts" loading={loading} />
       </DashboardGrid>
@@ -274,7 +274,7 @@ export function ServiceDashboard({ service, contracts, users, loading, today, th
         <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">⚠️ Near SLA Breach</h3>
-            <Link href="/service-tickets" className="text-[11px] text-blue-500 hover:underline">ดูทั้งหมด →</Link>
+            <Link href="/service" className="text-[11px] text-blue-500 hover:underline">ดูทั้งหมด →</Link>
           </div>
           <DataTable
             columns={[
@@ -294,7 +294,7 @@ export function ServiceDashboard({ service, contracts, users, loading, today, th
         <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">🔴 Critical / Waiting</h3>
-            <Link href="/service-tickets" className="text-[11px] text-blue-500 hover:underline">ดูทั้งหมด →</Link>
+            <Link href="/service" className="text-[11px] text-blue-500 hover:underline">ดูทั้งหมด →</Link>
           </div>
           <DataTable columns={baseCols} data={waitingCust as unknown as Record<string,unknown>[]}
             emptyTitle="ไม่มี Critical Tickets" compact />
