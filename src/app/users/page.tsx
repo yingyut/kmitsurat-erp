@@ -98,6 +98,15 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [filterRole, setFilterRole] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [sortField, setSortField] = useState<"name"|"role"|"status"|"">("");
+  const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
+
+  function toggleSort(field: "name"|"role"|"status") {
+    if (sortField === field) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortField(field); setSortDir("asc"); }
+  }
 
   // User form
   const [showUserForm, setShowUserForm] = useState(false);
@@ -222,12 +231,26 @@ export default function UsersPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filteredUsers = userList.filter((u) => {
-    if (!showInactive && !u.active) return false;
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return u.name.toLowerCase().includes(s) || u.email.toLowerCase().includes(s) || (u.position || "").toLowerCase().includes(s);
-  });
+  const filteredUsers = userList
+    .filter((u) => {
+      if (!showInactive && !u.active) return false;
+      if (filterRole && u.role !== filterRole) return false;
+      if (filterStatus) {
+        const es = u.employment_status || (u.active ? "active" : "resigned");
+        if (es !== filterStatus) return false;
+      }
+      if (!search) return true;
+      const s = search.toLowerCase();
+      return u.name.toLowerCase().includes(s) || u.email.toLowerCase().includes(s) || (u.position || "").toLowerCase().includes(s) || (u.role || "").toLowerCase().includes(s);
+    })
+    .sort((a, b) => {
+      if (!sortField) return 0;
+      let va = "", vb = "";
+      if (sortField === "name")   { va = a.name; vb = b.name; }
+      if (sortField === "role")   { va = a.role; vb = b.role; }
+      if (sortField === "status") { va = a.employment_status || "active"; vb = b.employment_status || "active"; }
+      return sortDir === "asc" ? va.localeCompare(vb, "th") : vb.localeCompare(va, "th");
+    });
   const inactiveCount = userList.filter(u => !u.active).length;
 
   // === User CRUD ===
@@ -435,7 +458,24 @@ export default function UsersPage() {
         {/* ========== USERS TAB ========== */}
         {tab === "users" && (<>
           <div className="flex gap-3 mb-4 flex-wrap">
-            <input placeholder="ค้นหาผู้ใช้..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <input placeholder="ค้นหาชื่อ, email, role..." value={search} onChange={(e) => setSearch(e.target.value)} className="flex-1 min-w-[200px] rounded-lg bg-card border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className="rounded-lg bg-card border border-border px-3 py-2 text-sm text-muted focus:outline-none focus:border-accent">
+              <option value="">ทุก Role</option>
+              {[...new Set(userList.map(u => u.role))].sort().map(r => (
+                <option key={r} value={r}>{roleLabels[r] || r}</option>
+              ))}
+            </select>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="rounded-lg bg-card border border-border px-3 py-2 text-sm text-muted focus:outline-none focus:border-accent">
+              <option value="">ทุกสถานะ</option>
+              {EMPLOYMENT_STATUS_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {(filterRole || filterStatus || search) && (
+              <button onClick={() => { setFilterRole(""); setFilterStatus(""); setSearch(""); }} className="rounded-lg border border-border px-3 py-2 text-xs text-muted hover:text-foreground hover:bg-card-hover">
+                ✕ ล้าง
+              </button>
+            )}
             <button onClick={seedRealTeam} disabled={saving} title="ลบผู้ใช้เดิม + เพิ่ม 15 คนตามทีมจริง" className="rounded-lg border border-amber-700 text-amber-400 px-3 py-2 text-xs hover:bg-amber-900/20 disabled:opacity-50">📥 ตั้งทีมจริง (ลบเก่า)</button>
             <button onClick={cleanupOrphans} disabled={saving} title="ล้างข้อมูล activities/quotas/presale/service ที่อ้างถึง user เก่า + เคลียร์ assigned_to ใน projects" className="rounded-lg border border-rose-700 text-rose-400 px-3 py-2 text-xs hover:bg-rose-900/20 disabled:opacity-50">🧹 ล้างข้อมูล user เก่า</button>
             <button onClick={openAddUser} title="เพิ่มผู้ใช้ใหม่" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover shrink-0">+ เพิ่มผู้ใช้</button>
@@ -486,15 +526,21 @@ export default function UsersPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-xs text-muted uppercase">
-                    <th className="px-4 py-2.5" title="รูปโปรไฟล์"></th>
-                    <th className="px-4 py-2.5" title="ชื่อ-นามสกุล">Name</th>
-                    <th className="px-4 py-2.5" title="ตำแหน่ง">Position</th>
-                    <th className="px-4 py-2.5" title="แผนก">Dept</th>
-                    <th className="px-4 py-2.5" title="บทบาท">Role</th>
-                    <th className="px-4 py-2.5" title="อีเมล">Email</th>
-                    <th className="px-4 py-2.5" title="เบอร์โทร">Phone</th>
-                    <th className="px-4 py-2.5" title="สถานะ">Status</th>
-                    <th className="px-4 py-2.5 w-28" title="จัดการ">Actions</th>
+                    <th className="px-4 py-2.5"></th>
+                    <th className="px-4 py-2.5 cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("name")}>
+                      Name {sortField === "name" ? (sortDir === "asc" ? "↑" : "↓") : <span className="opacity-30">↕</span>}
+                    </th>
+                    <th className="px-4 py-2.5">Position</th>
+                    <th className="px-4 py-2.5">Dept</th>
+                    <th className="px-4 py-2.5 cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("role")}>
+                      Role {sortField === "role" ? (sortDir === "asc" ? "↑" : "↓") : <span className="opacity-30">↕</span>}
+                    </th>
+                    <th className="px-4 py-2.5">Email</th>
+                    <th className="px-4 py-2.5">Phone</th>
+                    <th className="px-4 py-2.5 cursor-pointer select-none hover:text-foreground" onClick={() => toggleSort("status")}>
+                      Status {sortField === "status" ? (sortDir === "asc" ? "↑" : "↓") : <span className="opacity-30">↕</span>}
+                    </th>
+                    <th className="px-4 py-2.5 w-28">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
