@@ -16,6 +16,7 @@ import { PresalesDashboard }   from "@/components/dashboard/views/PresalesDashbo
 import { ServiceDashboard }    from "@/components/dashboard/views/ServiceDashboard";
 import { ProjectDashboard }    from "@/components/dashboard/views/ProjectDashboard";
 import { ExecutiveDashboard }  from "@/components/dashboard/views/ExecutiveDashboard";
+import { TeamScopeBar, type ScopeState } from "@/components/dashboard/TeamScopeBar";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -307,6 +308,7 @@ export default function DashboardPage() {
   const [view, setView] = useState<DashView>("executive");
   const [editMode, setEditMode] = useState(false);
   const [layouts, setLayouts] = useState<Record<DashView, WidgetConfig[]>>(DEFAULT_LAYOUTS);
+  const [teamScope, setTeamScope] = useState<ScopeState | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [sales, setSales] = useState<SalesActivity[]>([]);
@@ -770,21 +772,24 @@ export default function DashboardPage() {
         projects={sc.projects} sales={sc.sales} quotas={sc.quotas} quotations={sc.quots}
         customers={customers} users={users}
         loading={loading} today={today} thisMonth={thisMonth}
-        myName={myName} isManager={seeAllSales}
+        myName={teamScope?.user?.name ?? myName}
+        isManager={teamScope?.user ? false : seeAllSales}
       />
     );
     if (id === "v2-presales") return (
       <PresalesDashboard
         presale={v2Presale} users={users}
         loading={loading} today={today} thisMonth={thisMonth}
-        myName={myName} isManager={seeAllPresale}
+        myName={teamScope?.user?.name ?? myName}
+        isManager={teamScope?.user ? false : seeAllPresale}
       />
     );
     if (id === "v2-service") return (
       <ServiceDashboard
         service={v2Service} contracts={contracts} users={users}
         loading={loading} today={today} thisMonth={thisMonth}
-        myName={myName} isManager={seeAllService}
+        myName={teamScope?.user?.name ?? myName}
+        isManager={teamScope?.user ? false : seeAllService}
       />
     );
     if (id === "v2-projects") return (
@@ -792,7 +797,8 @@ export default function DashboardPage() {
         projects={v2Projects} quotations={sc.quots}
         customers={customers} users={users}
         loading={loading} today={today} thisMonth={thisMonth}
-        myName={myName} isManager={seeAll}
+        myName={teamScope?.user?.name ?? myName}
+        isManager={teamScope?.user ? false : seeAll}
       />
     );
     if (id === "v2-executive") {
@@ -3210,7 +3216,7 @@ export default function DashboardPage() {
     widgetShowMore, toggleShowMore,
     // v2 dashboard deps
     projects, sales, presale, quotas, quots, customers, loading, today, thisMonth,
-    v2Projects, v2Presale, v2Service, seeAllSales, seeAllPresale, seeAllService, seeAll, myRole,
+    v2Projects, v2Presale, v2Service, seeAllSales, seeAllPresale, seeAllService, seeAll, myRole, teamScope,
   ]);
 
   if (!mounted) return <div className="p-6 text-muted text-sm">Loading...</div>;
@@ -3317,12 +3323,26 @@ export default function DashboardPage() {
             { id:"projects",  label:"Projects" },
             { id:"coordinator", label:"ธุรการ" },
           ] as {id:DashView;label:string}[]).map(v=>(
-            <button key={v.id} onClick={()=>{ setView(v.id); setEditMode(false); }}
+            <button key={v.id} onClick={()=>{ setView(v.id); setEditMode(false); setTeamScope(null); }}
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view===v.id?"bg-accent text-white shadow-sm":"text-muted hover:text-foreground"}`}>
               {v.label}
             </button>
           ))}
         </div>
+      )}
+
+      {/* ── TEAM SCOPE BAR ─────────────────────────────────────────────────── */}
+      {(isAdmin || ["Sales Manager","Presales Manager","Service Manager"].includes(myRole)) && !loading && (
+        <TeamScopeBar
+          users={users}
+          myRole={myRole}
+          scope={teamScope}
+          currentView={view}
+          onScope={(s) => {
+            setTeamScope(s);
+            if (s) { setView(s.view); setEditMode(false); }
+          }}
+        />
       )}
 
       {loading&&<div className="text-center py-16 text-muted text-sm">กำลังโหลดข้อมูล...</div>}
