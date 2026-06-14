@@ -312,6 +312,7 @@ export default function DashboardPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [jobRequests, setJobRequests] = useState<JobRequest[]>([]);
+  const [customers, setCustomers] = useState<import("@/lib/types").Customer[]>([]);
   const [showSalesBreakdown,  setShowSalesBreakdown]  = useState(false);
   const [showAchievBreakdown, setShowAchievBreakdown] = useState(false);
   const [showGpBreakdown,     setShowGpBreakdown]     = useState(false);
@@ -339,7 +340,7 @@ export default function DashboardPage() {
   useEffect(() => {
     setMounted(true);
     const received = new Set<string>();
-    const total = ["projects","sales","presale","service","quotas","quots","contracts","assets","users","jobRequests"];
+    const total = ["projects","sales","presale","service","quotas","quots","contracts","assets","users","jobRequests","customers"];
     const onFirst = (name: string) => {
       received.add(name);
       if (total.every(n => received.has(n))) setLoading(false);
@@ -360,6 +361,7 @@ export default function DashboardPage() {
       unsubs.push(fs.assets.subscribe(d => { setAssets(d); onFirst("assets"); }));
       unsubs.push(fs.users.subscribe(d => { setUsers(d.filter(x => x.active)); onFirst("users"); }));
       unsubs.push(fs.jobRequests.subscribe(d => { setJobRequests(d); onFirst("jobRequests"); }));
+      unsubs.push(fs.customers.subscribe(d => { setCustomers(d); onFirst("customers"); }));
     })();
     return () => unsubs.forEach(u => u());
   }, []);
@@ -1015,6 +1017,313 @@ export default function DashboardPage() {
               ))}
             </div>
           </BmExpandable>
+        </div>
+      );
+    }
+
+    // ── NEW BM WIDGETS ────────────────────────────────────────────────────────
+    if (id === "bm-kpi-row") {
+      const fmtM = (v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v > 0 ? `${Math.round(v/1000)}K` : "—";
+      const monthActual = sc.quotas.filter(q => q.month === thisMonth).reduce((s,q) => s+(q.actual_sales||0), 0);
+      const monthTarget = sc.quotas.filter(q => q.month === thisMonth).reduce((s,q) => s+(q.quota_target||0), 0);
+      const pct = monthTarget > 0 ? Math.round(monthActual/monthTarget*100) : 0;
+      const waitingPO = sc.quots.filter(q => q.status === "approved" && !q.po_received).length;
+      const newCust = customers.filter(c => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ts = (c as any).created_at as { toDate?: () => Date } | string | null | undefined;
+        if (!ts) return false;
+        const d = typeof ts === "string" ? ts : ts?.toDate ? ts.toDate().toISOString() : "";
+        return d.startsWith(thisMonth);
+      }).length;
+      const color = (p: number): "green"|"amber"|"red" => p >= 100 ? "green" : p >= 70 ? "amber" : "red";
+      return (
+        <div className="grid grid-cols-3 @md:grid-cols-6 gap-2">
+          <BmKpiChip label="ยอดขายเดือนนี้"  value={fmtM(monthActual)} color={color(pct)}  href="/sales" />
+          <BmKpiChip label="เป้ายอดขาย"      value={fmtM(monthTarget)} color="blue"         href="/sales" />
+          <BmKpiChip label="% บรรลุเป้า"      value={`${pct}%`}        color={color(pct)}   href="/reports" />
+          <BmKpiChip label="Pipeline รวม"     value={fmtM(pipeline)}   color="violet"       href="/projects" />
+          <BmKpiChip label="รอ PO"             value={waitingPO}        color={waitingPO>0?"amber":"green"} href="/quotations" />
+          <BmKpiChip label="ลูกค้าใหม่เดือนนี้" value={newCust}        color={newCust>0?"green":"blue"}  href="/customers" />
+        </div>
+      );
+    }
+
+    if (id === "bm-sales-performance") {
+      const today2 = new Date();
+      const perfData = Array.from({ length: 12 }, (_, i) => {
+        const d = new Date(today2.getFullYear(), today2.getMonth() - 11 + i, 1);
+        const m = d.toISOString().slice(0, 7);
+        const mLabel = `${d.getMonth()+1}/${String(d.getFullYear()).slice(2)}`;
+        const act = sc.quotas.filter(q => q.month === m).reduce((s,q) => s+(q.actual_sales||0), 0);
+        const tgt = sc.quotas.filter(q => q.month === m).reduce((s,q) => s+(q.quota_target||0), 0);
+        const ach = tgt > 0 ? Math.round(act/tgt*100) : 0;
+        return { month: mLabel, actualK: Math.round(act/1000), targetK: Math.round(tgt/1000), ach };
+      });
+      return (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold">📊 Sales Performance (12 เดือน)</h3>
+            <Link href="/reports" className="text-[11px] text-accent hover:underline">รายงาน →</Link>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={perfData} margin={{ left:-10, right:10, top:4, bottom:0 }}>
+              <XAxis dataKey="month" tick={{ fontSize:10 }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize:10 }} tickLine={false} axisLine={false} tickFormatter={v => v>0?`${v}K`:""}/>
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const act2 = payload.find(p => p.dataKey === "actualK")?.value as number ?? 0;
+                  const tgt2 = payload.find(p => p.dataKey === "targetK")?.value as number ?? 0;
+                  const ach2 = tgt2 > 0 ? Math.round(act2/tgt2*100) : 0;
+                  return (
+                    <div className="bg-card border border-border rounded-lg p-2.5 text-xs shadow-lg space-y-1">
+                      <p className="font-semibold text-foreground">{label}</p>
+                      <p className="text-green-500">ยอดขาย: {act2}K ฿</p>
+                      <p className="text-blue-400">เป้า: {tgt2}K ฿</p>
+                      <p className={ach2>=100?"text-green-500":ach2>=70?"text-amber-500":"text-rose-500"}>% Achievement: {ach2}%</p>
+                    </div>
+                  );
+                }}
+              />
+              <Area type="monotone" dataKey="targetK"  name="เป้า"    stroke="#60a5fa" strokeWidth={1.5} fill="#3b82f610" strokeDasharray="4 2" dot={false} />
+              <Area type="monotone" dataKey="actualK"  name="ยอดขาย"  stroke="#22c55e" strokeWidth={2}   fill="#22c55e20" dot={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+          <div className="flex gap-5 mt-2 text-[10px] text-muted justify-center">
+            <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 bg-green-500 inline-block rounded"/>ยอดขาย</span>
+            <span className="flex items-center gap-1.5"><span className="w-6 border-t-2 border-dashed border-blue-400 inline-block"/>เป้า</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (id === "bm-pipeline-stage") {
+      const fmtM2 = (v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v > 0 ? `${Math.round(v/1000)}K` : "0";
+      const stages2 = [
+        { label:"Lead",        items: sc.projects.filter(p=>p.status==="lead") },
+        { label:"Opportunity", items: sc.projects.filter(p=>p.status==="opportunity") },
+        { label:"Presales",    items: presale.filter(r=>["pending","in_progress"].includes(r.status)) },
+        { label:"Quotation",   items: sc.quots.filter(q=>["sent","follow_up","revised"].includes(q.status)) },
+        { label:"Negotiation", items: sc.projects.filter(p=>p.status==="negotiation") },
+        { label:"Waiting PO",  items: sc.quots.filter(q=>q.status==="approved"&&!q.po_received) },
+      ].map(s => ({
+        label: s.label,
+        count: s.items.length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        value: (s.items as any[]).reduce((sum: number, x: any) => sum+(x.value||x.grand_total||0), 0),
+      })).sort((a,b) => b.value - a.value);
+      const maxVal = Math.max(...stages2.map(s=>s.value), 1);
+      return (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold">🎯 Pipeline by Stage</h3>
+            <Link href="/projects" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>
+          </div>
+          <div className="space-y-2.5">
+            {stages2.map(s => (
+              <div key={s.label} className="flex items-center gap-2">
+                <span className="text-[11px] text-muted w-24 truncate shrink-0">{s.label}</span>
+                <div className="flex-1 h-5 bg-background rounded-full overflow-hidden border border-border">
+                  <div className="h-full bg-accent/60 rounded-full transition-all flex items-center justify-end pr-1.5"
+                    style={{ width:`${Math.max(s.value/maxVal*100,2)}%` }}>
+                    {s.value > maxVal*0.15 && <span className="text-[9px] text-white font-bold">{s.count}</span>}
+                  </div>
+                </div>
+                <span className="text-[11px] text-muted w-14 text-right shrink-0 font-medium">{fmtM2(s.value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (id === "bm-customer-segment") {
+      const segMap: Record<string, number> = {};
+      const normalize = (t: string) => {
+        if (!t) return "Other";
+        const lo = t.toLowerCase();
+        if (lo.includes("โรงพยาบาล")||lo.includes("hospital")||lo.includes("สาธารณสุข")) return "Hospital";
+        if (lo.includes("รัฐ")||lo.includes("ราชการ")||lo.includes("government")||lo.includes("กรม")||lo.includes("สำนักงาน")) return "Government";
+        if (lo.includes("โรงเรียน")||lo.includes("มหาวิทยาลัย")||lo.includes("education")||lo.includes("วิทยาลัย")) return "Education";
+        if (lo.includes("โรงงาน")||lo.includes("industrial")||lo.includes("นิคม")) return "Industrial";
+        if (lo.includes("เอกชน")||lo.includes("private")||lo.includes("บริษัท")||lo.includes("ห้างหุ้น")) return "Private";
+        return "Other";
+      };
+      sc.quots.filter(q=>q.status==="approved").forEach(q => {
+        const cust = customers.find(c=>c.id===q.customer_id);
+        const seg = normalize(cust?.org_type||cust?.org_sector||"");
+        segMap[seg] = (segMap[seg]||0) + (q.grand_total||0);
+      });
+      const segColors = { Hospital:"#ec4899", Government:"#3b82f6", Education:"#f59e0b", Industrial:"#8b5cf6", Private:"#22c55e", Other:"#6b7280" };
+      const segData = Object.entries(segMap).map(([name,value]) => ({ name, value, fill: segColors[name as keyof typeof segColors]||"#6b7280" })).sort((a,b)=>b.value-a.value);
+      const totalSeg = segData.reduce((s,x)=>s+x.value,0);
+      const fmtM3 = (v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v > 0 ? `${Math.round(v/1000)}K` : "0";
+      return (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold">🥧 Customer Segment</h3>
+            <Link href="/customers" className="text-[11px] text-accent hover:underline">ลูกค้า →</Link>
+          </div>
+          {segData.length === 0 ? (
+            <p className="text-xs text-muted py-8 text-center">ยังไม่มีข้อมูล</p>
+          ) : (
+            <div className="flex gap-3 items-center">
+              <ResponsiveContainer width={120} height={120}>
+                <PieChart>
+                  <Pie data={segData} cx="50%" cy="50%" innerRadius={30} outerRadius={55} dataKey="value" paddingAngle={2}>
+                    {segData.map((s,i) => <Cell key={i} fill={s.fill} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => [`${fmtM3(Number(v))} ฿`, ""]} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex-1 space-y-1.5">
+                {segData.map(s => (
+                  <div key={s.name} className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.fill }} />
+                    <span className="text-[11px] text-muted flex-1 truncate">{s.name}</span>
+                    <span className="text-[11px] font-medium" style={{ color: s.fill }}>{totalSeg>0?Math.round(s.value/totalSeg*100):0}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (id === "bm-followup-alerts") {
+      const now2 = new Date(); const nowStr = now2.toISOString().slice(0,10);
+      const d7  = new Date(now2); d7.setDate(d7.getDate()-7);   const d7s  = d7.toISOString().slice(0,10);
+      const d30 = new Date(now2); d30.setDate(d30.getDate()-30); const d30s = d30.toISOString().slice(0,10);
+      const d14 = new Date(now2); d14.setDate(d14.getDate()+14); const d14s = d14.toISOString().slice(0,10);
+      // QT ไม่มีการ follow up > 7 วัน
+      const staleQT = sc.quots.filter(q => ["sent","follow_up"].includes(q.status) && (q.follow_up_date||q.sent_date||"") < d7s);
+      // รอ PO
+      const waitPO = sc.quots.filter(q => q.status==="approved" && !q.po_received);
+      // ใบเสนอราคาใกล้หมดอายุ (sent > 30 วัน)
+      const expiring = sc.quots.filter(q => ["sent","follow_up","revised"].includes(q.status) && (q.sent_date||"") < d30s);
+      // ลูกค้าไม่มี activity > 30 วัน
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const inactCust = sc.projects.filter(p => !["won","lost"].includes(p.status) && (p.last_activity_date||(p as any).created_at as string||"") < d30s).slice(0,5);
+
+      type Alert = { level:"red"|"yellow"; icon:string; label:string; count:number; href:string };
+      const lvl = (cond: boolean): "red"|"yellow" => cond ? "red" : "yellow";
+      const allAlerts: Alert[] = [
+        { level: lvl(staleQT.length>5), icon:"📋", label:`ใบเสนอราคาไม่มีการติดตาม > 7 วัน`, count: staleQT.length, href:"/quotations" },
+        { level: "yellow",              icon:"⏳", label:`รอ PO`, count: waitPO.length, href:"/quotations" },
+        { level: lvl(expiring.length>3), icon:"⚠️", label:`ใบเสนอราคาใกล้หมดอายุ (ส่งไป > 30 วัน)`, count: expiring.length, href:"/quotations" },
+        { level: "yellow",              icon:"🏢", label:`Deal ไม่มี activity > 30 วัน`, count: inactCust.length, href:"/projects" },
+      ];
+      const alerts2 = allAlerts.filter(a => a.count > 0);
+      return (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold">🔔 Follow-up Alerts</h3>
+          </div>
+          {alerts2.length === 0 ? (
+            <p className="text-xs text-green-500 py-2">✅ ทุกอย่างเรียบร้อย</p>
+          ) : (
+            <div className="grid grid-cols-2 @md:grid-cols-4 gap-2">
+              {alerts2.map((a,i) => (
+                <Link key={i} href={a.href}
+                  className={`rounded-xl border p-3 hover:opacity-80 transition-opacity ${a.level==="red"?"bg-rose-500/10 border-rose-500/30":"bg-amber-500/10 border-amber-500/30"}`}>
+                  <p className="text-xl font-bold mb-0.5">{a.icon} {a.count}</p>
+                  <p className="text-[10px] text-muted/80 leading-tight">{a.label}</p>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (id === "bm-top-opportunities") {
+      const fmtM4 = (v: number) => v >= 1e6 ? `${(v/1e6).toFixed(2)}M` : v > 0 ? `${Math.round(v/1000)}K` : "—";
+      const top10 = [...sc.projects]
+        .filter(p => !["won","lost"].includes(p.status))
+        .sort((a,b) => (b.value||0)-(a.value||0))
+        .slice(0,10);
+      return (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold">🏆 Top Opportunities</h3>
+            <Link href="/projects" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>
+          </div>
+          {top10.length === 0 ? <p className="text-xs text-muted py-4">ไม่มีข้อมูล</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-muted">
+                    <th className="text-left py-1.5 pr-2 font-medium">ลูกค้า</th>
+                    <th className="text-left py-1.5 pr-2 font-medium">โปรเจค</th>
+                    <th className="text-right py-1.5 pr-2 font-medium">มูลค่า</th>
+                    <th className="text-center py-1.5 pr-2 font-medium">Stage</th>
+                    <th className="text-center py-1.5 pr-2 font-medium">ปิด</th>
+                    <th className="text-right py-1.5 font-medium">%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {top10.map((p,i) => (
+                    <tr key={p.id} className={`border-b border-border/50 hover:bg-sidebar-hover/30 ${i%2===0?"":"bg-background/30"}`}>
+                      <td className="py-1.5 pr-2 truncate max-w-[120px]"><Link href="/projects" className="hover:text-accent">{p.customer_name||"—"}</Link></td>
+                      <td className="py-1.5 pr-2 truncate max-w-[140px] text-muted">{p.name||"—"}</td>
+                      <td className="py-1.5 pr-2 text-right font-medium text-green-500">{fmtM4(p.value||0)}</td>
+                      <td className="py-1.5 pr-2 text-center">
+                        <span className="px-1.5 py-0.5 rounded-md bg-accent/10 text-accent text-[10px]">{p.status}</span>
+                      </td>
+                      <td className="py-1.5 pr-2 text-center text-muted">{p.expected_close_date?.slice(5)||"—"}</td>
+                      <td className="py-1.5 text-right">
+                        <span className={`font-medium ${(p.probability||0)>=70?"text-green-500":(p.probability||0)>=40?"text-amber-500":"text-muted"}`}>{p.probability||0}%</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (id === "bm-recent-activities") {
+      const now3 = new Date(); const d30b = new Date(now3); d30b.setDate(d30b.getDate()-30);
+      const d30bs = d30b.toISOString().slice(0,10);
+      const typeLabel: Record<string, string> = {
+        phone_call: "โทรศัพท์", visit: "เยี่ยมลูกค้า", quotation_created: "สร้าง QT",
+        quotation_sent: "ส่ง QT", follow_up: "Follow Up", meeting: "ประชุม", customer_update: "อัปเดต",
+      };
+      const typeIcon: Record<string, string> = {
+        phone_call:"📞", visit:"🚗", quotation_created:"📄", quotation_sent:"📨",
+        follow_up:"🔔", meeting:"🤝", customer_update:"✏️",
+      };
+      const actDate = (a: SalesActivity) => a.plan_date || a.next_follow_up || "";
+      const recentActs = sales
+        .filter(a => actDate(a) >= d30bs)
+        .sort((a,b) => actDate(b).localeCompare(actDate(a)))
+        .slice(0,15);
+      return (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold">📅 Recent Activities (30 วัน)</h3>
+            <Link href="/sales?tab=activities" className="text-[11px] text-accent hover:underline">ดูทั้งหมด →</Link>
+          </div>
+          {recentActs.length === 0 ? <p className="text-xs text-muted py-4">ไม่มีกิจกรรมใน 30 วัน</p> : (
+            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+              {recentActs.map((a,i) => (
+                <div key={i} className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
+                  <span className="text-base shrink-0 mt-0.5">{typeIcon[a.type]||"📌"}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{a.customer_name||"—"}</p>
+                    <p className="text-[10px] text-muted truncate">{typeLabel[a.type]||a.type}{a.description?` — ${a.description}`:""}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[10px] text-muted">{actDate(a).slice(5)||"—"}</p>
+                    <p className="text-[9px] text-muted/60">{a.assigned_to||""}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       );
     }

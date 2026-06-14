@@ -137,12 +137,16 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
     { id: "coord-satisfaction", visible: true, span: "full" },
   ],
   "branch-manager": [
-    { id: "bm-sales-summary",    visible: true, span: "full" },
-    { id: "bm-growth-chart",     visible: true, span: "full" },
-    { id: "bm-projects-summary", visible: true, span: "half" },
-    { id: "bm-presale-summary",  visible: true, span: "half" },
-    { id: "bm-service-summary",  visible: true, span: "full" },
-    { id: "exec-contracts",      visible: true, span: "full" },
+    { id: "bm-kpi-row",            visible: true, span: "full" },
+    { id: "bm-sales-performance",  visible: true, span: "full" },
+    { id: "bm-pipeline-stage",     visible: true, span: "half" },
+    { id: "bm-customer-segment",   visible: true, span: "half" },
+    { id: "bm-followup-alerts",    visible: true, span: "full" },
+    { id: "bm-top-opportunities",  visible: true, span: "full" },
+    { id: "bm-recent-activities",  visible: true, span: "full" },
+    { id: "bm-presale-summary",    visible: false, span: "half" },
+    { id: "bm-service-summary",    visible: false, span: "half" },
+    { id: "exec-contracts",        visible: false, span: "full" },
   ],
 };
 
