@@ -59,7 +59,7 @@ function getAllowedDepts(myRole: string): string[] {
     return DEPT_CONFIG.map((d) => d.key);
   if (myRole === "Sales Manager")    return ["executive", "sales"];
   if (myRole === "Presales Manager") return ["executive", "presales", "project"];
-  if (myRole === "Service Manager")  return ["executive", "service"];
+  if (myRole === "Service Manager")  return ["service"];
   return [];
 }
 

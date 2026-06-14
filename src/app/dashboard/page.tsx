@@ -3316,7 +3316,7 @@ export default function DashboardPage() {
       {(isAdmin || ["Sales Manager","Presales Manager","Service Manager"].includes(myRole))&&(
         <div className="flex gap-0.5 rounded-lg border border-border/70 bg-card p-1 w-fit flex-wrap">
           {([
-            { id:"executive",   label:"Executive", show: true },
+            { id:"executive",   label:"Executive", show: isAdmin || myRole === "Sales Manager" || myRole === "Presales Manager" },
             { id:"sales",       label:"Sales",     show: isAdmin || myRole === "Sales Manager" },
             { id:"presale",     label:"Presale",   show: isAdmin || myRole === "Presales Manager" },
             { id:"service",     label:"Service",   show: isAdmin || myRole === "Service Manager" },
