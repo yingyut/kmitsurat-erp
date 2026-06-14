@@ -122,7 +122,11 @@ export default function UsersPage() {
       const fs = await import("@/lib/firestore");
       const channels = await fs.notificationChannels.list();
       const ch = channels.find(c => c.type === "email" && c.active && c.smtp_host && c.smtp_user);
-      if (!ch) { showToast("❌ ไม่พบการตั้งค่า Email SMTP — กรุณาตั้งค่าใน Settings → Notifications ก่อน", false); return; }
+      if (!ch) {
+        showToast("❌ ไม่พบ Email Channel — กรุณาไปตั้งค่าที่ Settings → Notifications → Channels ก่อน", false);
+        return;
+      }
+      console.log("[testEmail] channel:", ch.name, "host:", ch.smtp_host, "port:", ch.smtp_port, "user:", ch.smtp_user, "from:", ch.from_email || ch.smtp_user);
       const res = await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -132,12 +136,16 @@ export default function UsersPage() {
           from_email: ch.from_email || ch.smtp_user, from_name: ch.from_name || "KMITSURAT ERP",
           to: email.trim(),
           subject: "ทดสอบ Email — KMITSURAT ERP",
-          body: `อีเมลนี้เป็นการทดสอบระบบส่งอีเมล KMITSURAT ERP\n\nถ้าคุณได้รับอีเมลนี้แสดงว่าการตั้งค่าถูกต้องแล้ว\n\nวันที่ทดสอบ: ${new Date().toLocaleString("th-TH")}`,
+          body: `อีเมลนี้เป็นการทดสอบระบบส่งอีเมล KMITSURAT ERP\n\nถ้าคุณได้รับอีเมลนี้แสดงว่าการตั้งค่าถูกต้องแล้ว\n\nSMTP: ${ch.smtp_host}:${ch.smtp_port || 587}\nจาก: ${ch.from_email || ch.smtp_user}\nถึง: ${email}\nวันที่ทดสอบ: ${new Date().toLocaleString("th-TH")}`,
         }),
       });
       const data = await res.json();
-      if (data.success) showToast(`✓ ส่ง Email ทดสอบไปที่ ${email} สำเร็จ`);
-      else showToast(`❌ ส่งไม่สำเร็จ: ${data.error}`, false);
+      console.log("[testEmail] result:", data);
+      if (data.success) {
+        showToast(`✓ SMTP ตอบรับแล้ว (${ch.smtp_host}) — กรุณาตรวจสอบ inbox และโฟลเดอร์ Spam ที่ ${email}`);
+      } else {
+        showToast(`❌ SMTP Error (${ch.smtp_host}): ${data.error}`, false);
+      }
     } catch (e) {
       showToast("❌ เกิดข้อผิดพลาด: " + String(e), false);
     } finally {
