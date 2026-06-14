@@ -664,7 +664,7 @@ export function ExecutiveDashboard({
               : (
                 <div className="space-y-2">
                   {salesRankings.map((r, i) => (
-                    <div key={r.name} className="flex items-center gap-2">
+                    <div key={i} className="flex items-center gap-2">
                       <span className="text-[10px] font-bold text-muted w-4 shrink-0">{i + 1}</span>
                       <span className="text-[11px] flex-1 truncate">{r.name}</span>
                       <span className="text-[11px] font-semibold">{fmtM(r.actual)} ฿</span>
@@ -685,7 +685,7 @@ export function ExecutiveDashboard({
               : (
                 <div className="space-y-2">
                   {presaleRankings.map((r, i) => (
-                    <div key={r.name} className="flex items-center gap-2">
+                    <div key={i} className="flex items-center gap-2">
                       <span className="text-[10px] font-bold text-muted w-4 shrink-0">{i + 1}</span>
                       <span className="text-[11px] flex-1 truncate">{r.name}</span>
                       <span className="text-[11px] font-semibold">{r.done}/{r.total}</span>
@@ -704,7 +704,7 @@ export function ExecutiveDashboard({
               : (
                 <div className="space-y-2">
                   {serviceRankings.map((r, i) => (
-                    <div key={r.name} className="flex items-center gap-2">
+                    <div key={i} className="flex items-center gap-2">
                       <span className="text-[10px] font-bold text-muted w-4 shrink-0">{i + 1}</span>
                       <span className="text-[11px] flex-1 truncate">{r.name}</span>
                       <span className="text-[11px] font-semibold">{r.resolved}/{r.total}</span>
