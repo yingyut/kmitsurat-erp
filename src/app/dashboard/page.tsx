@@ -3307,7 +3307,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── VIEW TABS ──────────────────────────────────────────────────────── */}
-      {isAdmin&&(
+      {(isAdmin || ["Sales Manager","Presales Manager","Service Manager"].includes(myRole))&&(
         <div className="flex gap-0.5 rounded-lg border border-border/70 bg-card p-1 w-fit flex-wrap">
           {([
             { id:"executive", label:"Executive" },
