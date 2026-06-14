@@ -10,6 +10,11 @@ import {
   type DashView, type WidgetConfig, type WidgetSpan,
 } from "@/lib/dashboardLayout";
 import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract, Asset, User, JobRequest } from "@/lib/types";
+import { OverviewDashboard }  from "@/components/dashboard/views/OverviewDashboard";
+import { SalesDashboard }     from "@/components/dashboard/views/SalesDashboard";
+import { PresalesDashboard }  from "@/components/dashboard/views/PresalesDashboard";
+import { ServiceDashboard }   from "@/components/dashboard/views/ServiceDashboard";
+import { ProjectDashboard }   from "@/components/dashboard/views/ProjectDashboard";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -528,6 +533,7 @@ export default function DashboardPage() {
   type AlertItem = { id: string; msg: string; level: "red"|"orange"|"green"; href: string };
   const alerts: AlertItem[] = [];
   const myRole = currentUser?.role ?? "";
+  const isManagerRole = ["admin","Administrator","Branch Manager","Sales Manager","Presales Manager","Service Manager"].includes(myRole);
   const isAdminAvenger = ["admin","Administrator","avenger"].includes(myRole);
   // isSalesRole — เซลล์ทุกระดับ (รวม Manager) ยกเว้น admin/avenger ที่เห็นทุกอย่าง
   const isSalesRole   = ["sale","Sales Executive","Sales Manager","Branch Manager"].includes(myRole);
@@ -717,6 +723,46 @@ export default function DashboardPage() {
   const renderWidget = useCallback((id: string): React.ReactNode => {
     const maxTechTotal = Math.max(...techWorkload.map(x => x.total), 1);
     const fmtK = (k: number) => k >= 1000 ? `${(k / 1000).toFixed(1)}M` : k > 0 ? `${k}K` : "—";
+
+    // ── NEW v2 DASHBOARDS ─────────────────────────────────────────────────────
+    if (id === "v2-overview") return (
+      <OverviewDashboard
+        projects={projects} sales={sales} presale={presale} service={service}
+        quotas={quotas} quotations={quots} contracts={contracts}
+        customers={customers} users={users}
+        loading={loading} today={today} thisMonth={thisMonth}
+      />
+    );
+    if (id === "v2-sales") return (
+      <SalesDashboard
+        projects={sc.projects} sales={sc.sales} quotas={sc.quotas} quotations={sc.quots}
+        customers={customers} users={users}
+        loading={loading} today={today} thisMonth={thisMonth}
+        myName={myName} isManager={isManagerRole}
+      />
+    );
+    if (id === "v2-presales") return (
+      <PresalesDashboard
+        presale={sc.presale} users={users}
+        loading={loading} today={today} thisMonth={thisMonth}
+        myName={myName} isManager={isManagerRole}
+      />
+    );
+    if (id === "v2-service") return (
+      <ServiceDashboard
+        service={sc.service} contracts={contracts} users={users}
+        loading={loading} today={today} thisMonth={thisMonth}
+        myName={myName} isManager={isManagerRole}
+      />
+    );
+    if (id === "v2-projects") return (
+      <ProjectDashboard
+        projects={sc.projects} quotations={sc.quots}
+        customers={customers} users={users}
+        loading={loading} today={today} thisMonth={thisMonth}
+        myName={myName} isManager={isManagerRole}
+      />
+    );
 
     // ── EXECUTIVE KPI CARDS (แยกราย — drag/hide ได้อิสระ) ───────────────────
     if (id === "exec-kpi-revenue") return (
@@ -3092,6 +3138,8 @@ export default function DashboardPage() {
     showOdBreakdown, setShowOdBreakdown,
     activeSalesData, users, myName, salesPlanOverdue,
     widgetShowMore, toggleShowMore,
+    // v2 dashboard deps
+    projects, sales, presale, quotas, quots, customers, loading, isManagerRole,
   ]);
 
   if (!mounted) return <div className="p-6 text-muted text-sm">Loading...</div>;
@@ -3099,7 +3147,7 @@ export default function DashboardPage() {
   const currentLayout = layouts[view];
   const visibleWidgets = currentLayout.filter(w => w.visible);
   const hiddenWidgets = currentLayout.filter(w => !w.visible);
-  const viewLabel = view==="executive"?"📊 Executive":view==="sales"?"💰 Sales":view==="presale"?"⚙️ Presale":view==="service"?"🔧 Service":view==="coordinator"?"🗂️ ธุรการ":view==="branch-manager"?"🏢 สาขา":"🔽 Projects";
+  const viewLabel = view==="overview"?"🏢 ภาพรวมสาขา":view==="executive"?"📊 Executive":view==="sales"?"💰 Sales":view==="presale"?"⚙️ Presale":view==="service"?"🔧 Service":view==="coordinator"?"🗂️ ธุรการ":view==="branch-manager"?"🏢 สาขา":"🔽 Projects";
 
   return (
     <UserIdCtx.Provider value={currentUser?.id ?? ""}>

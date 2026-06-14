@@ -6,7 +6,7 @@ export interface WidgetConfig {
   span: WidgetSpan;
 }
 
-export type DashView = "executive" | "sales" | "presale" | "service" | "projects" | "coordinator" | "branch-manager";
+export type DashView = "executive" | "sales" | "presale" | "service" | "projects" | "coordinator" | "branch-manager" | "overview";
 
 export const WIDGET_LABELS: Record<string, string> = {
   // Individual executive KPI cards
@@ -67,6 +67,12 @@ export const WIDGET_LABELS: Record<string, string> = {
   "bm-presale":       "Presale (ภาพรวม)",
   "bm-contracts":     "สัญญาใกล้หมด",
   "bm-qt-status":     "สถานะ Quotation",
+  // ── New v2 Dashboards ──────────────────────────────────────────────────────
+  "v2-overview":  "📊 ภาพรวมสาขา (Dashboard ใหม่)",
+  "v2-sales":     "💼 Sales Dashboard (ใหม่)",
+  "v2-presales":  "⚙️ Presales Dashboard (ใหม่)",
+  "v2-service":   "🔧 Service Dashboard (ใหม่)",
+  "v2-projects":  "🏗️ Projects Dashboard (ใหม่)",
 };
 
 export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
@@ -88,46 +94,53 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
     { id: "exec-contracts",      visible: true,  span: "half"  },
   ],
   sales: [
-    // ① ยอดขายเป็นอย่างไร
-    { id: "sales-manager-kpis", visible: true,  span: "full" },
-    // ② ดีลไหนต้องรีบตาม
+    // ── New v2 Sales Dashboard (default) ──────────────────────────────────
+    { id: "v2-sales",           visible: true,  span: "full" },
+    // ── Legacy widgets (ซ่อนอยู่ — เปิดได้ผ่าน Edit Mode) ─────────────────
+    { id: "sales-manager-kpis", visible: false, span: "full" },
     { id: "sales-overdue",      visible: false, span: "full" },
-    { id: "sales-top-deals",    visible: true,  span: "half" },
-    { id: "sales-funnel",       visible: true,  span: "half" },
-    // ③ ใครต้องการความช่วยเหลือ
-    { id: "sales-person-cards", visible: true,  span: "full" },
-    // ④ รายละเอียดเพิ่มเติม
-    { id: "sales-qt-status",    visible: true,  span: "half" },
-    // ซ่อนไว้ใน Edit Mode
+    { id: "sales-top-deals",    visible: false, span: "half" },
+    { id: "sales-funnel",       visible: false, span: "half" },
+    { id: "sales-person-cards", visible: false, span: "full" },
+    { id: "sales-qt-status",    visible: false, span: "half" },
     { id: "sales-team-plans",   visible: false, span: "full" },
     { id: "sales-kpis",         visible: false, span: "full" },
     { id: "sales-table",        visible: false, span: "half" },
   ],
   presale: [
-    { id: "pre-person-cards",  visible: true, span: "full" },
-    { id: "pre-kpis",          visible: true, span: "full" },
-    { id: "pre-workload",      visible: true, span: "half" },
-    { id: "pre-overdue",       visible: true, span: "half" },
-    { id: "pre-request-list",  visible: true, span: "full" },
+    // ── New v2 Presales Dashboard (default) ───────────────────────────────
+    { id: "v2-presales",        visible: true,  span: "full" },
+    // ── Legacy widgets ────────────────────────────────────────────────────
+    { id: "pre-person-cards",  visible: false, span: "full" },
+    { id: "pre-kpis",          visible: false, span: "full" },
+    { id: "pre-workload",      visible: false, span: "half" },
+    { id: "pre-overdue",       visible: false, span: "half" },
+    { id: "pre-request-list",  visible: false, span: "full" },
   ],
   service: [
-    { id: "svc-team-overview",  visible: true, span: "full" },
-    { id: "svc-kpis",           visible: true, span: "full" },
-    { id: "svc-status",         visible: true, span: "half" },
-    { id: "svc-overdue",        visible: true, span: "half" },
-    { id: "svc-time-analysis",  visible: true, span: "half" },
-    { id: "svc-cost-dashboard", visible: true, span: "half" },
-    { id: "svc-person-cards",   visible: true, span: "full" },
-    { id: "svc-pm",             visible: true, span: "half" },
-    { id: "svc-workload",       visible: true, span: "full" },
-    { id: "svc-repeat",         visible: true, span: "half" },
+    // ── New v2 Service Dashboard (default) ────────────────────────────────
+    { id: "v2-service",         visible: true,  span: "full" },
+    // ── Legacy widgets ────────────────────────────────────────────────────
+    { id: "svc-team-overview",  visible: false, span: "full" },
+    { id: "svc-kpis",           visible: false, span: "full" },
+    { id: "svc-status",         visible: false, span: "half" },
+    { id: "svc-overdue",        visible: false, span: "half" },
+    { id: "svc-time-analysis",  visible: false, span: "half" },
+    { id: "svc-cost-dashboard", visible: false, span: "half" },
+    { id: "svc-person-cards",   visible: false, span: "full" },
+    { id: "svc-pm",             visible: false, span: "half" },
+    { id: "svc-workload",       visible: false, span: "full" },
+    { id: "svc-repeat",         visible: false, span: "half" },
   ],
   projects: [
-    { id: "prj-kpis",      visible: true, span: "full" },
-    { id: "prj-funnel",    visible: true, span: "half" },
-    { id: "prj-qt-status", visible: true, span: "half" },
-    { id: "prj-contracts", visible: true, span: "half" },
-    { id: "prj-quarterly", visible: true, span: "half" },
+    // ── New v2 Projects Dashboard (default) ───────────────────────────────
+    { id: "v2-projects",        visible: true,  span: "full" },
+    // ── Legacy widgets ────────────────────────────────────────────────────
+    { id: "prj-kpis",      visible: false, span: "full" },
+    { id: "prj-funnel",    visible: false, span: "half" },
+    { id: "prj-qt-status", visible: false, span: "half" },
+    { id: "prj-contracts", visible: false, span: "half" },
+    { id: "prj-quarterly", visible: false, span: "half" },
   ],
   coordinator: [
     { id: "coord-kpis",         visible: true, span: "full" },
@@ -135,6 +148,9 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
     { id: "coord-tickets",      visible: true, span: "half" },
     { id: "coord-contracts",    visible: true, span: "half" },
     { id: "coord-satisfaction", visible: true, span: "full" },
+  ],
+  overview: [
+    { id: "v2-overview", visible: true, span: "full" },
   ],
   "branch-manager": [
     { id: "bm-kpi-row",            visible: true, span: "full" },
@@ -151,16 +167,15 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
 };
 
 export function getRoleDefaultView(role: string): DashView {
-  if (["admin", "Administrator"].includes(role)) return "executive";
-  if (role === "Branch Manager") return "branch-manager";
+  if (["admin", "Administrator", "Branch Manager"].includes(role)) return "overview";
   if (["sale", "avenger", "Sales Executive", "Sales Manager"].includes(role)) return "sales";
   if (["presale", "Presales Manager", "Presales Engineer", "BOQ Engineer"].includes(role)) return "presale";
   if (["service", "Service Manager", "Service Technician", "Operations Coordinator"].includes(role)) return "service";
   if (role === "Coordinator") return "coordinator";
-  return "executive";
+  return "overview";
 }
 
-export const ALL_VIEWS: DashView[] = ["executive", "sales", "presale", "service", "projects", "coordinator", "branch-manager"];
+export const ALL_VIEWS: DashView[] = ["overview", "executive", "sales", "presale", "service", "projects", "coordinator", "branch-manager"];
 
 export function loadLayout(userId: string, view: DashView): WidgetConfig[] {
   if (typeof window === "undefined") return DEFAULT_LAYOUTS[view];
