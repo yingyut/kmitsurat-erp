@@ -795,14 +795,44 @@ export default function DashboardPage() {
         myName={myName} isManager={seeAll}
       />
     );
-    if (id === "v2-executive") return (
-      <ExecutiveDashboard
-        projects={projects} sales={sales} presale={presale} service={service}
-        quotas={quotas} quotations={quots} contracts={contracts}
-        customers={customers} users={users}
-        loading={loading} today={today} thisMonth={thisMonth}
-      />
-    );
+    if (id === "v2-executive") {
+      const EXEC_SALES_ROLES   = new Set(["sale", "Sales Executive"]);
+      const EXEC_PRESALE_ROLES = new Set(["presale", "Presales Engineer", "BOQ Engineer"]);
+      const EXEC_SVC_ROLES     = new Set(["service", "Service Technician"]);
+
+      let execProjects  = projects, execSales = sales, execPresale = presale;
+      let execService   = service,   execQuotas = quotas, execQuots = quots;
+      let execContracts = contracts, execUsers  = users;
+
+      if (myRole === "Sales Manager") {
+        const teamNames = new Set(users.filter(u => u.active && EXEC_SALES_ROLES.has(u.role)).map(u => u.name));
+        execQuotas    = quotas.filter(q => teamNames.has(q.user_name));
+        execProjects  = projects.filter(p => teamNames.has(p.assigned_to));
+        execSales     = sales.filter(a => teamNames.has(a.assigned_to));
+        execQuots     = quots.filter(q => teamNames.has(q.salesperson || "") || teamNames.has(q.created_by));
+        execPresale   = []; execService = []; execContracts = [];
+        execUsers     = users.filter(u => u.active && EXEC_SALES_ROLES.has(u.role));
+      } else if (myRole === "Presales Manager") {
+        const teamNames = new Set(users.filter(u => u.active && EXEC_PRESALE_ROLES.has(u.role)).map(u => u.name));
+        execPresale   = presale.filter(r => teamNames.has(r.assigned_to));
+        execSales     = []; execService = []; execQuotas = []; execQuots = []; execContracts = [];
+        execUsers     = users.filter(u => u.active && EXEC_PRESALE_ROLES.has(u.role));
+      } else if (myRole === "Service Manager") {
+        const teamNames = new Set(users.filter(u => u.active && EXEC_SVC_ROLES.has(u.role)).map(u => u.name));
+        execService   = service.filter(t => teamNames.has(t.technician));
+        execPresale   = []; execProjects = []; execSales = []; execQuotas = []; execQuots = [];
+        execUsers     = users.filter(u => u.active && EXEC_SVC_ROLES.has(u.role));
+      }
+
+      return (
+        <ExecutiveDashboard
+          projects={execProjects} sales={execSales} presale={execPresale} service={execService}
+          quotas={execQuotas} quotations={execQuots} contracts={execContracts}
+          customers={customers} users={execUsers}
+          loading={loading} today={today} thisMonth={thisMonth}
+        />
+      );
+    }
 
     // ── EXECUTIVE KPI CARDS (แยกราย — drag/hide ได้อิสระ) ───────────────────
     if (id === "exec-kpi-revenue") return (
@@ -3180,7 +3210,7 @@ export default function DashboardPage() {
     widgetShowMore, toggleShowMore,
     // v2 dashboard deps
     projects, sales, presale, quotas, quots, customers, loading, today, thisMonth,
-    v2Projects, v2Presale, v2Service, seeAllSales, seeAllPresale, seeAllService, seeAll,
+    v2Projects, v2Presale, v2Service, seeAllSales, seeAllPresale, seeAllService, seeAll, myRole,
   ]);
 
   if (!mounted) return <div className="p-6 text-muted text-sm">Loading...</div>;

@@ -169,11 +169,11 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
 };
 
 export function getRoleDefaultView(role: string): DashView {
-  if (["admin", "Administrator"].includes(role)) return "executive";
+  if (["admin", "Administrator", "Sales Manager", "Presales Manager", "Service Manager"].includes(role)) return "executive";
   if (role === "Branch Manager") return "overview";
-  if (["sale", "avenger", "Sales Executive", "Sales Manager"].includes(role)) return "sales";
-  if (["presale", "Presales Manager", "Presales Engineer", "BOQ Engineer"].includes(role)) return "presale";
-  if (["service", "Service Manager", "Service Technician", "Operations Coordinator"].includes(role)) return "service";
+  if (["sale", "avenger", "Sales Executive"].includes(role)) return "sales";
+  if (["presale", "Presales Engineer", "BOQ Engineer"].includes(role)) return "presale";
+  if (["service", "Service Technician", "Operations Coordinator"].includes(role)) return "service";
   if (role === "Coordinator") return "coordinator";
   return "overview";
 }
