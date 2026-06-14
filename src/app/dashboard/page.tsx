@@ -10,11 +10,12 @@ import {
   type DashView, type WidgetConfig, type WidgetSpan,
 } from "@/lib/dashboardLayout";
 import type { Project, SalesActivity, PresaleRequest, ServiceTicket, SalesQuota, Quotation, ServiceContract, Asset, User, JobRequest } from "@/lib/types";
-import { OverviewDashboard }  from "@/components/dashboard/views/OverviewDashboard";
-import { SalesDashboard }     from "@/components/dashboard/views/SalesDashboard";
-import { PresalesDashboard }  from "@/components/dashboard/views/PresalesDashboard";
-import { ServiceDashboard }   from "@/components/dashboard/views/ServiceDashboard";
-import { ProjectDashboard }   from "@/components/dashboard/views/ProjectDashboard";
+import { OverviewDashboard }   from "@/components/dashboard/views/OverviewDashboard";
+import { SalesDashboard }      from "@/components/dashboard/views/SalesDashboard";
+import { PresalesDashboard }   from "@/components/dashboard/views/PresalesDashboard";
+import { ServiceDashboard }    from "@/components/dashboard/views/ServiceDashboard";
+import { ProjectDashboard }    from "@/components/dashboard/views/ProjectDashboard";
+import { ExecutiveDashboard }  from "@/components/dashboard/views/ExecutiveDashboard";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -792,6 +793,14 @@ export default function DashboardPage() {
         customers={customers} users={users}
         loading={loading} today={today} thisMonth={thisMonth}
         myName={myName} isManager={seeAll}
+      />
+    );
+    if (id === "v2-executive") return (
+      <ExecutiveDashboard
+        projects={projects} sales={sales} presale={presale} service={service}
+        quotas={quotas} quotations={quots} contracts={contracts}
+        customers={customers} users={users}
+        loading={loading} today={today} thisMonth={thisMonth}
       />
     );
 
@@ -3170,7 +3179,7 @@ export default function DashboardPage() {
     activeSalesData, users, myName, salesPlanOverdue,
     widgetShowMore, toggleShowMore,
     // v2 dashboard deps
-    projects, sales, quotas, quots, customers, loading,
+    projects, sales, presale, quotas, quots, customers, loading, today, thisMonth,
     v2Projects, v2Presale, v2Service, seeAllSales, seeAllPresale, seeAllService, seeAll,
   ]);
 

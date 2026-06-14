@@ -68,30 +68,32 @@ export const WIDGET_LABELS: Record<string, string> = {
   "bm-contracts":     "สัญญาใกล้หมด",
   "bm-qt-status":     "สถานะ Quotation",
   // ── New v2 Dashboards ──────────────────────────────────────────────────────
-  "v2-overview":  "📊 ภาพรวมสาขา (Dashboard ใหม่)",
-  "v2-sales":     "💼 Sales Dashboard (ใหม่)",
-  "v2-presales":  "⚙️ Presales Dashboard (ใหม่)",
-  "v2-service":   "🔧 Service Dashboard (ใหม่)",
-  "v2-projects":  "🏗️ Projects Dashboard (ใหม่)",
+  "v2-overview":   "📊 ภาพรวมสาขา (Dashboard ใหม่)",
+  "v2-sales":      "💼 Sales Dashboard (ใหม่)",
+  "v2-presales":   "⚙️ Presales Dashboard (ใหม่)",
+  "v2-service":    "🔧 Service Dashboard (ใหม่)",
+  "v2-projects":   "🏗️ Projects Dashboard (ใหม่)",
+  "v2-executive":  "👔 Executive Dashboard (ภาพรวมผู้บริหาร)",
 };
 
 export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
   executive: [
-    // exec-kpi-revenue / target-pct / profit / overdue ซ่อนไว้เพราะ showHeroKpiStrip ครอบคลุมแล้ว
-    // เปิดได้ผ่าน Edit Mode → รีเซ็ต หรือคลิก widget ที่ซ่อนอยู่
+    // ── New v2 Executive Dashboard (default) ──────────────────────────────
+    { id: "v2-executive",        visible: true,  span: "full"  },
+    // ── Legacy widgets (ซ่อนอยู่ — เปิดได้ผ่าน Edit Mode) ─────────────────
     { id: "exec-kpi-revenue",    visible: false, span: "third" },
     { id: "exec-kpi-target-pct", visible: false, span: "third" },
     { id: "exec-kpi-profit",     visible: false, span: "third" },
-    { id: "exec-kpi-pipe-val",   visible: true,  span: "third" },
+    { id: "exec-kpi-pipe-val",   visible: false, span: "third" },
     { id: "exec-kpi-overdue",    visible: false, span: "third" },
-    { id: "exec-kpi-sla",        visible: true,  span: "third" },
+    { id: "exec-kpi-sla",        visible: false, span: "third" },
     { id: "exec-kpis",           visible: false, span: "full"  },
-    { id: "exec-quarterly",      visible: true,  span: "half"  },
-    { id: "exec-pipeline",       visible: true,  span: "half"  },
-    { id: "exec-sales-table",    visible: true,  span: "full"  },
-    { id: "exec-presale",        visible: true,  span: "half"  },
-    { id: "exec-service",        visible: true,  span: "half"  },
-    { id: "exec-contracts",      visible: true,  span: "half"  },
+    { id: "exec-quarterly",      visible: false, span: "half"  },
+    { id: "exec-pipeline",       visible: false, span: "half"  },
+    { id: "exec-sales-table",    visible: false, span: "full"  },
+    { id: "exec-presale",        visible: false, span: "half"  },
+    { id: "exec-service",        visible: false, span: "half"  },
+    { id: "exec-contracts",      visible: false, span: "half"  },
   ],
   sales: [
     // ── New v2 Sales Dashboard (default) ──────────────────────────────────
@@ -167,7 +169,8 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
 };
 
 export function getRoleDefaultView(role: string): DashView {
-  if (["admin", "Administrator", "Branch Manager"].includes(role)) return "overview";
+  if (["admin", "Administrator"].includes(role)) return "executive";
+  if (role === "Branch Manager") return "overview";
   if (["sale", "avenger", "Sales Executive", "Sales Manager"].includes(role)) return "sales";
   if (["presale", "Presales Manager", "Presales Engineer", "BOQ Engineer"].includes(role)) return "presale";
   if (["service", "Service Manager", "Service Technician", "Operations Coordinator"].includes(role)) return "service";
