@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
-import type { Project, Customer, User, ProjectType, ServiceContract } from "@/lib/types";
+import type { Project, Customer, User, ProjectType, ServiceContract, PresaleRequest, ServiceTicket } from "@/lib/types";
 import Link from "next/link";
 import { useCurrentUser } from "@/lib/UserContext";
 import { isNewRole } from "@/lib/rbac";
@@ -86,6 +86,8 @@ export default function ProjectsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [pTypes, setPTypes] = useState<ProjectType[]>([]);
   const [contracts, setContracts] = useState<ServiceContract[]>([]);
+  const [presaleReqs, setPresaleReqs] = useState<PresaleRequest[]>([]);
+  const [svcTickets, setSvcTickets] = useState<ServiceTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState("");
@@ -181,6 +183,8 @@ export default function ProjectsPage() {
         fs.users.subscribe(data => setUsers(data.filter(x => x.active !== false))),
         fs.projectTypes.subscribe(data => setPTypes(data)),
         fs.serviceContracts.subscribe(data => setContracts(data)),
+        fs.presaleRequests.subscribe(data => setPresaleReqs(data)),
+        fs.serviceTickets.subscribe(data => setSvcTickets(data)),
       );
     })();
     return () => unsubs.forEach(u => u());
@@ -1009,6 +1013,82 @@ export default function ProjectsPage() {
               );
             })()}
           </div>
+
+          {/* ── Execution Hub (Presale + Service linked to this project) ── */}
+          {(() => {
+            const pid = detail.id!;
+            const pname = detail.name;
+            const cid = detail.customer_id;
+            const cname = detail.customer_name;
+            const linkedPresale = presaleReqs.filter(r => r.project_id === pid);
+            const linkedService = svcTickets.filter(t => t.project_id === pid);
+            const presaleNewUrl = `/presale?project_id=${encodeURIComponent(pid)}&project_name=${encodeURIComponent(pname)}&customer_id=${encodeURIComponent(cid)}&customer_name=${encodeURIComponent(cname)}`;
+            const serviceNewUrl = `/service?project_id=${encodeURIComponent(pid)}&project_name=${encodeURIComponent(pname)}&customer_id=${encodeURIComponent(cid)}&customer_name=${encodeURIComponent(cname)}`;
+            const presaleStatusColor: Record<string, string> = {
+              pending: "bg-slate-700 text-slate-300",
+              in_progress: "bg-blue-800/60 text-blue-300",
+              waiting_info: "bg-amber-800/60 text-amber-300",
+              waiting_approval: "bg-purple-800/60 text-purple-300",
+              completed: "bg-green-800/60 text-green-300",
+              cancelled: "bg-gray-700 text-gray-400",
+            };
+            const svcStatusColor: Record<string, string> = {
+              open: "bg-red-900/50 text-red-400", in_progress: "bg-yellow-900/50 text-yellow-400",
+              resolved: "bg-green-800/50 text-green-400", closed: "bg-gray-700 text-gray-300",
+              travelling: "bg-orange-800/50 text-orange-400", on_site: "bg-amber-800/50 text-amber-300",
+              waiting_parts: "bg-purple-800/50 text-purple-400", cancelled: "bg-gray-800 text-gray-500",
+            };
+            return (
+              <div className="mt-5 pt-5 border-t border-border space-y-4">
+                <p className="text-xs font-semibold text-foreground/70 uppercase tracking-wide">🏗️ งานในโปรเจค</p>
+
+                {/* Presale work */}
+                <div className="rounded-xl border border-border bg-background/50 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-blue-400">⚙️ งาน Presale ({linkedPresale.length})</p>
+                    <Link href={presaleNewUrl} className="text-[10px] text-accent hover:underline">+ สร้างงาน Presale →</Link>
+                  </div>
+                  {linkedPresale.length === 0 ? (
+                    <p className="text-[11px] text-muted">ยังไม่มีงาน Presale — <Link href={presaleNewUrl} className="text-accent hover:underline">สร้างเลย</Link></p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {linkedPresale.map(r => (
+                        <div key={r.id} className="flex items-center gap-2 text-xs py-1 border-b border-border/50 last:border-0">
+                          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${presaleStatusColor[r.status] ?? "bg-slate-700 text-slate-300"}`}>{r.status}</span>
+                          <span className="flex-1 truncate font-medium">{r.requirement || r.type}</span>
+                          <span className="text-muted shrink-0 text-[10px]">{r.assigned_to || "—"}</span>
+                          {r.due_date && <span className="text-muted shrink-0 text-[10px]">{r.due_date}</span>}
+                          <Link href={`/presale?open=${r.id}`} className="text-[10px] text-accent hover:underline shrink-0">ดู →</Link>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Service work */}
+                <div className="rounded-xl border border-border bg-background/50 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-orange-400">🔧 งาน Service ({linkedService.length})</p>
+                    <Link href={serviceNewUrl} className="text-[10px] text-accent hover:underline">+ สร้าง Ticket →</Link>
+                  </div>
+                  {linkedService.length === 0 ? (
+                    <p className="text-[11px] text-muted">ยังไม่มี Service Ticket — <Link href={serviceNewUrl} className="text-accent hover:underline">สร้างเลย</Link></p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {linkedService.map(t => (
+                        <div key={t.id} className="flex items-center gap-2 text-xs py-1 border-b border-border/50 last:border-0">
+                          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${svcStatusColor[t.status] ?? "bg-slate-700 text-slate-300"}`}>{t.status}</span>
+                          <span className="flex-1 truncate font-medium">{t.issue}</span>
+                          <span className="text-muted shrink-0 text-[10px]">{t.technician || "—"}</span>
+                          {t.service_date && <span className="text-muted shrink-0 text-[10px]">{t.service_date}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
