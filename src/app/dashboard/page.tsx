@@ -3316,13 +3316,13 @@ export default function DashboardPage() {
       {(isAdmin || ["Sales Manager","Presales Manager","Service Manager"].includes(myRole))&&(
         <div className="flex gap-0.5 rounded-lg border border-border/70 bg-card p-1 w-fit flex-wrap">
           {([
-            { id:"executive", label:"Executive" },
-            { id:"sales",     label:"Sales" },
-            { id:"presale",   label:"Presale" },
-            { id:"service",   label:"Service" },
-            { id:"projects",  label:"Projects" },
-            { id:"coordinator", label:"ธุรการ" },
-          ] as {id:DashView;label:string}[]).map(v=>(
+            { id:"executive",   label:"Executive", show: true },
+            { id:"sales",       label:"Sales",     show: isAdmin || myRole === "Sales Manager" },
+            { id:"presale",     label:"Presale",   show: isAdmin || myRole === "Presales Manager" },
+            { id:"service",     label:"Service",   show: isAdmin || myRole === "Service Manager" },
+            { id:"projects",    label:"Projects",  show: isAdmin || myRole === "Presales Manager" },
+            { id:"coordinator", label:"ธุรการ",    show: isAdmin },
+          ] as {id:DashView;label:string;show:boolean}[]).filter(v => v.show).map(v=>(
             <button key={v.id} onClick={()=>{ setView(v.id); setEditMode(false); setTeamScope(null); }}
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view===v.id?"bg-accent text-white shadow-sm":"text-muted hover:text-foreground"}`}>
               {v.label}
