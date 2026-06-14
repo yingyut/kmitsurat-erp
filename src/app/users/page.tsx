@@ -672,14 +672,12 @@ export default function UsersPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-muted">อีเมล</label>
-                    <div className="flex gap-2 mt-1">
-                      <input placeholder="email@example.com" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} className="flex-1 rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent" />
-                      <button type="button" onClick={() => testEmail(userForm.email)} disabled={emailTesting || !userForm.email.trim()}
-                        title="ส่ง Email ทดสอบไปที่ address นี้"
-                        className="shrink-0 rounded-lg border border-blue-700 text-blue-400 px-3 py-2 text-xs hover:bg-blue-900/20 disabled:opacity-40 disabled:cursor-not-allowed">
-                        {emailTesting ? "⏳..." : "📧 ทดสอบ"}
-                      </button>
-                    </div>
+                    <input placeholder="email@example.com" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} className="w-full rounded-lg bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-accent mt-1" />
+                    <button type="button" onClick={() => testEmail(userForm.email)} disabled={emailTesting || !userForm.email.trim()}
+                      title="ส่ง Email ทดสอบไปที่ address นี้"
+                      className="mt-1 text-[10px] text-blue-400 hover:underline disabled:opacity-40 disabled:cursor-not-allowed">
+                      {emailTesting ? "⏳ กำลังส่ง..." : "📧 ส่ง email ทดสอบ"}
+                    </button>
                   </div>
                   <div>
                     <label className="text-[10px] text-muted">เบอร์โทร</label>
