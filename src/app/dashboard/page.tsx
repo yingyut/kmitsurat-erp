@@ -206,6 +206,85 @@ function SortableWidget({ id, span, editMode, onToggleVisible, onToggleSpan, lab
   );
 }
 
+// ─── Branch Manager Dashboard Components ──────────────────────────────────────
+
+function BmKpiChip({ label, value, color, href }: {
+  label: string; value: string | number;
+  color: "green" | "amber" | "red" | "blue" | "violet";
+  href: string;
+}) {
+  const c = {
+    green:  "bg-green-500/10 border-green-500/25 text-green-500",
+    amber:  "bg-amber-500/10 border-amber-500/25 text-amber-500",
+    red:    "bg-rose-500/10 border-rose-500/25 text-rose-500",
+    blue:   "bg-blue-500/10 border-blue-500/25 text-blue-500",
+    violet: "bg-violet-500/10 border-violet-500/25 text-violet-500",
+  }[color];
+  return (
+    <Link href={href} className={`rounded-xl border p-3 text-center hover:opacity-80 transition-opacity ${c}`}>
+      <p className="text-xl font-bold">{value}</p>
+      <p className="text-[10px] text-muted/70 mt-0.5">{label}</p>
+    </Link>
+  );
+}
+
+function BmExpandable({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-3 border-t border-border pt-2">
+      <button onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-[11px] text-muted hover:text-foreground transition-colors w-full">
+        <span className={`transition-transform inline-block ${open ? "rotate-90" : ""}`}>▶</span>
+        {label}
+      </button>
+      {open && <div className="mt-2 space-y-1.5">{children}</div>}
+    </div>
+  );
+}
+
+function BmGrowthChart({ quotas, service }: { quotas: SalesQuota[]; service: ServiceTicket[] }) {
+  const data = useMemo(() => {
+    const today = new Date();
+    return Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(today.getFullYear(), today.getMonth() - 11 + i, 1);
+      const m = d.toISOString().slice(0, 7);
+      const salesAmt = quotas.filter(q => q.month === m).reduce((s, q) => s + (q.actual_sales || 0), 0);
+      const svcCount = service.filter(t => (t.service_date || "").startsWith(m)).length;
+      return { month: m.slice(5), salesK: Math.round(salesAmt / 1000), svc: svcCount };
+    });
+  }, [quotas, service]);
+
+  return (
+    <div className="bg-card rounded-xl border border-border p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-foreground">📈 อัตราการเติบโตของสาขา (12 เดือน)</h3>
+        <Link href="/reports" className="text-[11px] text-accent hover:underline">รายงาน →</Link>
+      </div>
+      <ResponsiveContainer width="100%" height={180}>
+        <AreaChart data={data} margin={{ left: -10, right: 10, top: 4, bottom: 0 }}>
+          <XAxis dataKey="month" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+          <YAxis yAxisId="sales" tick={{ fontSize: 10 }} tickLine={false} axisLine={false}
+            tickFormatter={v => v > 0 ? `${v}K` : ""} />
+          <YAxis yAxisId="svc" orientation="right" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+          <Tooltip />
+          <Area yAxisId="sales" type="monotone" dataKey="salesK" name="ยอดขาย"
+            stroke="#22c55e" strokeWidth={2} fill="#22c55e20" dot={false} />
+          <Area yAxisId="svc" type="monotone" dataKey="svc" name="Service Ticket"
+            stroke="#3b82f6" strokeWidth={2} fill="#3b82f610" dot={false} />
+        </AreaChart>
+      </ResponsiveContainer>
+      <div className="flex gap-5 mt-2 text-[10px] text-muted justify-center">
+        <span className="flex items-center gap-1.5">
+          <span className="w-4 h-0.5 bg-green-500 inline-block rounded" />ยอดขาย
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-4 h-0.5 bg-blue-500 inline-block rounded" />Service Ticket
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { currentUser, hasPermission } = useCurrentUser();
@@ -790,6 +869,186 @@ export default function DashboardPage() {
       </Section>
     );
 
+    // ── BRANCH MANAGER WIDGETS ─────────────────────────────────────────────────
+    if (id === "bm-sales-summary") {
+      const fmtAmt = (v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v > 0 ? `${Math.round(v/1000)}K` : "—";
+      return (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-foreground">💰 Sales</h3>
+            <Link href="/sales" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            <BmKpiChip label="ยอดขายรวม" value={fmtAmt(actual)} color="green" href="/sales" />
+            <BmKpiChip label="% บรรลุเป้า" value={`${targetPct.toFixed(0)}%`}
+              color={targetPct>=80?"green":targetPct>=50?"amber":"red"} href="/reports" />
+            <BmKpiChip label="QT รออนุมัติ" value={qtDraft+qtSent} color="amber" href="/quotations" />
+            <BmKpiChip label="QT อนุมัติแล้ว" value={qtApproved} color="blue" href="/quotations" />
+          </div>
+          <BmExpandable label="Sales รายคน">
+            <div className="space-y-2">
+              {personData.filter((p: PersonRow)=>!p.isPool).map((p: PersonRow) => (
+                <Link key={p.name} href="/sales" className="flex items-center gap-2 hover:opacity-80">
+                  <span className="text-xs text-muted w-20 truncate shrink-0">{p.short||p.name}</span>
+                  <div className="flex-1 h-4 bg-background rounded-full overflow-hidden border border-border">
+                    <div className="h-full bg-accent/60 rounded-full" style={{ width:`${Math.min(p.pct,100)}%` }} />
+                  </div>
+                  <span className="text-[11px] text-muted w-10 text-right shrink-0">{p.actualK}K</span>
+                  <span className={`text-[11px] w-9 text-right shrink-0 font-medium ${p.pct>=80?"text-green-500":p.pct>=50?"text-amber-500":"text-rose-500"}`}>{p.pct}%</span>
+                </Link>
+              ))}
+            </div>
+          </BmExpandable>
+        </div>
+      );
+    }
+
+    if (id === "bm-growth-chart") return <BmGrowthChart quotas={sc.quotas} service={sc.service} />;
+
+    if (id === "bm-projects-summary") {
+      const stages = [
+        { label:"Lead",        key:"lead",        color:"blue"   as const },
+        { label:"Opportunity", key:"opportunity",  color:"violet" as const },
+        { label:"Proposal",    key:"proposal",     color:"amber"  as const },
+        { label:"Negotiation", key:"negotiation",  color:"red"    as const },
+      ];
+      const fmtPip = (v: number) => v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v > 0 ? `${Math.round(v/1000)}K` : "—";
+      return (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-foreground">🎯 Projects / Pipeline</h3>
+            <Link href="/projects" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <BmKpiChip label="Pipeline มูลค่า" value={fmtPip(pipeline)} color="violet" href="/projects" />
+            <BmKpiChip label="Deal Active" value={totalDeals} color="blue" href="/projects" />
+            <BmKpiChip label="ปิดได้แล้ว" value={wonCount} color="green" href="/projects" />
+          </div>
+          <BmExpandable label="รายละเอียด Stage">
+            <div className="space-y-1.5">
+              {stages.map(s => {
+                const cnt = sc.projects.filter(p => p.status === s.key).length;
+                const val = sc.projects.filter(p => p.status === s.key).reduce((sum, p) => sum + (p.value || 0), 0);
+                return (
+                  <Link key={s.key} href="/projects" className="flex items-center gap-2 hover:opacity-80">
+                    <span className="text-xs text-muted w-24 truncate shrink-0">{s.label}</span>
+                    <div className="flex-1 h-4 bg-background rounded-full overflow-hidden border border-border">
+                      <div className="h-full bg-accent/50 rounded-full transition-all"
+                        style={{ width: totalDeals > 0 ? `${Math.round(cnt/totalDeals*100)}%` : "0%" }} />
+                    </div>
+                    <span className="text-[11px] text-muted w-6 text-right shrink-0 font-medium">{cnt}</span>
+                    <span className="text-[10px] text-muted/60 w-14 text-right shrink-0">{val>0?fmtPip(val):""}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </BmExpandable>
+        </div>
+      );
+    }
+
+    if (id === "bm-presale-summary") {
+      const prPending  = prWorkload.reduce((s,p)=>s+p.pending, 0);
+      const prProgress = prWorkload.reduce((s,p)=>s+p.progress, 0);
+      const prDone     = prWorkload.reduce((s,p)=>s+p.done, 0);
+      return (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-foreground">⚙️ Presale</h3>
+            <Link href="/presale" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <BmKpiChip label="รองาน" value={prPending} color="amber" href="/presale" />
+            <BmKpiChip label="กำลังทำ" value={prProgress} color="blue" href="/presale" />
+            <BmKpiChip label="เสร็จแล้ว" value={prDone} color="green" href="/presale" />
+          </div>
+          <BmExpandable label="Presale รายคน">
+            <div className="space-y-1.5">
+              {prWorkload.slice(0,8).map(p => {
+                const total = p.pending+p.progress+p.done;
+                return (
+                  <Link key={p.fullName} href="/presale" className="flex items-center gap-2 hover:opacity-80">
+                    <span className="text-xs text-muted w-16 truncate shrink-0">{p.isPool?"📦":p.name}</span>
+                    <div className="flex-1 flex gap-0.5 h-5">
+                      {total===0?<div className="flex-1 rounded bg-background border border-border text-muted/50 text-[9px] flex items-center justify-center">ว่าง</div>:<>
+                        {p.pending>0&&<div className="h-full rounded bg-amber-500/20 text-amber-500 text-[9px] flex items-center justify-center px-1 min-w-[18px] font-bold">{p.pending}</div>}
+                        {p.progress>0&&<div className="h-full rounded bg-blue-500/20 text-blue-500 text-[9px] flex items-center justify-center px-1 min-w-[18px] font-bold">{p.progress}</div>}
+                        {p.done>0&&<div className="h-full rounded bg-green-500/20 text-green-500 text-[9px] flex items-center justify-center px-1 min-w-[18px] font-bold">{p.done}</div>}
+                      </>}
+                    </div>
+                    <span className="text-[10px] text-muted w-10 text-right shrink-0">{total} งาน</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </BmExpandable>
+        </div>
+      );
+    }
+
+    if (id === "bm-service-summary") {
+      const maxT = Math.max(...techWorkload.map(x=>x.total), 1);
+      return (
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-foreground">🔧 Service</h3>
+            <Link href="/service" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            <BmKpiChip label="รอดำเนินการ" value={svcOpen}   color="blue"  href="/service" />
+            <BmKpiChip label="กำลังทำ"     value={svcInProg} color="amber" href="/service" />
+            <BmKpiChip label="เสร็จแล้ว"   value={svcDone}   color="green" href="/service" />
+            <BmKpiChip label="เกินกำหนด"   value={svcDelay}  color="red"   href="/service" />
+          </div>
+          <BmExpandable label="ช่างรายคน">
+            <div className="space-y-1.5">
+              {techWorkload.slice(0,6).map(t => (
+                <Link key={t.name} href="/service" className="flex items-center gap-2 hover:opacity-80">
+                  <span className="text-xs text-muted w-14 truncate shrink-0">{t.isPool?"📦":t.name}</span>
+                  <div className="flex-1 flex gap-0.5 h-4">
+                    {t.done>0&&<div className="h-full rounded-sm bg-green-500/25 text-[9px] text-green-500 flex items-center justify-center px-1 min-w-[16px] font-bold" style={{width:`${t.done/maxT*100}%`}}>{t.done}</div>}
+                    {t.inProg>0&&<div className="h-full rounded-sm bg-amber-500/25 text-[9px] text-amber-500 flex items-center justify-center px-1 min-w-[16px] font-bold" style={{width:`${t.inProg/maxT*100}%`}}>{t.inProg}</div>}
+                    {t.open>0&&<div className="h-full rounded-sm bg-blue-500/25 text-[9px] text-blue-500 flex items-center justify-center px-1 min-w-[16px] font-bold" style={{width:`${t.open/maxT*100}%`}}>{t.open}</div>}
+                  </div>
+                  <span className="text-[10px] text-muted w-10 text-right shrink-0">{t.total} งาน</span>
+                </Link>
+              ))}
+            </div>
+          </BmExpandable>
+        </div>
+      );
+    }
+
+    if (id === "bm-presale") return (
+      <Section title="⚙️ Presale — สรุปงานทีม" action={<Link href="/presale" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>} defaultOpen={true}>
+        {prWorkload.length===0?<p className="text-xs text-muted py-4">ไม่มีข้อมูล</p>:(
+          <div className="space-y-2">
+            {prWorkload.slice(0,8).map(p=>{
+              const total = p.pending+p.progress+p.done;
+              return (
+                <Link key={p.fullName} href="/presale" className={`flex items-center gap-3 hover:opacity-80 ${p.isPool?"border-t border-dashed border-border pt-2 mt-1":""}`}>
+                  <div className="w-16 text-xs truncate">{p.isPool?<span className="text-muted/60">📦 กองกลาง</span>:<span className="text-muted">{p.name}</span>}</div>
+                  <div className="flex-1 flex gap-1">
+                    {total===0?<div className="h-6 rounded bg-background border border-border text-muted/50 text-[10px] flex items-center justify-center px-2 w-full">ว่าง</div>:(<>
+                      {p.pending>0&&<div className="h-6 rounded bg-amber-500/15 text-amber-500 text-[10px] flex items-center justify-center px-1.5 min-w-[22px] font-semibold">{p.pending}</div>}
+                      {p.progress>0&&<div className="h-6 rounded bg-blue-500/15 text-blue-500 text-[10px] flex items-center justify-center px-1.5 min-w-[22px] font-semibold">{p.progress}</div>}
+                      {p.done>0&&<div className="h-6 rounded bg-green-500/15 text-green-500 text-[10px] flex items-center justify-center px-1.5 min-w-[22px] font-semibold">{p.done}</div>}
+                    </>)}
+                  </div>
+                  <div className="text-[10px] text-muted w-10 text-right">{total>0?`${total} งาน`:"—"}</div>
+                </Link>
+              );
+            })}
+            <div className="flex gap-3 mt-2 text-[10px] text-muted">
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-amber-500/50 inline-block"/>รอ</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-blue-500/50 inline-block"/>กำลังทำ</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-green-500/50 inline-block"/>เสร็จ</span>
+            </div>
+          </div>
+        )}
+      </Section>
+    );
+
     if (id === "exec-presale" || id === "pre-workload") return (
       <Section title="⚙️ Presale Workload" action={<Link href="/presale" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>} defaultOpen={false}>
         {prWorkload.length===0?<p className="text-xs text-muted py-4">ไม่มีข้อมูล</p>:(
@@ -814,6 +1073,50 @@ export default function DashboardPage() {
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-amber-500/50 inline-block"/>รอ</span>
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-blue-500/50 inline-block"/>กำลังทำ</span>
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-green-500/50 inline-block"/>เสร็จ</span>
+            </div>
+          </div>
+        )}
+      </Section>
+    );
+
+    if (id === "bm-service") return (
+      <Section title="🔧 Service — สรุปงานทีม" action={<Link href="/service" className="text-[11px] text-accent hover:underline">ดูงาน →</Link>} defaultOpen={true}>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <Link href="/service" className="rounded-xl bg-green-500/10 border border-green-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-green-500">{svcDone}</p>
+            <p className="text-[10px] text-muted/70 mt-0.5">เสร็จแล้ว</p>
+          </Link>
+          <Link href="/service" className="rounded-xl bg-rose-500/10 border border-rose-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-rose-500">{svcDelay}</p>
+            <p className="text-[10px] text-muted/70 mt-0.5">เกินกำหนด</p>
+          </Link>
+          <Link href="/service" className="rounded-xl bg-amber-500/10 border border-amber-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-amber-500">{svcInProg}</p>
+            <p className="text-[10px] text-muted/70 mt-0.5">กำลังดำเนินการ</p>
+          </Link>
+          <Link href="/service" className="rounded-xl bg-blue-500/10 border border-blue-500/25 p-3 text-center hover:opacity-80">
+            <p className="text-2xl font-bold text-blue-500">{svcOpen}</p>
+            <p className="text-[10px] text-muted/70 mt-0.5">รอดำเนินการ</p>
+          </Link>
+        </div>
+        {techWorkload.length>0&&(
+          <div className="border-t border-border pt-3">
+            <p className="text-[11px] text-muted mb-2">ช่างรายคน</p>
+            <div className="space-y-2">
+              {techWorkload.slice(0,6).map(t=>{
+                const maxTechTotalInner = Math.max(...techWorkload.map(x => x.total), 1);
+                return (
+                  <Link key={t.name} href="/service" className={`flex items-center gap-2 hover:opacity-80 ${t.isPool?"border-t border-dashed border-border pt-2 mt-1":""}`}>
+                    <div className="w-14 text-xs truncate shrink-0">{t.isPool?<span className="text-muted/60">📦</span>:<span className="text-muted">{t.name}</span>}</div>
+                    <div className="flex-1 flex gap-0.5 h-5">
+                      {t.done>0&&<div className="h-full rounded-sm bg-green-500/20 text-[10px] text-green-500 flex items-center justify-center px-1 min-w-[18px] font-semibold" style={{ width:`${t.done/maxTechTotalInner*100}%` }}>{t.done}</div>}
+                      {t.inProg>0&&<div className="h-full rounded-sm bg-amber-500/20 text-[10px] text-amber-500 flex items-center justify-center px-1 min-w-[18px] font-semibold" style={{ width:`${t.inProg/maxTechTotalInner*100}%` }}>{t.inProg}</div>}
+                      {t.open>0&&<div className="h-full rounded-sm bg-blue-500/20 text-[10px] text-blue-500 flex items-center justify-center px-1 min-w-[18px] font-semibold" style={{ width:`${t.open/maxTechTotalInner*100}%` }}>{t.open}</div>}
+                    </div>
+                    <span className="text-[10px] text-muted w-10 text-right shrink-0">{t.total} งาน</span>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         )}
@@ -2487,7 +2790,7 @@ export default function DashboardPage() {
   const currentLayout = layouts[view];
   const visibleWidgets = currentLayout.filter(w => w.visible);
   const hiddenWidgets = currentLayout.filter(w => !w.visible);
-  const viewLabel = view==="executive"?"📊 Executive":view==="sales"?"💰 Sales":view==="presale"?"⚙️ Presale":view==="service"?"🔧 Service":view==="coordinator"?"🗂️ ธุรการ":"🔽 Projects";
+  const viewLabel = view==="executive"?"📊 Executive":view==="sales"?"💰 Sales":view==="presale"?"⚙️ Presale":view==="service"?"🔧 Service":view==="coordinator"?"🗂️ ธุรการ":view==="branch-manager"?"🏢 สาขา":"🔽 Projects";
 
   return (
     <UserIdCtx.Provider value={currentUser?.id ?? ""}>
@@ -2499,7 +2802,7 @@ export default function DashboardPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-xl font-bold tracking-tight text-foreground">
-                {view==="executive"?"Executive Dashboard":view==="sales"?(seeAll?"Sales Dashboard":myName||"Sales Dashboard"):view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":"Projects Dashboard"}
+                {view==="executive"?"Executive Dashboard":view==="sales"?(seeAll?"Sales Dashboard":myName||"Sales Dashboard"):view==="presale"?"Presale Dashboard":view==="service"?"Service Dashboard":view==="coordinator"?"Coordinator Dashboard":view==="branch-manager"?"Branch Manager Dashboard":"Projects Dashboard"}
               </h1>
               {!loading&&(
                 <span className="flex items-center gap-1.5">

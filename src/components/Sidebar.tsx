@@ -412,11 +412,55 @@ export default function Sidebar({ mobileOpen = false, onClose, alwaysMobile = fa
   const role = currentUser?.role ?? "";
   const isTechSidebar = role === "Service Technician" || role === "service";
   const isServiceOnlyRole = role === "Service Manager";
-  const isSalesOnlyRole = ["Sales Manager", "Branch Manager", "Sales Executive", "sale"].includes(role);
+  const isSalesOnlyRole = ["Sales Manager", "Sales Executive", "sale"].includes(role);
+  const isBranchManager = role === "Branch Manager";
   const SERVICE_HIDDEN_IDS = new Set(["sales", "presale", "admin"]);
   const SALES_HIDDEN_IDS = new Set(["presale"]);
   const baseSections = isTechSidebar ? TECH_SECTIONS : SECTIONS;
-  const sections = isServiceOnlyRole
+
+  // Branch Manager: แสดงเฉพาะเมนูที่จำเป็นสำหรับภาพรวมสาขา
+  const BRANCH_MANAGER_SECTIONS: SectionDef[] = [
+    {
+      id: "main",
+      items: [
+        { href: "/dashboard", label: "Dashboard",   thai: "แดชบอร์ดภาพรวม",               icon: "📊" },
+        { href: "/todos",     label: "Memo & Todo", thai: "บันทึกงาน / รายการสิ่งที่ต้องทำ", icon: "📝" },
+      ],
+    },
+    {
+      id: "sales", title: "ฝ่ายขาย", subtitle: "SALES", dot: "bg-blue-500",
+      items: [
+        { href: "/projects",           label: "Pipeline",   thai: "โอกาสขาย / Sales Pipeline", icon: "🎯" },
+        { href: "/quotations",         label: "Quotations", thai: "ใบเสนอราคา",                  icon: "💰" },
+        { href: "/sales?tab=requests", label: "Requests",   thai: "Job Requests",                icon: "🙋", badgeKey: "salesNotifs" as "salesNotifs" },
+      ],
+    },
+    {
+      id: "service-work", title: "เซอร์วิส", subtitle: "SERVICE", dot: "bg-rose-500",
+      items: [
+        { href: "/service", label: "Service Tickets", thai: "งานบริการ / ภาพรวม", icon: "🔧", badgeKey: "tickets" as "tickets" },
+      ],
+    },
+    {
+      id: "data", title: "ข้อมูลกลาง", subtitle: "MASTER DATA", dot: "bg-emerald-500",
+      items: [
+        { href: "/customers", label: "Customers", thai: "ฐานข้อมูลลูกค้า", icon: "🏢" },
+      ],
+    },
+    {
+      id: "admin", title: "ผู้ดูแล", subtitle: "ADMIN", dot: "bg-amber-500",
+      items: [
+        { href: "/users",    label: "Users / Teams", thai: "ผู้ใช้ / ทีม",   icon: "👥" },
+        { href: "/reports",  label: "Reports",       thai: "รายงาน / ส่งออก", icon: "📊" },
+        { href: "/settings", label: "Settings",      thai: "ตั้งค่าระบบ",     icon: "⚙️" },
+        { href: "/help",     label: "Help",          thai: "คู่มือการใช้งาน", icon: "📖" },
+      ],
+    },
+  ];
+
+  const sections = isBranchManager
+    ? BRANCH_MANAGER_SECTIONS
+    : isServiceOnlyRole
     ? baseSections.filter(s => !SERVICE_HIDDEN_IDS.has(s.id))
     : isSalesOnlyRole
     ? baseSections.filter(s => !SALES_HIDDEN_IDS.has(s.id))

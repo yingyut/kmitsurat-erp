@@ -6,7 +6,7 @@ export interface WidgetConfig {
   span: WidgetSpan;
 }
 
-export type DashView = "executive" | "sales" | "presale" | "service" | "projects" | "coordinator";
+export type DashView = "executive" | "sales" | "presale" | "service" | "projects" | "coordinator" | "branch-manager";
 
 export const WIDGET_LABELS: Record<string, string> = {
   // Individual executive KPI cards
@@ -59,6 +59,14 @@ export const WIDGET_LABELS: Record<string, string> = {
   "coord-tickets":      "Ticket ทั้งหมด",
   "coord-contracts":    "สัญญาใกล้หมด",
   "coord-satisfaction": "สรุปงานที่เสร็จ",
+  // Branch Manager
+  "bm-sales-kpis":    "KPI ฝ่ายขาย",
+  "bm-top-deals":     "Top Deals",
+  "bm-funnel":        "Sales Funnel",
+  "bm-service":       "Service (ภาพรวม)",
+  "bm-presale":       "Presale (ภาพรวม)",
+  "bm-contracts":     "สัญญาใกล้หมด",
+  "bm-qt-status":     "สถานะ Quotation",
 };
 
 export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
@@ -128,18 +136,27 @@ export const DEFAULT_LAYOUTS: Record<DashView, WidgetConfig[]> = {
     { id: "coord-contracts",    visible: true, span: "half" },
     { id: "coord-satisfaction", visible: true, span: "full" },
   ],
+  "branch-manager": [
+    { id: "bm-sales-summary",    visible: true, span: "full" },
+    { id: "bm-growth-chart",     visible: true, span: "full" },
+    { id: "bm-projects-summary", visible: true, span: "half" },
+    { id: "bm-presale-summary",  visible: true, span: "half" },
+    { id: "bm-service-summary",  visible: true, span: "full" },
+    { id: "exec-contracts",      visible: true, span: "full" },
+  ],
 };
 
 export function getRoleDefaultView(role: string): DashView {
   if (["admin", "Administrator"].includes(role)) return "executive";
-  if (["sale", "avenger", "Sales Executive", "Sales Manager", "Branch Manager"].includes(role)) return "sales";
+  if (role === "Branch Manager") return "branch-manager";
+  if (["sale", "avenger", "Sales Executive", "Sales Manager"].includes(role)) return "sales";
   if (["presale", "Presales Manager", "Presales Engineer", "BOQ Engineer"].includes(role)) return "presale";
   if (["service", "Service Manager", "Service Technician", "Operations Coordinator"].includes(role)) return "service";
   if (role === "Coordinator") return "coordinator";
   return "executive";
 }
 
-export const ALL_VIEWS: DashView[] = ["executive", "sales", "presale", "service", "projects", "coordinator"];
+export const ALL_VIEWS: DashView[] = ["executive", "sales", "presale", "service", "projects", "coordinator", "branch-manager"];
 
 export function loadLayout(userId: string, view: DashView): WidgetConfig[] {
   if (typeof window === "undefined") return DEFAULT_LAYOUTS[view];
